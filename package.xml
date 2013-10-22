@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<package>
+  <name>ftag2</name>
+  <version>0.0.1</version>
+  <description>Fourier Tag v2: Spacial-Temporally Graceful Degradable Fiducial Markers</description>
+
+  <maintainer email="davidcp@cim.mcgill.ca">David Cortes</maintainer>
+  <maintainer email="anqixu@cim.mcgill.ca">Anqi Xu</maintainer>
+
+  <license>BSD</license>
+
+  <url type="website">http://ros.org/wiki/ftag2</url>
+
+  <author email="davidcp@cim.mcgill.ca">David Cortes</author>
+  <author email="anqixu@cim.mcgill.ca">Anqi Xu</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>std_msgs</build_depend>
+
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>rospy</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>std_msgs</run_depend>
+
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+    <!-- You can specify that this package is a metapackage here: -->
+    <!-- <metapackage/> -->
+
+    <!-- Other tools can request additional information be placed here -->
+  </export>
+</package>
