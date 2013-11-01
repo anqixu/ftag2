@@ -18,6 +18,7 @@ namespace vc_math {
 //constexpr double two_pi = boost::math::constants::pi<double>()*2;
 constexpr double degree = 3.1415926535897932384626433832795/180.0;
 constexpr double radian = 180.0/3.1415926535897932384626433832795;
+constexpr double pi = 3.1415926535897932384626433832795;
 constexpr double two_pi = 3.1415926535897932384626433832795*2;
 constexpr double half_pi = 3.1415926535897932384626433832795/2;
 constexpr double INVALID_ANGLE = 361.0;
@@ -60,10 +61,10 @@ inline double dist(double x1, double y1, double x2, double y2) {
 };
 
 /**
- * Wraps angle in degrees to [0, 360) range
+ * Wraps angle in degrees to [0, maxAngle) range
  */
-inline constexpr double wrapAngle(double angleDeg) {
-  return (angleDeg - floor(angleDeg/360.0)*360.0);
+inline constexpr double wrapAngle(double angleDeg, double maxAngle = 360.0) {
+  return (angleDeg - floor(angleDeg/maxAngle)*maxAngle);
 };
 
 /**

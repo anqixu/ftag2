@@ -561,4 +561,8 @@ public:
 };
 
 
+// Declarations for nms.cpp
+void nonMaximaSuppression(const cv::Mat& src, const int sz, cv::Mat& dst, const cv::Mat mask);
+
+
 #endif /* BASECV_HPP_ */
