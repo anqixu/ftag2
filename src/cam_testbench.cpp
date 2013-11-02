@@ -129,13 +129,160 @@ cv::Mat houghAccum(const cv::Mat& edgels, const cv::Mat& dx, const cv::Mat& dy,
 
 
 /**
- * houghRhoRes: in px
- * houghTheatRes: in radians
- * houghEdgelThetaMargin: in radians; half-width of range of orientation angles centered around edgel's (orthogonal) orientation
- * houghBlurRhoWidth: in px; width of neighbor in rho axis to apply Gaussian blurring
- * houghBlurThetaWidth: in radians; width of neighbor in theta axis to apply Gaussian blurring
- * houghNMSRhoWidth: in px; width of neighbor in rho axis to search for local maxima
- * houghNMSThetaWidth: in radians; width of neighbor in theta axis to search for local maxima
+ * Applies Gaussian blur to rho/theta Hough accumulator space (while accounting
+ * for circular+mirrored nature of theta half-space)
+ *
+ * Blur window parameters are chosen to represent range spanning +/- 3 sigma
+ * of Gaussian mask
+ *
+ * @param accum: numRho x numTheta matrix output from houghAccum; blurred in-place
+ * @param rhoRes: accumulator bin size for rho axis; in pixels
+ * @param thetaRes: accumulator bin size for theta axis; in radians
+ * @param rhoBlurRange: range in rho space for Gaussian window; in pixels
+ * @param thetaBlurRange: range in theta space for Gaussian window; in radians
+ */
+void houghBlur(cv::Mat& accum,
+    double rhoRes, double thetaRes,
+    double rhoBlurRange, double thetaBlurRange) {
+  if (rhoBlurRange <= 0 || thetaBlurRange <= 0) { return; }
+
+  const int numRho = accum.cols;
+  const int numTheta = accum.rows;
+  const unsigned int rhoBlurHalfWidth = std::min(std::max(
+      int(std::floor(std::ceil(rhoBlurRange/rhoRes)/2)),
+      1), numRho/2);
+  const unsigned int thetaBlurHalfWidth = std::min(std::max(
+      int(std::floor(std::ceil(thetaBlurRange/thetaRes)/2)),
+      1), numTheta/2);
+  const double rhoBlurSigma = double(rhoBlurHalfWidth*2+1)/6;
+  const double thetaBlurSigma = double(thetaBlurHalfWidth*2+1)/6;
+
+  // Expand Hough accumulator space by adding zero-borders for rho axis
+  // and mirrored-wrapped-around-borders for theta axis
+  cv::Mat accumBordered;
+  cv::copyMakeBorder(accum, accumBordered,
+      thetaBlurHalfWidth, thetaBlurHalfWidth, rhoBlurHalfWidth, rhoBlurHalfWidth,
+      cv::BORDER_CONSTANT, cv::Scalar(0));
+  cv::Mat accumBorderedTop = accumBordered(
+      cv::Range(0, thetaBlurHalfWidth),
+      cv::Range(rhoBlurHalfWidth, rhoBlurHalfWidth + numRho));
+  cv::Mat accumBottom = accum.rowRange(accum.rows - thetaBlurHalfWidth, accum.rows);
+  cv::flip(accumBottom, accumBorderedTop, 1);
+  cv::Mat accumBorderedBottom = accumBordered(
+      cv::Range(numTheta + thetaBlurHalfWidth, numTheta + thetaBlurHalfWidth*2),
+      cv::Range(rhoBlurHalfWidth, rhoBlurHalfWidth + numRho));
+  cv::Mat accumTop = accum.rowRange(0, thetaBlurHalfWidth);
+  cv::flip(accumTop, accumBorderedBottom, 1);
+
+  // Apply Gaussian blur
+  cv::GaussianBlur(accumBordered, accumBordered,
+      cv::Size(rhoBlurHalfWidth*2+1, thetaBlurHalfWidth*2+1),
+      rhoBlurSigma, thetaBlurSigma, cv::BORDER_DEFAULT); // TODO: 1 find out what is fastest border blur option (since we don't care about border)
+  accumBordered(cv::Range(thetaBlurHalfWidth, thetaBlurHalfWidth + numTheta),
+      cv::Range(rhoBlurHalfWidth, rhoBlurHalfWidth + numRho)).copyTo(accum);
+};
+
+
+/**
+ * Identifies local maxima within the Hough accumulator space using
+ * 2-D block-based Non-Maxima Suppression (NMS)
+ *
+ * @param accum: numRho x numTheta matrix output from houghAccum; blurred in-place
+ * @param rhoRes: accumulator bin size for rho axis; in pixels
+ * @param thetaRes: accumulator bin size for theta axis; in radians
+ * @param rhoNMSRange: range in rho space corresponding to NMS block dimension;
+ *  in pixels
+ * @param thetaNMSRange: range in theta space corresponding to NMS block
+ *  dimension; in radians
+ * @param houghMinAccumValue: minimum accepted accumulator value for local maximum
+ *  (NOTE: value scale may differ from expectations following houghBlur)
+ */
+std::vector<cv::Point> houghNMS(const cv::Mat& accum,
+    double rhoRes, double thetaRes,
+    double rhoNMSRange, double thetaNMSRange, double houghMinAccumValue) {
+  const int numRho = accum.cols;
+  const int numTheta = accum.rows;
+  const int rhoNMSHalfWidth = std::min(std::max(
+      int(std::floor(std::ceil(rhoNMSRange/rhoRes)/2)),
+      1), numRho/2);
+  const int thetaNMSHalfWidth = std::min(std::max(
+      int(std::floor(std::ceil(thetaNMSRange/thetaRes)/2)),
+      1), numTheta/2);
+  const unsigned int rhoNMSWidth = rhoNMSHalfWidth*2 + 1;
+  const unsigned int thetaNMSWidth = thetaNMSHalfWidth*2 + 1;
+  const unsigned int numRhoBlocks = std::ceil(double(numRho)/rhoNMSWidth);
+  const unsigned int numThetaBlocks = std::ceil(double(numTheta)/thetaNMSWidth);
+  const unsigned int extraThetaWidth = numThetaBlocks*thetaNMSWidth - numTheta;
+  const unsigned int extraRhoWidth = numRhoBlocks*rhoNMSWidth - numRho;
+  // NOTE: we need to add extra rows and columns to make the expanded
+  //       matrix have width and height that are integer multiples of the
+  //       corresponding block width and height
+
+  // Expand the Hough accumulator space by adding zero-borders for rho
+  // (horiz axis) and by adding mirrored-wrapped-around-borders for theta
+  cv::Mat accumBordered;
+  cv::copyMakeBorder(accum, accumBordered,
+      thetaNMSHalfWidth, thetaNMSHalfWidth + extraThetaWidth,
+      rhoNMSHalfWidth, rhoNMSHalfWidth + extraRhoWidth,
+      cv::BORDER_CONSTANT, cv::Scalar(-1));
+  cv::Mat accumBorderedTop = accumBordered(
+      cv::Range(0, thetaNMSHalfWidth),
+      cv::Range(rhoNMSHalfWidth, rhoNMSHalfWidth + numRho));
+  cv::Mat accumBottom = accum.rowRange(accum.rows - thetaNMSHalfWidth, accum.rows);
+  cv::flip(accumBottom, accumBorderedTop, 1);
+  cv::Mat accumBorderedBottom = accumBordered(
+      cv::Range(numTheta + thetaNMSHalfWidth, numTheta + thetaNMSHalfWidth*2 + extraThetaWidth),
+      cv::Range(rhoNMSHalfWidth, rhoNMSHalfWidth + numRho));
+  cv::Mat accumTop = accum.rowRange(0, thetaNMSHalfWidth + extraThetaWidth);
+  cv::flip(accumTop, accumBorderedBottom, 1);
+
+  // Iterately find local maxima within non-overlapping blocks
+  std::vector<cv::Point> rhoThetaMaxPts;
+  int thetaI, rhoI;
+  double blockMaxVal;
+  cv::Point2i blockMaxPtLocal, blockMaxPt, neighMaxPtLocal;
+  cv::Range thetaBlockRange, rhoBlockRange, thetaNeighRange, rhoNeighRange;
+  for (thetaI = 0; thetaI < numTheta; thetaI += thetaNMSWidth) {
+    thetaBlockRange = cv::Range(thetaI + thetaNMSHalfWidth,
+        thetaI + thetaNMSHalfWidth + thetaNMSWidth);
+
+    for (rhoI = 0; rhoI < numRho; rhoI += rhoNMSWidth) {
+      // Compute local maximum within block
+      rhoBlockRange = cv::Range(rhoI + rhoNMSHalfWidth,
+          rhoI + rhoNMSHalfWidth + rhoNMSWidth);
+      cv::minMaxLoc(accumBordered(thetaBlockRange, rhoBlockRange),
+          NULL, &blockMaxVal, NULL, &blockMaxPtLocal);
+      blockMaxPt = blockMaxPtLocal +
+          cv::Point2i(rhoI + rhoNMSHalfWidth, thetaI + thetaNMSHalfWidth);
+
+      // Compute local maximum within neighbour centered around block max
+      thetaNeighRange = cv::Range(blockMaxPt.y - thetaNMSHalfWidth,
+          blockMaxPt.y - thetaNMSHalfWidth + thetaNMSWidth);
+      rhoNeighRange = cv::Range(blockMaxPt.x - rhoNMSHalfWidth,
+          blockMaxPt.x - rhoNMSHalfWidth + rhoNMSWidth);
+      cv::minMaxLoc(accumBordered(thetaNeighRange, rhoNeighRange),
+          NULL, NULL, NULL, &neighMaxPtLocal);
+
+      // Accept maximum candidate if it is also its neighbouring window's
+      // maximum, and its value is above the requested threshold
+      if (neighMaxPtLocal.x == rhoNMSHalfWidth &&
+          neighMaxPtLocal.y == thetaNMSHalfWidth &&
+          accumBordered.at<double>(blockMaxPt.y, blockMaxPt.x) >= houghMinAccumValue) {
+        // Subtract away border widths
+        blockMaxPt -= cv::Point(rhoNMSHalfWidth, thetaNMSHalfWidth);
+        if (blockMaxPt.x >= 0 && blockMaxPt.x < accum.cols &&
+            blockMaxPt.y >= 0 && blockMaxPt.y < accum.rows) { // Sanity check
+          rhoThetaMaxPts.push_back(blockMaxPt);
+        }
+      }
+    }
+  }
+
+  return rhoThetaMaxPts;
+};
+
+
+/**
  * houghMaxDistToLine: in px, maximum acceptable point-line distance to consider point belonging to line
  * houghMaxLineGap: in px, maximum de-gap distance between 2 line segments
  */
@@ -143,260 +290,68 @@ cv::Mat detectLines(cv::Mat grayImg,
     int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
     double houghRhoRes, double houghThetaRes,
     double houghEdgelThetaMargin,
-    double houghBlurRhoWidth, double houghBlurThetaWidth,
-    double houghNMSRhoWidth, double houghNMSThetaWidth,
+    double houghRhoBlurRange, double houghThetaBlurRange,
+    double houghRhoNMSRange, double houghThetaNMSRange,
+    double houghMinAccumValue,
     double houghMaxDistToLine,
     double houghMinSegmentLength, double houghMaxSegmentGap) {
-  cv::Mat edgeImg, dxImg, dyImg;
+  cv::Mat edgelImg, dxImg, dyImg;
 
   const unsigned int imWidth = grayImg.cols;
   const unsigned int imHeight = grayImg.rows;
 
   // Identify edgels
-  // TODO: 1 tune params: blur==3 removes most unwanted edges but fails when tag is moving; blur==5 gets more spurious edges in general but detects tag boundary when moving
-  blur(grayImg, edgeImg, Size(sobelBlurWidth, sobelBlurWidth));
-  Canny(edgeImg, edgeImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
-
-  imshow("edgels", edgeImg); // TODO: 0 remove
+  blur(grayImg, edgelImg, Size(sobelBlurWidth, sobelBlurWidth));
+  Canny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
+  // TODO: 1 tune params: sobelBlurWidth==3 removes most unwanted edges but fails when tag is moving; sobelBlurWidth==5 gets more spurious edges in general but detects tag boundary when moving
+  imshow("edgels", edgelImg); // TODO: 0 remove
 
   // Compute derivative components along x and y axes (needed to compute orientation of edgels)
   cv::Sobel(grayImg, dxImg, CV_16S, 1, 0, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
   cv::Sobel(grayImg, dyImg, CV_16S, 0, 1, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
 
-  // Trace potential lines in polar coordinates (Duda & Hart)
+  // Fill in Hough accumulator space
+  unsigned int numEdgels = 0;
+  cv::Mat thetaRhoAccum = houghAccum(edgelImg, dxImg, dyImg,
+    houghRhoRes, houghThetaRes, houghEdgelThetaMargin, &numEdgels);
+
+  // Blur Hough accumulator space to smooth out spurious local peaks
+  houghBlur(thetaRhoAccum,
+    houghRhoRes, houghThetaRes, houghRhoBlurRange, houghThetaBlurRange);
+  imshow64F("accum", thetaRhoAccum); // TODO: 0 remove
+
+  // Identify local maxima within Hough accumulator space
+  std::vector<cv::Point2i> localMaxima = houghNMS(thetaRhoAccum,
+    houghRhoRes, houghThetaRes, houghRhoNMSRange, houghThetaNMSRange,
+    houghMinAccumValue);
+
+  // Accumulate all edgel positions into column-stacked matrix
+  assert(edgelImg.type() == CV_8UC1);
+  assert(edgelImg.isContinuous());
+  cv::Mat edgelsXY(numEdgels, 1, CV_64FC2);
+  double* edgelsXYPtr = (double*) edgelsXY.data;
+  unsigned char* edgelImgPtr = (unsigned char*) edgelImg.data;
+  unsigned int x, y;
+  for (y = 0; y < imHeight; y++) {
+    for (x = 0; x < imWidth; x++, edgelImgPtr++) {
+      if (*edgelImgPtr > 0) {
+        *edgelsXYPtr = x; edgelsXYPtr++;
+        *edgelsXYPtr = y; edgelsXYPtr++;
+      }
+    }
+  }
+
+
   cv::Mat overlaidImg;
   cvtColor(grayImg, overlaidImg, CV_GRAY2RGB);
   {
-    // Construct theta/rho Hough accumulator matrix
-    // NOTE: given mapping rho = x*cos(theta) + y*sin(theta),
-    //       and knowing that cos(theta), sin(theta) \in [-1, 1],
-    //       x \in [0, W-1], y \in [0, H-1], therefore the range of rho is
-    //       [-W+1, W-1] (+) [-H+1, H-1] = [-W-H+2, W+H-2]
     const unsigned int rhoHalfRange = imWidth + imHeight - 2;
-    const unsigned int numRho = ceil(double(2*rhoHalfRange + 1)/houghRhoRes);
-    const unsigned int numTheta = ceil(pi/houghThetaRes);
-    const int halfNumRho = int(numRho/2);
-    const int halfNumTheta = int(numTheta/2);
-
-    const unsigned int houghBlurRhoWindowHalfSize =
-        std::min(std::max(int(std::floor(std::ceil(houghBlurRhoWidth/houghRhoRes)/2)), 1), halfNumRho);
-    const unsigned int houghBlurThetaWindowHalfSize =
-        std::min(std::max(int(std::floor(std::ceil(houghBlurThetaWidth/houghThetaRes)/2)), 1), halfNumTheta);
-    const double houghBlurRhoStd = double(houghBlurRhoWindowHalfSize*2+1)/6; // Assume that filter contains [-3*s, 3*s] of Gaussian
-    const double houghBlurThetaStd = double(houghBlurThetaWindowHalfSize*2+1)/6;
-
-    const unsigned int houghNMSRhoWindowHalfSize =
-        std::min(std::max(int(std::floor(std::ceil(houghNMSRhoWidth/houghRhoRes)/2)), 1), halfNumRho);
-    const unsigned int houghNMSThetaWindowHalfSize =
-        std::min(std::max(int(std::floor(std::ceil(houghNMSThetaWidth/houghThetaRes)/2)), 1), halfNumTheta);
-    const unsigned int houghNMSRhoWindowSize = houghNMSRhoWindowHalfSize*2 + 1;
-    const unsigned int houghNMSThetaWindowSize = houghNMSThetaWindowHalfSize*2 + 1;
-    const unsigned int houghNMSRhoNumWindows = ceil(double(numRho)/houghNMSRhoWindowSize);
-    const unsigned int houghNMSThetaNumWindows = ceil(double(numTheta)/houghNMSThetaWindowSize);
 
     const double MAX_PX_GAP = 1.0/cos(45*degree); // account for worst-case projections of diagonal line (e.g. (1, 1), (2, 2), (3, 3), ... projected)
     // TODO: 0 come back to MAX_PX_GAP param and explain why we need to increase tolerance (suspect have to do with Canny edge detector + something...
 
-
-    // Fill in Hough accumulator
-    unsigned int numEdgels = 0;
-    cv::Mat thetaRhoAccum = houghAccum(edgeImg, dxImg, dyImg,
-        houghRhoRes, houghThetaRes, houghEdgelThetaMargin, &numEdgels);
-    imshow64F("accum", thetaRhoAccum);
-
-
-    cv::Mat thetaRhoAccumBlurred;
-    if (houghBlurRhoWidth > 0 && houghBlurThetaWidth > 0) { // BLUR
-      // Expand the Hough accumulator space by adding zero-borders for rho
-      // (horiz axis) and by adding mirrored-wrapped-around-borders for theta
-      cv::Mat thetaRhoAccumWithBlurBorder, thetaRhoAccumBottomFlipped, thetaRhoAccumTopFlipped;
-      cv::Mat thetaRhoAccumBottom =
-          thetaRhoAccum.rowRange(thetaRhoAccum.rows - houghBlurThetaWindowHalfSize, thetaRhoAccum.rows);
-      cv::flip(thetaRhoAccumBottom, thetaRhoAccumBottomFlipped, 1);
-      cv::Mat thetaRhoAccumTop =
-          thetaRhoAccum.rowRange(0, houghBlurThetaWindowHalfSize);
-      cv::flip(thetaRhoAccumTop, thetaRhoAccumTopFlipped, 1);
-      cv::vconcat(thetaRhoAccumBottomFlipped, thetaRhoAccum, thetaRhoAccumWithBlurBorder);
-      cv::vconcat(thetaRhoAccumWithBlurBorder, thetaRhoAccumTopFlipped, thetaRhoAccumWithBlurBorder);
-      cv::copyMakeBorder(thetaRhoAccumWithBlurBorder, thetaRhoAccumWithBlurBorder,
-          0, 0,
-          houghBlurRhoWindowHalfSize, houghBlurRhoWindowHalfSize,
-          cv::BORDER_CONSTANT, cv::Scalar(0));
-
-      // TODO: 000 remove
-      if (false) {
-        cv::Mat accum;
-        double maxAccum;
-        minMaxLoc(thetaRhoAccumWithBlurBorder, NULL, &maxAccum);
-        thetaRhoAccumWithBlurBorder.convertTo(accum, CV_8UC1, 255.0/maxAccum, 0);
-        imshow("accum_preblur", accum);
-        cout << "thetaRhoAccumWithBlurBorder: " << thetaRhoAccumWithBlurBorder.rows << " x " << thetaRhoAccumWithBlurBorder.cols << endl;
-        cv::waitKey(10);
-      }
-
-      // Apply Gaussian blur to Hough accumulator space
-      cv::GaussianBlur(thetaRhoAccumWithBlurBorder, thetaRhoAccumWithBlurBorder,
-          cv::Size(houghBlurRhoWindowHalfSize*2+1, houghBlurThetaWindowHalfSize*2+1),
-          houghBlurRhoStd, houghBlurThetaStd,
-          cv::BORDER_DEFAULT);
-      thetaRhoAccumBlurred = thetaRhoAccumWithBlurBorder(
-          cv::Range(houghBlurThetaWindowHalfSize, houghBlurThetaWindowHalfSize + numTheta),
-          cv::Range(houghBlurRhoWindowHalfSize, houghBlurRhoWindowHalfSize + numRho));
-    } else {
-      thetaRhoAccumBlurred = thetaRhoAccum;
-    }
-
-    if (false) {
-      cv::Mat accum;
-      double maxAccum;
-      minMaxLoc(thetaRhoAccumBlurred, NULL, &maxAccum);
-      thetaRhoAccumBlurred.convertTo(accum, CV_8UC1, 255.0/maxAccum, 0);
-      imshow("accum_postblur", accum);
-      cout << "thetaRhoAccumBlurred: " << thetaRhoAccumBlurred.rows << " x " << thetaRhoAccumBlurred.cols << endl;
-      cv::waitKey(10);
-    }
-
-    // Expand the Hough accumulator space by adding zero-borders for rho
-    // (horiz axis) and by adding mirrored-wrapped-around-borders for theta
-    //
-    // NOTE: need to add additional rows and columns to make the expanded matrix
-    //       have width and height that are integer multiples of the
-    //       corresponding block width and height
-    cv::Mat thetaRhoAccumBlurredWithNMSBorder, thetaRhoAccumBlurredBottomFlipped, thetaRhoAccumBlurredTopFlipped;
-    cv::Mat thetaRhoAccumBlurredBottom =
-        thetaRhoAccumBlurred.rowRange(thetaRhoAccum.rows - houghNMSThetaWindowHalfSize, thetaRhoAccum.rows);
-    cv::flip(thetaRhoAccumBlurredBottom, thetaRhoAccumBlurredBottomFlipped, 1);
-    cv::Mat thetaRhoAccumBlurredTop =
-        thetaRhoAccumBlurred.rowRange(0, houghNMSThetaWindowHalfSize + (houghNMSThetaNumWindows*houghNMSThetaWindowSize - numTheta));
-    cv::flip(thetaRhoAccumBlurredTop, thetaRhoAccumBlurredTopFlipped, 1);
-    cv::vconcat(thetaRhoAccumBlurredBottomFlipped, thetaRhoAccumBlurred, thetaRhoAccumBlurredWithNMSBorder);
-    cv::vconcat(thetaRhoAccumBlurredWithNMSBorder, thetaRhoAccumBlurredTopFlipped, thetaRhoAccumBlurredWithNMSBorder);
-    cv::copyMakeBorder(thetaRhoAccumBlurredWithNMSBorder, thetaRhoAccumBlurredWithNMSBorder,
-        0, 0,
-        houghNMSRhoWindowHalfSize,
-        houghNMSRhoWindowHalfSize + (houghNMSRhoNumWindows*houghNMSRhoWindowSize - numRho),
-        cv::BORDER_CONSTANT, cv::Scalar(-1.0));
-
-    // TODO: 000 remove
-    if (false) {
-      cv::Mat accum;
-      double maxAccum;
-      minMaxLoc(thetaRhoAccumBlurredWithNMSBorder, NULL, &maxAccum);
-      thetaRhoAccumBlurredWithNMSBorder.convertTo(accum, CV_8UC1, 255.0/maxAccum, 0);
-      imshow("accum_prenms", accum);
-      cout << "thetaRhoAccumBlurredWithNMSBorder: " << thetaRhoAccumBlurredWithNMSBorder.rows << " x " << thetaRhoAccumBlurredWithNMSBorder.cols << endl;
-      cv::waitKey(10);
-    }
-
-    // TODO: 0 find local maxima using 2-D block-based non-maxima suppression (NMS)
-    std::vector<cv::Point> localMaxima;
-    if (true) {
-      // Iterate over non-overlapping local block neighbourhoods
-      int thetaI, rhoI;
-      double blockMaxVal;
-      cv::Point blockMaxPtLocal, blockMaxPt, neighMaxPtLocal;
-      cv::Range thetaBlockRange, rhoBlockRange, thetaNeighRange, rhoNeighRange;
-      for (thetaI = 0; thetaI < numTheta; thetaI += houghNMSThetaWindowSize) {
-        thetaBlockRange = cv::Range(thetaI + houghNMSThetaWindowHalfSize,
-            thetaI + houghNMSThetaWindowHalfSize + houghNMSThetaWindowSize);
-
-        for (rhoI = 0; rhoI < numRho; rhoI += houghNMSRhoWindowSize) {
-          // Compute local maximum within block
-          rhoBlockRange = cv::Range(rhoI + houghNMSRhoWindowHalfSize,
-              rhoI + houghNMSRhoWindowHalfSize + houghNMSRhoWindowSize);
-          cv::minMaxLoc(thetaRhoAccumBlurredWithNMSBorder(thetaBlockRange, rhoBlockRange),
-              NULL, &blockMaxVal,
-              NULL, &blockMaxPtLocal);
-          blockMaxPt = blockMaxPtLocal +
-              cv::Point(rhoI + houghNMSRhoWindowHalfSize, thetaI + houghNMSThetaWindowHalfSize);
-
-          // Compute local maximum within neighbour centered around block max
-          thetaNeighRange = cv::Range(blockMaxPt.y - houghNMSThetaWindowHalfSize,
-              blockMaxPt.y - houghNMSThetaWindowHalfSize + houghNMSThetaWindowSize);
-          rhoNeighRange = cv::Range(blockMaxPt.x - houghNMSRhoWindowHalfSize,
-              blockMaxPt.x - houghNMSRhoWindowHalfSize + houghNMSRhoWindowSize);
-          cv::minMaxLoc(thetaRhoAccumBlurredWithNMSBorder(thetaNeighRange, rhoNeighRange),
-              NULL, NULL,
-              NULL, &neighMaxPtLocal);
-
-          // If neighbour's maximum is its center, then found true local maximum within window
-          if (neighMaxPtLocal.x == houghNMSRhoWindowHalfSize &&
-              neighMaxPtLocal.y == houghNMSThetaWindowHalfSize) {
-            // Subtract away border pixels
-            blockMaxPt -= cv::Point(houghNMSRhoWindowHalfSize, houghNMSThetaWindowHalfSize);
-            if (blockMaxPt.x >= 0 && blockMaxPt.x < thetaRhoAccum.cols &&
-                blockMaxPt.y >= 0 && blockMaxPt.y < thetaRhoAccum.rows) {
-              localMaxima.push_back(blockMaxPt);
-
-              //cout << "Found new local maximum @ rho/theta (" << blockMaxPt.x << ", " << blockMaxPt.y << ")" << endl;
-            }
-          }
-        }
-      }
-    }
-
-    // TODO: 00000 remove
-    if (true) {
-      //cout << "LOCAL MAXIMA VIA NMS:" << endl;
-      unsigned int falseCounts = 0;
-
-      std::vector<cv::Point> filteredLocalMaxima;
-      for (const cv::Point& localMax: localMaxima) {
-
-
-        if (localMax.y < 0 || localMax.y >= thetaRhoAccumBlurred.rows ||
-            localMax.x < 0 || localMax.x >= thetaRhoAccumBlurred.cols) {
-          cout << "SEGFAULT INCOMING!" << endl;
-          cout << "- localMax.x (rho): " << localMax.x << endl;
-          cout << "- thetaRhoAccumBlurred.cols: " << thetaRhoAccumBlurred.cols << endl;
-          cout << "- localMax.y (theta): " << localMax.y << endl;
-          cout << "- thetaRhoAccumBlurred.rows (rho): " << thetaRhoAccumBlurred.rows << endl;
-          cout << "- thetaRhoAccum: " << thetaRhoAccum.rows << " x " << thetaRhoAccum.cols << endl;
-        }
-
-        if (thetaRhoAccumBlurred.at<double>(localMax.y, localMax.x) <= 3) {
-          falseCounts += 1;
-        } else {
-          filteredLocalMaxima.push_back(localMax);
-
-          if (false) {
-            cout << "- rho/theta (" << localMax.x << ", " << localMax.y << ")";
-            cout << ": " << thetaRhoAccumBlurred.at<double>(localMax.y, localMax.x) << endl;
-          }
-        }
-      }
-
-      cout << "Found: " << localMaxima.size() - falseCounts << " local maxima + " << falseCounts << " sub-thresholded FP";
-
-      localMaxima.swap(filteredLocalMaxima);
-    }
-
-    // HACK: scan through the accumulator to find the maximum and its location
+    // Compute connected line segments based on location of maxima
     double maxTheta = 0, maxRho = 0;
-    if (false) {
-      cv::Point maxAccumLoc;
-      minMaxLoc(thetaRhoAccum, NULL, NULL, NULL, &maxAccumLoc);
-      maxTheta = houghThetaRes * maxAccumLoc.y;
-      maxRho = houghRhoRes * maxAccumLoc.x - rhoHalfRange;
-    }
-
-
-    // Accumulate all edgel positions into column-stacked 2-channel vector
-    cv::Mat edgelsXY(numEdgels, 1, CV_64FC2);
-    double* edgelsXYPtr = (double*) edgelsXY.data;
-    int y, x;
-    for (y = 0; y < grayImg.rows; y++) {
-      for (x = 0; x < grayImg.cols; x++) {
-        if (edgeImg.at<unsigned char>(y, x) > 0) {
-          *edgelsXYPtr = x;
-          edgelsXYPtr++;
-          *edgelsXYPtr = y;
-          edgelsXYPtr++;
-        }
-      }
-    }
-
-    // TODO: 0 Compute connected line segments based on location of maxima
     std::vector<cv::Point2d> lineSegments; // stored as (segmentStart, segmentEnd) pairs of points
     //if (true) {
     for (const cv::Point& localMax: localMaxima) {
@@ -674,84 +629,6 @@ cv::Mat detectLines(cv::Mat grayImg,
   }
 
   return overlaidImg;
-
-  /*
-  cv::AutoBuffer<int> _accum, _sort_buf;
-  cv::AutoBuffer<float> _tabSin, _tabCos;
-
-  const uchar* image;
-  int step, width, height;
-  int numangle, numrho;
-  int total = 0;
-  int i, j;
-  float irho = 1 / rho;
-  double scale;
-
-  image = img->data.ptr;
-  step = img->step;
-  width = img->cols;
-  height = img->rows;
-
-  numangle = cvRound(CV_PI / theta);
-  numrho = cvRound(((width + height) * 2 + 1) / rho);
-
-  _accum.allocate((numangle+2) * (numrho+2));
-  _sort_buf.allocate(numangle * numrho);
-  _tabSin.allocate(numangle);
-  _tabCos.allocate(numangle);
-  int *accum = _accum, *sort_buf = _sort_buf;
-  float *tabSin = _tabSin, *tabCos = _tabCos;
-
-  memset( accum, 0, sizeof(accum[0]) * (numangle+2) * (numrho+2) );
-
-  float ang = 0;
-  for(int n = 0; n < numangle; ang += theta, n++ )
-  {
-      tabSin[n] = (float)(sin((double)ang) * irho);
-      tabCos[n] = (float)(cos((double)ang) * irho);
-  }
-
-  // stage 1. fill accumulator
-  for( i = 0; i < height; i++ )
-      for( j = 0; j < width; j++ )
-      {
-          if( image[i * step + j] != 0 )
-              for(int n = 0; n < numangle; n++ )
-              {
-                  int r = cvRound( j * tabCos[n] + i * tabSin[n] );
-                  r += (numrho - 1) / 2;
-                  accum[(n+1) * (numrho+2) + r+1]++;
-              }
-      }
-
-  // stage 2. find local maximums
-  for(int r = 0; r < numrho; r++ )
-      for(int n = 0; n < numangle; n++ )
-      {
-          int base = (n+1) * (numrho+2) + r+1;
-          if( accum[base] > threshold &&
-              accum[base] > accum[base - 1] && accum[base] >= accum[base + 1] &&
-              accum[base] > accum[base - numrho - 2] && accum[base] >= accum[base + numrho + 2] )
-              sort_buf[total++] = base;
-      }
-
-  // stage 3. sort the detected lines by accumulator value
-  icvHoughSortDescent32s( sort_buf, total, accum );
-
-  // stage 4. store the first min(total,linesMax) lines to the output buffer
-  linesMax = MIN(linesMax, total);
-  scale = 1./(numrho+2);
-  for( i = 0; i < linesMax; i++ )
-  {
-      CvLinePolar line;
-      int idx = sort_buf[i];
-      int n = cvFloor(idx*scale) - 1;
-      int r = idx - (n+1)*(numrho+2) - 1;
-      line.rho = (r - (numrho - 1)*0.5f) * rho;
-      line.angle = n * theta;
-      cvSeqPush( lines, &line );
-  }
-  */
 };
 
 
@@ -769,6 +646,7 @@ int main(int argc, char** argv) {
     double houghBlurThetaWidth = 7*degree;
     double houghNMSRhoWidth = houghRhoRes*9;
     double houghNMSThetaWidth = houghThetaRes*13;
+    double houghMinAccumValue = 4;
     double houghMaxDistToLine = 5; // NOTE: should be dependent on image size
     double houghMinSegmentLength = 5;
     double houghMaxSegmentGap = 5;
@@ -782,13 +660,14 @@ int main(int argc, char** argv) {
     double houghNMSRhoWidth = houghRhoRes*5;
     double houghNMSThetaWidth = houghThetaRes*9;
     //houghNMSRhoWidth = houghRhoRes*3; houghNMSThetaWidth = houghThetaRes*3;
+    double houghMinAccumValue = 4;
     double houghMaxDistToLine = 3; // NOTE: should be dependent on image size
     double houghMinSegmentLength = 5;
     double houghMaxSegmentGap = 2;
     */
 
     // Initialize internal variables
-    cv::Mat bgrImg, grayImg, blurredImg, edgeImg, linesImg;
+    cv::Mat bgrImg, grayImg, blurredImg, edgelImg, linesImg;
     std::vector<cv::Vec4i> lines;
 #ifdef SAVE_IMAGES_FROM
     int imgid = 0;
@@ -844,13 +723,13 @@ int main(int argc, char** argv) {
       int threshold = 50, linbinratio = 100, angbinratio = 100;
 
       // Detect lines
-      blur(grayImg, edgeImg, Size(sobelBlurWidth, sobelBlurWidth));
-      Canny(edgeImg, edgeImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
+      blur(grayImg, edgelImg, Size(sobelBlurWidth, sobelBlurWidth));
+      Canny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
       cout << "pre detect line" << flush << endl;
-      cv::HoughLinesP(edgeImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold, 10*1.5, 10*1.5/3);
-      //cv::HoughLines(edgeImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold);
+      cv::HoughLinesP(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold, 10*1.5, 10*1.5/3);
+      //cv::HoughLines(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold);
       cout << "post detect line" << flush << endl;
-      cvtColor(edgeImg, linesImg, CV_GRAY2BGR);
+      cvtColor(edgelImg, linesImg, CV_GRAY2BGR);
       for (unsigned int i = 0; i < lines.size(); i++) {
         line(linesImg, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2, 8);
       }
@@ -862,6 +741,7 @@ int main(int argc, char** argv) {
           houghEdgelThetaMargin,
           houghBlurRhoWidth, houghBlurThetaWidth,
           houghNMSRhoWidth, houghNMSThetaWidth,
+          houghMinAccumValue,
           houghMaxDistToLine,
           houghMinSegmentLength, houghMaxSegmentGap);
       imshow("overlaidImg", overlaidImg);
@@ -892,8 +772,6 @@ int main(int argc, char** argv) {
     namedWindow("source", CV_GUI_EXPANDED);
     namedWindow("edgels", CV_GUI_EXPANDED);
     namedWindow("accum", CV_GUI_EXPANDED);
-    //namedWindow("accum_postblur", CV_GUI_EXPANDED);
-    //namedWindow("accum_prenms", CV_GUI_EXPANDED);
     namedWindow("overlaidImg", CV_GUI_EXPANDED);
 
     cv::Mat testImg;
@@ -948,6 +826,7 @@ int main(int argc, char** argv) {
           houghEdgelThetaMargin,
           houghBlurRhoWidth, houghBlurThetaWidth,
           houghNMSRhoWidth, houghNMSThetaWidth,
+          houghMinAccumValue,
           houghMaxDistToLine,
           houghMinSegmentLength, houghMaxSegmentGap);
       imshow("overlaidImg", overlaidImg);
