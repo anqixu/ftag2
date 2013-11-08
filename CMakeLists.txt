@@ -6,11 +6,13 @@ project(ftag2)
 set(CMAKE_CXX_FLAGS "-std=c++0x ${CMAKE_CXX_FLAGS} -g -Wall -O2")
 
 find_package(catkin REQUIRED COMPONENTS
-  geometry_msgs
   roscpp
   rospy
-  sensor_msgs
+  dynamic_reconfigure
+  image_transport
   std_msgs
+  geometry_msgs
+  sensor_msgs
 )
 
 find_package(Boost REQUIRED COMPONENTS date_time-mt system-mt thread-mt serialization-mt program_options-mt)
@@ -38,6 +40,11 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
 #   geometry_msgs#   sensor_msgs#   std_msgs
 # )
 
+generate_dynamic_reconfigure_options(
+  cfg/CamTestbench.cfg
+  )
+
+
 ###################################
 ## catkin specific configuration ##
 ###################################
@@ -50,7 +57,7 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${FTAG2_LIB_NAME}
-#  CATKIN_DEPENDS geometry_msgs roscpp rospy sensor_msgs std_msgs
+  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport std_msgs geometry_msgs sensor_msgs
 #  DEPENDS system_lib
 )
 
@@ -88,11 +95,13 @@ add_library(${FTAG2_LIB_NAME}
 )
 
 add_executable(cam_testbench src/cam_testbench.cpp)
-target_link_libraries(cam_testbench ${FTAG2_LIB_NAME} ${OpenCV_LIBRARIES})
+target_link_libraries(cam_testbench
+  ${FTAG2_LIB_NAME}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(cam_testbench ${PROJECT_NAME}_gencfg)
 
-#target_link_libraries(ftag2_node
-#  ${catkin_LIBRARIES}
-#)
 
 #############
 ## Install ##

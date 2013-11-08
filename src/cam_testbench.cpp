@@ -8,6 +8,10 @@
 #include <cassert>
 #include "common/VectorAndCircularMath.hpp"
 
+#include <ros/ros.h>
+#include <dynamic_reconfigure/server.h>
+#include <ftag2/CamTestbenchConfig.h>
+
 
 //#define SAVE_IMAGES_FROM overlaidImg
 //#define ENABLE_PROFILER
@@ -19,7 +23,10 @@ using namespace cv;
 using namespace vc_math;
 
 
-bool lessThanInY(const cv::Point2d& a, const cv::Point2d& b) { return (a.y < b.y); }
+typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
+
+
+bool lessThanInY(const cv::Point3d& a, const cv::Point3d& b) { return (a.y < b.y); }
 
 /**
  * Displays double-typed matrix after rescaling from [0, max] to [0, 255]
@@ -56,7 +63,7 @@ void imshow64F(const std::string& winName, const cv::Mat& im) {
  */
 cv::Mat houghAccum(const cv::Mat& edgels, const cv::Mat& dx, const cv::Mat& dy,
     double rhoRes, double thetaRes, double thetaMargin,
-    unsigned int* edgelCount = NULL) {
+    unsigned int* edgelCount = NULL, cv::Mat* dir = NULL) {
   // Ensure that input matrices have same size
   assert(edgels.rows == dx.rows);
   assert(edgels.rows == dy.rows);
@@ -78,6 +85,10 @@ cv::Mat houghAccum(const cv::Mat& edgels, const cv::Mat& dx, const cv::Mat& dy,
   const int numTheta = std::ceil(vc_math::pi/thetaRes);
   const int numThetaInRange = std::ceil(thetaMargin*2/thetaRes);
 
+  if (dir != NULL) {
+    dir->create(imHeight, imWidth, CV_64FC1);
+  }
+
   unsigned int x, y;
   int thetaI, rhoI, thetaCount;
   double thetaEdgel, theta, rho;
@@ -88,6 +99,9 @@ cv::Mat houghAccum(const cv::Mat& edgels, const cv::Mat& dx, const cv::Mat& dy,
       if (edgels.at<unsigned char>(y, x) > 0) {
         numEdgels += 1;
         thetaEdgel = std::atan2(dy.at<signed short>(y, x), dx.at<signed short>(y, x));
+        if (dir != NULL) {
+          dir->at<double>(y, x) = thetaEdgel;
+        }
 
         // Sweep over theta values in range
         theta = vc_math::wrapAngle(thetaEdgel - thetaMargin, vc_math::pi);
@@ -283,10 +297,173 @@ std::vector<cv::Point> houghNMS(const cv::Mat& accum,
 
 
 /**
- * houghMaxDistToLine: in px, maximum acceptable point-line distance to consider point belonging to line
- * houghMaxLineGap: in px, maximum de-gap distance between 2 line segments
+ * Matches edgels with line corresponding to (rho, theta) representation,
+ * group into segments, filter out short segments, and de-gap short gaps
+ *
+ * NOTE: consecutive edgels whose gradient directions differ by > 90'
+ *       (e.g. white-on-black edge near black-on-white edge) will not be
+ *       grouped together into a single segment.
+ *
+ * @param currRho: maximal position in rho space, in pixels
+ * @param currTheta: maximal position in theta value, in radians
+ * @param edgelsXY: cv::Mat(CV_64F) containing edgel coordinates (consecutive pairs of doubles)
+ * @param edgelDir: image-sized cv::Mat(CV_64F) containing gradient directions, in radians
+ * @param maxDistToLine: maximum orthogonal distance to line for accepting edgels, in pixels
+ * @param thetaMargin: half-width of range of orientation angles centered
+ *   around each edgel's (orthogonal) orientation to consider for accumulator;
+ *   in radians
+ * @param minLength: minimum accepted length, for filtering short segments; in pixels
+ * @param minGap: minimum distance to NOT de-gap 2 consecutive segments
  */
-cv::Mat detectLines(cv::Mat grayImg,
+std::vector<cv::Point2d> houghExtractSegments(
+    double currRho, double currTheta,
+    cv::Mat edgelsXY, cv::Mat edgelDir,
+    double maxDistToLine, double thetaMargin,
+    double minLength, double minGap) {
+  std::vector<cv::Point2d> segments;
+  std::vector<cv::Point3d> edgelRotWithDirInSegments, segmentsRotWithDir;
+  cv::Mat edgelsXYRot;
+  unsigned int edgelI;
+  double currEdgelDir;
+  double x, y;
+
+  cv::Mat rotT(2, 2, CV_64FC1);
+  double* rotTPtr = (double*) rotT.data;
+  *rotTPtr = cos(currTheta); rotTPtr++;
+  *rotTPtr = sin(currTheta); rotTPtr++;
+  *rotTPtr = -sin(currTheta); rotTPtr++;
+  *rotTPtr = cos(currTheta);
+
+  const double xLine = currRho * cos(currTheta); // TODO: 1 use cos/sine table
+  const double yLine = currRho * sin(currTheta);
+  const unsigned int numEdgels = edgelsXY.cols * edgelsXY.rows * edgelsXY.channels() / 2;
+  const double MAX_PX_GAP = sqrt(5); // account for worst-case projections of diagonal line (e.g. (1, 1), (3, 2), (5, 3), ... projected)
+  // TODO: 0 promote MAX_PX_GAP to global var
+
+  // Translate and rotate edgels so that line segments are aligned with y axis
+  edgelsXY = edgelsXY.reshape(2, numEdgels);
+  cv::add(edgelsXY, cv::Scalar(-xLine, -yLine), edgelsXYRot, cv::noArray(), CV_64FC2);
+  edgelsXYRot = edgelsXYRot.reshape(1, numEdgels).t();
+  edgelsXYRot = (rotT * edgelsXYRot).t();
+
+  // Identify and sort all edgels that are within (maxDistToLine) pixels to line
+  for (edgelI = 0; edgelI < numEdgels; edgelI++) {
+    const cv::Point2d& currPt = edgelsXY.at<cv::Point2d>(edgelI, 0);
+    const cv::Point2d& currPtRot = edgelsXYRot.at<cv::Point2d>(edgelI, 0);
+    currEdgelDir = edgelDir.at<double>(currPt.y, currPt.x); // TODO: 0 this can be cached via edgelI, and passed as input arg
+    if (fabs(currPtRot.x) <= maxDistToLine &&
+        (vc_math::angularDist(currEdgelDir, currTheta, vc_math::pi) <= thetaMargin)) {
+      edgelRotWithDirInSegments.push_back(cv::Point3d(currPtRot.x, currPtRot.y, currEdgelDir));
+    }
+  }
+  if (edgelRotWithDirInSegments.size() <= 0) { return segments; }
+  std::sort(edgelRotWithDirInSegments.begin(), edgelRotWithDirInSegments.end(), lessThanInY);
+
+  // Extract line segments, filter short segments, and de-gap short gaps
+  edgelRotWithDirInSegments.push_back(cv::Point3d(0, 0, vc_math::INVALID_ANGLE)); // Insert stub last entry to facilitate loop
+  std::vector<cv::Point3d>::iterator prevPt = edgelRotWithDirInSegments.begin();
+  std::vector<cv::Point3d>::iterator currPt = prevPt; currPt++;
+  std::vector<cv::Point3d>::iterator segStart = edgelRotWithDirInSegments.begin();
+  std::vector<cv::Point3d>::iterator segEnd = segStart;
+  const std::vector<cv::Point3d>::iterator itEnd = edgelRotWithDirInSegments.end();
+  bool needToAppend = false;
+  for (; currPt != itEnd; prevPt = currPt, currPt++) {
+    if ((currPt->z == vc_math::INVALID_ANGLE) ||
+        (vc_math::dist(currPt->x, currPt->y, prevPt->x, prevPt->y) > MAX_PX_GAP) ||
+        (vc_math::angularDist(currPt->z, prevPt->z, vc_math::two_pi) > vc_math::half_pi)) { // new line segment
+      // Check if latest-seen segment is sufficiently long
+      segEnd = prevPt;
+      if (vc_math::dist(segStart->x, segStart->y, segEnd->x, segEnd->y) >= minLength) {
+        needToAppend = true;
+
+        // Check if latest-seen 2 segments can be de-gapped
+        if (segmentsRotWithDir.size() > 0) {
+          cv::Point3d& lastSegEnd = segmentsRotWithDir.back();
+          if ((vc_math::dist(lastSegEnd.x, lastSegEnd.y, segStart->x, segStart->y) <= minGap) &&
+              (vc_math::angularDist(lastSegEnd.z, segStart->z, vc_math::two_pi) <= vc_math::half_pi)) {
+            lastSegEnd = *segEnd;
+            needToAppend = false;
+          }
+        }
+
+        if (needToAppend) {
+          segmentsRotWithDir.push_back(*segStart);
+          segmentsRotWithDir.push_back(*segEnd);
+          needToAppend = false;
+        }
+      }
+
+      // Track new segment
+      segStart = currPt;
+      segEnd = currPt;
+    } // else still in current line segment
+  } // no need to take care of last segment, since segStart == segEnd == inserted stub point
+
+  // Rotate and translate to convert back to original coordinate frame
+  cv::Mat segmentsXYRot(segmentsRotWithDir.size(), 2, CV_64FC1);
+  double* segmentsXYRotPtr = (double*) segmentsXYRot.data;
+  for (const cv::Point3d& xy: segmentsRotWithDir) {
+    *segmentsXYRotPtr = xy.x; segmentsXYRotPtr++;
+    *segmentsXYRotPtr = xy.y; segmentsXYRotPtr++;
+  }
+  cv::Mat segmentsXYShifted = segmentsXYRot*rotT;
+  double* segmentsXYPtr = (double*) segmentsXYShifted.data;
+  for (edgelI = 0; edgelI < segmentsRotWithDir.size(); edgelI++) {
+    x = *segmentsXYPtr + xLine; segmentsXYPtr++;
+    y = *segmentsXYPtr + yLine; segmentsXYPtr++;
+    segments.push_back(cv::Point2d(x, y));
+  }
+
+  return segments;
+};
+
+
+void drawLines(cv::Mat img, const std::vector<cv::Point2d> rhoThetas) {
+  cv::Point pa, pb;
+  double angleHemi;
+  for (const cv::Point2d& rhoTheta: rhoThetas) {
+    angleHemi = vc_math::wrapAngle(rhoTheta.y, vc_math::pi);
+    if (angleHemi > vc_math::half_pi) { angleHemi = vc_math::pi - angleHemi; }
+    if (angleHemi > vc_math::half_pi/2) {
+      pa.x = -img.cols;
+      pa.y = round((rhoTheta.x - cos(rhoTheta.y)*pa.x)/sin(rhoTheta.y));
+      pb.x = 2*img.cols;
+      pb.y = round((rhoTheta.x - cos(rhoTheta.y)*pb.x)/sin(rhoTheta.y));
+    } else {
+      pa.y = -img.rows;
+      pa.x = round((rhoTheta.x - sin(rhoTheta.y)*pa.y)/cos(rhoTheta.y));
+      pb.y = 2*img.rows;
+      pb.x = round((rhoTheta.x - sin(rhoTheta.y)*pb.y)/cos(rhoTheta.y));
+    }
+    cv::line(img, pa, pb, CV_RGB(0, 255, 255), 3);
+    cv::line(img, pa, pb, CV_RGB(0, 0, 255), 1);
+  }
+};
+
+
+/**
+ * lineSegments: pairs of start pt and end pt
+ */
+void drawLineSegments(cv::Mat img, const std::vector<cv::Point2d> lineSegments) {
+  unsigned int segmentI;
+  for (segmentI = 0; segmentI < lineSegments.size(); segmentI += 2) {
+    cv::line(img, lineSegments[segmentI], lineSegments[segmentI + 1], CV_RGB(255, 255, 0), 3);
+  }
+  for (segmentI = 0; segmentI < lineSegments.size(); segmentI += 2) {
+    cv::line(img, lineSegments[segmentI], lineSegments[segmentI + 1], CV_RGB(255, 0, 0), 1);
+  }
+  for (segmentI = 0; segmentI < lineSegments.size(); segmentI += 2) {
+    cv::circle(img, lineSegments[segmentI], 2, CV_RGB(0, 0, 255));
+    cv::circle(img, lineSegments[segmentI + 1], 2, CV_RGB(0, 255, 255));
+  }
+};
+
+
+/**
+ * Identifies potential lines in image using Hough Transform, then use result
+ * to identify grouped line segments
+ */
+std::vector<cv::Point2d> detectLineSegments(cv::Mat grayImg,
     int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
     double houghRhoRes, double houghThetaRes,
     double houghEdgelThetaMargin,
@@ -299,6 +476,7 @@ cv::Mat detectLines(cv::Mat grayImg,
 
   const unsigned int imWidth = grayImg.cols;
   const unsigned int imHeight = grayImg.rows;
+  const unsigned int rhoHalfRange = imWidth + imHeight - 2;
 
   // Identify edgels
   blur(grayImg, edgelImg, Size(sobelBlurWidth, sobelBlurWidth));
@@ -312,18 +490,52 @@ cv::Mat detectLines(cv::Mat grayImg,
 
   // Fill in Hough accumulator space
   unsigned int numEdgels = 0;
+  cv::Mat edgelDir;
   cv::Mat thetaRhoAccum = houghAccum(edgelImg, dxImg, dyImg,
-    houghRhoRes, houghThetaRes, houghEdgelThetaMargin, &numEdgels);
+    houghRhoRes, houghThetaRes, houghEdgelThetaMargin, &numEdgels, &edgelDir);
 
   // Blur Hough accumulator space to smooth out spurious local peaks
   houghBlur(thetaRhoAccum,
     houghRhoRes, houghThetaRes, houghRhoBlurRange, houghThetaBlurRange);
-  imshow64F("accum", thetaRhoAccum); // TODO: 0 remove
 
   // Identify local maxima within Hough accumulator space
   std::vector<cv::Point2i> localMaxima = houghNMS(thetaRhoAccum,
     houghRhoRes, houghThetaRes, houghRhoNMSRange, houghThetaNMSRange,
     houghMinAccumValue);
+
+  // DEBUG: draw local max in Hough space
+  if (true) {
+    cv::Mat accum;
+    double maxValue;
+    cv::minMaxLoc(thetaRhoAccum, NULL, &maxValue);
+    thetaRhoAccum.convertTo(accum, CV_8UC1, 255.0/maxValue, 0);
+    cv::cvtColor(accum, accum, CV_GRAY2RGB);
+    for (const cv::Point2i& currMax: localMaxima) {
+      cv::circle(accum, currMax, 5, CV_RGB(0, 255, 0), 5);
+      cv::circle(accum, currMax, 2, CV_RGB(255, 0, 0), 2);
+    }
+    imshow("accum", accum);
+  }
+
+  // DEBUG: draw lines detected by Hough Transform
+  if (true) {
+    cv::Mat overlaidImg;
+    cv::cvtColor(grayImg, overlaidImg, CV_GRAY2RGB);
+    std::vector<cv::Point2d> rhoThetas;
+    for (const cv::Point2i& currMax: localMaxima) {
+      rhoThetas.push_back(cv::Point2d(houghRhoRes * currMax.x - rhoHalfRange, houghThetaRes * currMax.y));
+    }
+
+    if (false) {
+      cout << "HT detected " << localMaxima.size() << " local rho/theta max:" << endl;
+      for (const cv::Point2d& rhoTheta: rhoThetas) {
+        cout << "- " << rhoTheta.x << " px | " << rhoTheta.y*radian << " deg" << endl;
+      }
+    }
+
+    drawLines(overlaidImg, rhoThetas);
+    cv::imshow("lines", overlaidImg);
+  }
 
   // Accumulate all edgel positions into column-stacked matrix
   assert(edgelImg.type() == CV_8UC1);
@@ -341,505 +553,287 @@ cv::Mat detectLines(cv::Mat grayImg,
     }
   }
 
-
-  cv::Mat overlaidImg;
-  cvtColor(grayImg, overlaidImg, CV_GRAY2RGB);
-  {
-    const unsigned int rhoHalfRange = imWidth + imHeight - 2;
-
-    const double MAX_PX_GAP = 1.0/cos(45*degree); // account for worst-case projections of diagonal line (e.g. (1, 1), (2, 2), (3, 3), ... projected)
-    // TODO: 0 come back to MAX_PX_GAP param and explain why we need to increase tolerance (suspect have to do with Canny edge detector + something...
-
-    // Compute connected line segments based on location of maxima
-    double maxTheta = 0, maxRho = 0;
-    std::vector<cv::Point2d> lineSegments; // stored as (segmentStart, segmentEnd) pairs of points
-    //if (true) {
-    for (const cv::Point& localMax: localMaxima) {
-      maxTheta = houghThetaRes * localMax.y;
-      maxRho = houghRhoRes * localMax.x - rhoHalfRange;
-
-      // Translate+rotate edgels into space where line is aligned with y axis
-      double xLine = maxRho * cos(maxTheta);
-      double yLine = maxRho * sin(maxTheta);
-      cv::Mat edgelsXYRot;
-      cv::add(edgelsXY, cv::Scalar(-xLine, -yLine), edgelsXYRot, cv::noArray(), CV_64FC2);
-      cv::Mat R = (cv::Mat_<double>(2, 2) << cos(maxTheta), sin(maxTheta), -sin(maxTheta), cos(maxTheta));
-      edgelsXYRot = edgelsXYRot.reshape(1, numEdgels).t();
-      edgelsXYRot = (R * edgelsXYRot).t();
-      std::vector<cv::Point2d> edgelsPosInLine;
-      int edgelI;
-
-      if (false) {
-        cout << endl << "For line @ rho,theta: (" << maxRho << ", " << maxTheta << "):" << endl;
-        cout << "  - added to " << -xLine << ", " << -yLine << endl;
-        cout << "  - rotated by " << maxTheta*radian << " (" << cos(maxTheta) << ", " << sin(maxTheta) << ", " << -sin(maxTheta) << ", " << cos(maxTheta) << ")" << endl;
-      }
-
-      for (edgelI = 0; edgelI < numEdgels; edgelI++) {
-        const cv::Point2d currPt = edgelsXY.at<cv::Point2d>(edgelI, 0);
-        const cv::Point2d currPtRot = edgelsXYRot.at<cv::Point2d>(edgelI, 0);
-        if (fabs(currPtRot.x) <= houghMaxDistToLine &&
-            angularDist(atan2(dyImg.at<signed short>(currPt.y, currPt.x), dxImg.at<signed short>(currPt.y, currPt.x)),
-            maxTheta, pi) <= houghEdgelThetaMargin) {
-          //edgelsPosInLine.push_back(edgelsXYRot.at<double>(edgelI, 1));
-          edgelsPosInLine.push_back(currPtRot);
-        }
-
-        if (false) {
-          if (fabs(currPtRot.x) <= houghMaxDistToLine &&
-              angularDist(atan2(dyImg.at<signed short>(currPt.y, currPt.x), dxImg.at<signed short>(currPt.y, currPt.x)),
-              maxTheta, pi) <= houghEdgelThetaMargin) {
-            cout << "OK point (" << currPt.x << ", " << currPt.y << ") -> T+R (" <<
-                currPtRot.x << ", " << currPtRot.y << ")" << endl;
-          } else {
-            if (true) {
-              cout << "   point (" << currPt.x << ", " << currPt.y << ") -> T+R (" <<
-                  currPtRot.x << ", " << currPtRot.y << ")" << endl;
-              cout << "   - gradiant theta: " << atan2(dyImg.at<signed short>(currPt.y, currPt.x), dxImg.at<signed short>(currPt.y, currPt.x)) <<
-                  ", maxTheta: " << maxTheta << ", angDist: " <<
-                  angularDist(atan2(dyImg.at<signed short>(currPt.y, currPt.x), dxImg.at<signed short>(currPt.y, currPt.x)), maxTheta, pi) <<
-                  " < " << houghEdgelThetaMargin << endl;
-              cout << "   - first condition: " << (fabs(currPtRot.x) <= houghMaxDistToLine) << endl;
-              cout << "     - houghMaxDistToLine: " << houghMaxDistToLine << endl;
-              cout << "   - second condition: " << (angularDist(atan2(dyImg.at<signed short>(currPt.y, currPt.x), dxImg.at<signed short>(currPt.y, currPt.x)),
-                  maxTheta, pi) <= houghEdgelThetaMargin) << endl;
-            }
-          }
-        }
-
-      }
-      std::sort(edgelsPosInLine.begin(), edgelsPosInLine.end(), lessThanInY);
-
-
-
-      if (false) {
-        cout << "AFTER sorting, pts:" << endl;
-        for (const cv::Point2d& xy: edgelsPosInLine) {
-          cout << "-- point (" << xy.x << ", " << xy.y << ")" << endl;
-        }
-      }
-
-
-      // Determine line segments based on minimum gap distance between projected points
-      std::vector<cv::Point2d> currLineSegments;
-      bool segmentStart = true;
-      std::vector<cv::Point2d>::iterator currPt = edgelsPosInLine.begin();
-      std::vector<cv::Point2d>::iterator lastPt = edgelsPosInLine.end();
-      for (; currPt < edgelsPosInLine.end(); lastPt = currPt, currPt++) {
-        if (segmentStart) {
-          currLineSegments.push_back(*currPt);
-          segmentStart = false;
-        } else {
-          if (currPt->y - lastPt->y > MAX_PX_GAP) { // New line segment
-          //if ((currPt->x - lastPt->x)*(currPt->x - lastPt->x) + (currPt->y - lastPt->y)*(currPt->y - lastPt->y) > 1.5) { // New line segment
-            if (false) {
-              cout << "Adding new line because:" << endl;
-              cout << "  - currPt->y: " << currPt->y << endl;
-              cout << "  - lastPt->y: " << lastPt->y << endl;
-              cout << "  - dist: " << currPt->y - lastPt->y << " > " << MAX_PX_GAP << endl;
-            }
-
-            currLineSegments.push_back(*lastPt);
-            currLineSegments.push_back(*currPt);
-          } // else, still in current line segment
-        }
-      }
-      if (!segmentStart) { // Terminate last line segment
-        currLineSegments.push_back(*lastPt);
-      }
-
-
-
-      if (false) {
-        cout << "line segments:" << endl;
-        for (const cv::Point2d& xy: currLineSegments) {
-          cout << "-- (" << xy.x << ", " << xy.y << ")" << endl;
-        }
-      }
-
-
-
-
-      // Prune line segments that are too short
-      if (currLineSegments.size() >= 2) {
-        segmentStart = true;
-        std::vector<cv::Point2d> longLineSegments;
-        for (currPt = currLineSegments.begin(); currPt < currLineSegments.end();
-            lastPt = currPt, currPt++, segmentStart = !segmentStart) {
-          if (!segmentStart) {
-            if (currPt->y - lastPt->y >= houghMinSegmentLength*MAX_PX_GAP) { // *MAX_PX_GAP to account for worst-case slanted line segment
-              longLineSegments.push_back(*lastPt);
-              longLineSegments.push_back(*currPt);
-            }
-          }
-        }
-        currLineSegments.swap(longLineSegments);
-      }
-
-      if (true) {
-      //if (currLineSegments.size() >= 4) {
-        // De-gap line segments
-        std::vector<cv::Point2d> degappedLineSegments;
-        segmentStart = true;
-        for (currPt = currLineSegments.begin(); currPt < currLineSegments.end();
-            lastPt = currPt, currPt++, segmentStart = !segmentStart) {
-          if (!segmentStart) {
-            if (degappedLineSegments.empty()) {
-              degappedLineSegments.push_back(*lastPt);
-              degappedLineSegments.push_back(*currPt);
-            } else {
-              if (lastPt->y - degappedLineSegments.back().y <= houghMaxSegmentGap*MAX_PX_GAP) { // *MAX_PX_GAP to account for worst-case slanted line segment
-                degappedLineSegments.back() = *currPt;
-              } else {
-                degappedLineSegments.push_back(*lastPt);
-                degappedLineSegments.push_back(*currPt);
-              }
-            }
-          }
-        }
-        degappedLineSegments.swap(currLineSegments);
-      }
-
-      // For each line segment, perform line fit and store updated line
-      if (currLineSegments.size() > 0) {
-        if (false) {
-          int segmentI, ptI;
-          for (segmentI = 0; segmentI < currLineSegments.size(); segmentI += 2) {
-            cv::Point2d& startPt = currLineSegments[segmentI];
-            cv::Point2d& endPt = currLineSegments[segmentI + 1];
-
-            std::vector<cv::Point2d> _segmentY;
-            std::vector<double> _segmentX;
-            for (ptI = 0; ptI < edgelsPosInLine.size(); ptI++) {
-              if (edgelsPosInLine[ptI].y < startPt.y) {
-                continue;
-              } else if (edgelsPosInLine[ptI].y <= endPt.y) {
-                _segmentY.push_back(cv::Point2d(1, edgelsPosInLine[ptI].y));
-                _segmentX.push_back(edgelsPosInLine[ptI].x);
-              }
-              if (edgelsPosInLine[ptI].y >= endPt.y) {
-                break;
-              }
-            }
-
-            cv::Mat segmentY(_segmentY, false);
-            cv::Mat segmentX(_segmentX, false);
-
-            if (false) {
-              cout << "For segment: (" << startPt.x << ", " << startPt.y << ") -> (" << endPt.x << ", " << endPt.y << "):" << endl;
-              for (ptI = 0; ptI < segmentY.rows; ptI++) {
-                //cout << "- " << segmentY.at<double>(ptI, 0) << " + (" << segmentX.at<double>(ptI, 0) << ", " << segmentY.at<double>(ptI, 1) << ")" << endl;
-                cout << "  " << segmentX.at<double>(ptI, 0) << ", " << segmentY.at<double>(ptI, 1) << "," << endl;
-              }
-            }
-
-            segmentY = segmentY.reshape(1, segmentY.rows);
-
-            cv::Mat params = (segmentY.t()*segmentY).inv()*segmentY.t()*segmentX;
-
-            double* paramsPtr = (double*) params.data;
-            double b = *paramsPtr;
-            paramsPtr++;
-            double a = *paramsPtr;
-
-            if (false) {
-              cout << "+ Params: x = " << a << " * y + " << b << endl;
-              for (ptI = 0; ptI < segmentY.rows; ptI++) {
-                cout << "- (" << segmentX.at<double>(ptI, 0) << ", " << segmentY.at<double>(ptI, 1) << ") -> " << segmentY.at<double>(ptI, 1)*a + b << endl;
-              }
-            }
-
-            startPt.x = a*startPt.y + b;
-            endPt.x = a*endPt.y + b;
-          }
-
-          if (false) {
-            cout << "revised line segments:" << endl;
-            for (const cv::Point2d& xy: currLineSegments) {
-              cout << "-- (" << xy.x << ", " << xy.y << ")" << endl;
-            }
-          }
-        }
-
-
-        cv::Mat segmentsXYRot(currLineSegments.size(), 2, CV_64FC1);
-        double* segmentsXYRotPtr = (double*) segmentsXYRot.data;
-        for (const cv::Point2d& xy: currLineSegments) {
-          *segmentsXYRotPtr = xy.x;
-          segmentsXYRotPtr++;
-          *segmentsXYRotPtr = xy.y;
-          segmentsXYRotPtr++;
-        }
-        cv::Mat segmentsXY = segmentsXYRot*R;
-        int segmentXYI;
-        double* segmentsXYPtr = (double*) segmentsXY.data;
-        for (segmentXYI = 0; segmentXYI < segmentsXY.rows; segmentXYI += 1) {
-          *segmentsXYPtr += xLine;
-          segmentsXYPtr++;
-          *segmentsXYPtr += yLine;
-          segmentsXYPtr++;
-          lineSegments.push_back(segmentsXY.at<cv::Point2d>(segmentXYI, 0));
-        }
-
-
-
-
-        if (false) {
-          cout << "segmentsXY (final): (" << segmentsXY.rows << " x " << segmentsXY.cols << ")" << endl;
-          int r, c;
-          for (r = 0; r < segmentsXY.rows; r++) {
-            for (c = 0; c < segmentsXY.cols; c++) {
-              cout << segmentsXY.at<double>(r, c) << " ";
-            }
-            cout << endl;
-          }
-          cout << endl;
-        }
-      }
-    }
-
-    // Draw max line over image
-    if (false) { // DRAW ENTIRE LINE
-      int x0, y0, x1, y1;
-      x0 = -grayImg.cols;
-      x1 = 2*grayImg.cols;
-      y0 = round((maxRho - cos(maxTheta)*x0)/sin(maxTheta));
-      y1 = round((maxRho - cos(maxTheta)*x1)/sin(maxTheta));
-      cv::Point p0(x0, y0);
-      cv::Point p1(x1, y1);
-      cv::line(overlaidImg, p0, p1, CV_RGB(0, 0, 255), 1);
-    } else { // Draw line segments
-      int segmentI;
-      for (segmentI = 0; segmentI < (int) lineSegments.size(); segmentI += 2) {
-        cv::line(overlaidImg, lineSegments[segmentI], lineSegments[segmentI + 1], CV_RGB(255, 255, 0), 3);
-      }
-      for (segmentI = 0; segmentI < (int) lineSegments.size(); segmentI += 2) {
-        cv::line(overlaidImg, lineSegments[segmentI], lineSegments[segmentI + 1], CV_RGB(255, 0, 0), 1);
-      }
-      for (segmentI = 0; segmentI < (int) lineSegments.size(); segmentI += 2) {
-        cv::circle(overlaidImg, lineSegments[segmentI], 2, CV_RGB(0, 0, 255));
-        cv::circle(overlaidImg, lineSegments[segmentI + 1], 2, CV_RGB(0, 255, 255));
-      }
-    }
-
-    cout << " -> " << lineSegments.size()/2 << " line segments" << endl;
-
-    // TODO: 000 remove
-    //imshow("overlaidImg", overlaidImg);
+  // Identify edgels that match with each (rho, theta) local maxima,
+  // and group into line segments
+  std::vector<cv::Point2d> lineSegments;
+  double currTheta, currRho;
+  for (const cv::Point2d& currMax: localMaxima) {
+    currRho = houghRhoRes * currMax.x - rhoHalfRange;
+    currTheta = houghThetaRes * currMax.y;
+    std::vector<cv::Point2d> currLineSegments =
+      houghExtractSegments(currRho, currTheta, edgelsXY, edgelDir,
+      houghMaxDistToLine, houghEdgelThetaMargin,
+      houghMinSegmentLength, houghMaxSegmentGap);
+    lineSegments.insert(lineSegments.end(), currLineSegments.begin(), currLineSegments.end());
   }
 
-  return overlaidImg;
+  return lineSegments;
 };
 
 
-int main(int argc, char** argv) {
-  try {
-    // Initialize parameters
-    int sobelThreshHigh = 100;
-    int sobelThreshLow = 30;
-    int sobelBlurWidth = 3;
+// DEBUG fn
+cv::Mat genSquareImg(double deg) {
+  int width = 300;
+  int height = 200;
+  cv::Mat testImg = cv::Mat::zeros(height, width, CV_8UC1);
+  cv::Point p0(width/2, height/2);
+  cv::Point p1, p2;
+  cv::Point poly[1][4];
+  const cv::Point* polyPtr[1] = {poly[0]};
+  poly[0][2] = cv::Point(0, height);
+  poly[0][3] = cv::Point(0, 0);
+  int numPtsInPoly[] = {4};
 
-    double houghRhoRes = 1.0;
-    double houghThetaRes = two_pi/360;
-    double houghEdgelThetaMargin = (10.0)*degree;
-    double houghBlurRhoWidth = 5.0;
-    double houghBlurThetaWidth = 7*degree;
-    double houghNMSRhoWidth = houghRhoRes*9;
-    double houghNMSThetaWidth = houghThetaRes*13;
-    double houghMinAccumValue = 4;
-    double houghMaxDistToLine = 5; // NOTE: should be dependent on image size
-    double houghMinSegmentLength = 5;
-    double houghMaxSegmentGap = 5;
+  if (false) { // Draw edge
+    p1 = cv::Point(double(width + tan(deg*degree)*height)/2.0, 0);
+    p2 = p0 - (p1 - p0);
+    poly[0][0] = p1;
+    poly[0][1] = p2;
+    //cv::line(testImg, p1, p2, cv::Scalar(255), width, CV_AA);
+    cv::fillPoly(testImg, polyPtr, numPtsInPoly, 1, Scalar(255), 8);
+  }
+
+  if (true) { // Draw square
+    int bw = width/6;
+    int bh = height/6;
+    int hw = width/2;
+    int hh = height/2;
+    poly[0][0] = cv::Point(hw-bw, hh-bh);
+    poly[0][1] = cv::Point(hw-bw, hh+bh);
+    poly[0][2] = cv::Point(hw+bw, hh+bh);
+    poly[0][3] = cv::Point(hw+bw, hh-bh);
+    cv::fillPoly(testImg, polyPtr, numPtsInPoly, 1, Scalar(255), 8);
+    cv::Mat R = cv::getRotationMatrix2D(cv::Point(hw, hh), deg, 1.0);
+    cv::warpAffine(testImg, testImg, R, testImg.size());
+  }
+
+  return testImg;
+};
+
+
+class FTag2Testbench {
+public:
+  FTag2Testbench() :
+      local_nh("~"),
+      dynCfgSyncReq(false),
+      alive(false),
+      dstID(0),
+      dstFilename((char*) calloc(1000, sizeof(char))),
+      latestProfTime(ros::Time::now()) {
+    // Low-value params tuned for marginal acceptable results on synthetic images
+    params.sobelThreshHigh = 100;
+    params.sobelThreshLow = 30;
+    params.sobelBlurWidth = 3;
+    params.houghRhoRes = 1.0;
+    params.houghThetaRes = 1.0; // *degree
+    params.houghEdgelThetaMargin = 10.0; // *degree
+    params.houghBlurRhoWidth = 5.0; // *houghThetaRes
+    params.houghBlurThetaWidth = 7.0; // *houghThetaRes
+    params.houghNMSRhoWidth = 9.0; // *houghThetaRes
+    params.houghNMSThetaWidth = 13.0; // *houghThetaRes
+    params.houghMinAccumValue = 4;
+    params.houghMaxDistToLine = 5;
+    params.houghMinSegmentLength = 5;
+    params.houghMaxSegmentGap = 5;
+    params.imRotateDeg = 0;
+
     /*
-    double houghRhoRes = 2.0;
-    double houghThetaRes = two_pi/360*2;
-    double houghEdgelThetaMargin = (15.0)*degree;
-    double houghBlurRhoWidth = 5.0;
-    double houghBlurThetaWidth = 7*degree;
-    //houghBlurRhoWidth = 0; houghBlurThetaWidth = 0;
-    double houghNMSRhoWidth = houghRhoRes*5;
-    double houghNMSThetaWidth = houghThetaRes*9;
-    //houghNMSRhoWidth = houghRhoRes*3; houghNMSThetaWidth = houghThetaRes*3;
-    double houghMinAccumValue = 4;
-    double houghMaxDistToLine = 3; // NOTE: should be dependent on image size
-    double houghMinSegmentLength = 5;
-    double houghMaxSegmentGap = 2;
+    #define GET_PARAM(v) \
+      local_nh.param(std::string(#v), params.v, params.v)
+    GET_PARAM(sobelThreshHigh);
+    GET_PARAM(sobelThreshLow);
+    GET_PARAM(sobelBlurWidth);
+    GET_PARAM(houghRhoRes);
+    GET_PARAM(houghThetaRes);
+    GET_PARAM(houghEdgelThetaMargin);
+    GET_PARAM(houghBlurRhoWidth);
+    GET_PARAM(houghBlurThetaWidth);
+    GET_PARAM(houghNMSRhoWidth);
+    GET_PARAM(houghNMSThetaWidth);
+    GET_PARAM(houghMinAccumValue);
+    GET_PARAM(houghMaxDistToLine);
+    GET_PARAM(houghMinSegmentLength);
+    GET_PARAM(houghMaxSegmentGap);
+    GET_PARAM(imRotateDeg);
+    #undef GET_PARAM
+    dynCfgSyncReq = true;
     */
 
-    // Initialize internal variables
-    cv::Mat bgrImg, grayImg, blurredImg, edgelImg, linesImg;
-    std::vector<cv::Vec4i> lines;
-#ifdef SAVE_IMAGES_FROM
-    int imgid = 0;
-    char* filename = (char*) calloc(1000, sizeof(char));
-#endif
-#ifdef ENABLE_PROFILER
-    Profiler durationProf, rateProf;
-    //time_point<system_clock> lastProfTime = system_clock::now();
-    time_point<system_clock> currTime;
-    duration<double> profTD;
-#endif
-
-//#define USE_CAMERA
-#ifdef USE_CAMERA
-    // Open camera
-    VideoCapture cam(0);
-    if (!cam.isOpened()) {
-      cerr << "OpenCV did not detect any cameras." << endl;
-      return EXIT_FAILURE;
+    std::string source = "";
+    local_nh.param("source", source, source);
+    if (source.length() <= 0) {
+      cam.open(0);
+      if (!cam.isOpened()) {
+        throw std::string("OpenCV did not detect any cameras.");
+      }
+    } else {
+      sourceImg = cv::imread(source);
+      if (sourceImg.empty()) {
+        std::ostringstream oss;
+        oss << "Failed to load " << source;
+        throw oss.str();
+      }
     }
 
+    // Setup dynamic reconfigure server
+    dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
+    dynCfgServer->setCallback(bind(&FTag2Testbench::configCallback, this, _1, _2));
 
-    // Manage OpenCV windows
+    namedWindow("source", CV_GUI_EXPANDED);
     namedWindow("edgels", CV_GUI_EXPANDED);
-    namedWindow("overlaidImg", CV_GUI_EXPANDED);
+    namedWindow("accum", CV_GUI_EXPANDED);
+    namedWindow("lines", CV_GUI_EXPANDED);
+    namedWindow("segments", CV_GUI_EXPANDED);
 
-    //namedWindow("edge", CV_GUI_EXPANDED);
-    //createTrackbar("sobelThreshLow", "edge", &sobelThreshLow, 255);
-    //createTrackbar("sobelThreshHigh", "edge", &sobelThreshHigh, 255);
-
-    //namedWindow("lines", CV_GUI_EXPANDED);
-    //createTrackbar("threshold", "lines", &threshold, 255);
-    //createTrackbar("linbinratio", "lines", &linbinratio, 100);
-    //createTrackbar("angbinratio", "lines", &angbinratio, 100);
+    alive = true;
+  };
 
 
-    // Main camera pipeline
-    bool alive = true;
-    while (alive) {
+  ~FTag2Testbench() {
+    alive = false;
+    free(dstFilename);
+    dstFilename = NULL;
+  };
+
+
+  void configCallback(ftag2::CamTestbenchConfig& config, uint32_t level) {
+    if (!alive) return;
+    params = config;
+  };
+
+
+  void spin() {
+    double rho_res = params.houghRhoRes;
+    double theta_res = params.houghThetaRes*degree;
+    cv::Point2d sourceCenter;
+    cv::Mat rotMat;
+    char c;
+
+    while (ros::ok() && alive) {
 #ifdef ENABLE_PROFILER
       rateProf.try_toc();
       rateProf.tic();
       durationProf.tic();
 #endif
 
-      // Obtain grayscale image
-      cam >> bgrImg;
-      cvtColor(bgrImg, grayImg, CV_BGR2GRAY);
-      //imshow("source", grayImg);
+      // Update params back to dyncfg
+      if (dynCfgSyncReq) {
+        if (dynCfgMutex.try_lock()) { // Make sure that dynamic reconfigure server or config callback is not active
+          dynCfgMutex.unlock();
+          dynCfgServer->updateConfig(params);
+          ROS_INFO_STREAM("Updated params");
+          dynCfgSyncReq = false;
+        }
+      }
 
+      // Fetch image
+      if (cam.isOpened()) {
+        cam >> sourceImg;
+      }
+
+      // Rotate image and convert to grayscale
+      sourceCenter = cv::Point2d(sourceImg.cols/2.0, sourceImg.rows/2.0);
+      rotMat = cv::getRotationMatrix2D(sourceCenter, params.imRotateDeg, 1.0);
+      cv::warpAffine(sourceImg, sourceImgRot, rotMat, sourceImg.size());
+      cv::cvtColor(sourceImgRot, grayImg, CV_RGB2GRAY);
+
+      // Process through Hough transform
 //#define OLD_CODE
 #ifdef OLD_CODE
       int threshold = 50, linbinratio = 100, angbinratio = 100;
+      cv::Mat edgeImg, linesImg;
+      std::vector<cv::Vec4i> lines;
 
       // Detect lines
-      blur(grayImg, edgelImg, Size(sobelBlurWidth, sobelBlurWidth));
-      Canny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
-      cout << "pre detect line" << flush << endl;
+      cv::blur(grayImg, edgelImg, cv::Size(params.sobelBlurWidth, params.sobelBlurWidth));
+      cv::Canny(edgelImg, edgelImg, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
       cv::HoughLinesP(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold, 10*1.5, 10*1.5/3);
       //cv::HoughLines(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold);
-      cout << "post detect line" << flush << endl;
-      cvtColor(edgelImg, linesImg, CV_GRAY2BGR);
+
+      overlaidImg = sourceImg.clone();
       for (unsigned int i = 0; i < lines.size(); i++) {
-        line(linesImg, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2, 8);
+        cv::line(overlaidImg, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2, 8);
       }
-      imshow("overlaidImg", linesImg);
+      imshow("lines", overlaidImg);
 #else
-      cv::Mat overlaidImg = detectLines(grayImg,
-          sobelThreshHigh, sobelThreshLow, sobelBlurWidth,
-          houghRhoRes, houghThetaRes,
-          houghEdgelThetaMargin,
-          houghBlurRhoWidth, houghBlurThetaWidth,
-          houghNMSRhoWidth, houghNMSThetaWidth,
-          houghMinAccumValue,
-          houghMaxDistToLine,
-          houghMinSegmentLength, houghMaxSegmentGap);
-      imshow("overlaidImg", overlaidImg);
+      rho_res = params.houghRhoRes;
+      theta_res = params.houghThetaRes*degree;
+      lineSegments = detectLineSegments(grayImg,
+          params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
+          rho_res, theta_res,
+          params.houghEdgelThetaMargin*degree,
+          params.houghBlurRhoWidth*rho_res, params.houghBlurThetaWidth*theta_res,
+          params.houghNMSRhoWidth*rho_res, params.houghNMSThetaWidth*theta_res,
+          params.houghMinAccumValue,
+          params.houghMaxDistToLine,
+          params.houghMinSegmentLength, params.houghMaxSegmentGap);
+
+      overlaidImg = sourceImgRot.clone();
+      drawLineSegments(overlaidImg, lineSegments);
+      imshow("segments", overlaidImg);
 #endif
 
 #ifdef SAVE_IMAGES_FROM
-      sprintf(filename, "img%05d.jpg", imgid++);
-      imwrite(filename, SAVE_IMAGES_FROM);
-      cout << "Wrote to " << filename << endl;
+      sprintf(dstFilename, "img%05d.jpg", dstID++);
+      imwrite(dstFilename, SAVE_IMAGES_FROM);
+      ROS_INFO_STREAM("Wrote to " << dstFilename);
 #endif
 
 #ifdef ENABLE_PROFILER
       durationProf.toc();
 
-      currTime = system_clock::now();
-      profTD = currTime - lastProfTime;
-      if (profTD.count() > 1) {
+      ros::Time currTime = ros::Time::now();
+      ros::Duration td = currTime - latestProfTime;
+      if (td.toSecs() > 1.0) {
         cout << "Pipeline Duration: " << durationProf.getStatsString() << endl;
         cout << "Pipeline Rate: " << rateProf.getStatsString() << endl;
-        lastProfTime = currTime;
+        latestProfTime = currTime;
       }
 #endif
 
-      // Process displays
-      if (waitKey(30) >= 0) { break; }
-    }
-#else
-    namedWindow("source", CV_GUI_EXPANDED);
-    namedWindow("edgels", CV_GUI_EXPANDED);
-    namedWindow("accum", CV_GUI_EXPANDED);
-    namedWindow("overlaidImg", CV_GUI_EXPANDED);
-
-    cv::Mat testImg;
-    int width = 300;
-    int height = 200;
-    cv::Point p0(width/2, height/2);
-    cv::Point p1, p2;
-    cv::Point poly[1][4];
-    const cv::Point* polyPtr[1] = {poly[0]};
-    poly[0][2] = cv::Point(0, height);
-    poly[0][3] = cv::Point(0, 0);
-    int numPtsInPoly[] = {4};
-
-    double deg;
-    int c;
-    //for (deg = -56; deg < 57; deg += 15) {
-    for (deg = -11; deg < 180-11; deg += 15) {
-    //for (deg = 80; deg < 100; deg += 1) {
-      testImg = cv::Mat::zeros(height, width, CV_8UC1);
-
-      if (false) { // Draw edge
-        p1 = cv::Point(double(width + tan(deg*degree)*height)/2.0, 0);
-        p2 = p0 - (p1 - p0);
-        poly[0][0] = p1;
-        poly[0][1] = p2;
-        //cv::line(testImg, p1, p2, cv::Scalar(255), width, CV_AA);
-        cv::fillPoly(testImg, polyPtr, numPtsInPoly, 1, Scalar(255), 8);
-        cout << "=== Source img w/ line at " << deg << " degrees" << endl;
-      }
-
-      if (true) { // Draw square
-        int bw = width/6;
-        int bh = height/6;
-        int hw = width/2;
-        int hh = height/2;
-        poly[0][0] = cv::Point(hw-bw, hh-bh);
-        poly[0][1] = cv::Point(hw-bw, hh+bh);
-        poly[0][2] = cv::Point(hw+bw, hh+bh);
-        poly[0][3] = cv::Point(hw+bw, hh-bh);
-        cv::fillPoly(testImg, polyPtr, numPtsInPoly, 1, Scalar(255), 8);
-        cv::Mat R = cv::getRotationMatrix2D(cv::Point(hw, hh), deg, 1.0);
-        cv::warpAffine(testImg, testImg, R, testImg.size());
-
-        cout << "=== Source img w/ box rotated at " << deg << " degrees" << endl;
-      }
-
-      imshow("source", testImg);
-
-      cv::Mat overlaidImg = detectLines(testImg,
-          sobelThreshHigh, sobelThreshLow, sobelBlurWidth,
-          houghRhoRes, houghThetaRes,
-          houghEdgelThetaMargin,
-          houghBlurRhoWidth, houghBlurThetaWidth,
-          houghNMSRhoWidth, houghNMSThetaWidth,
-          houghMinAccumValue,
-          houghMaxDistToLine,
-          houghMinSegmentLength, houghMaxSegmentGap);
-      imshow("overlaidImg", overlaidImg);
-      cout << "recall source @ " << wrapAngle(deg, 180) << " degrees" << endl;
-
-      c = waitKey();
-      if ((c & 0x0FF) == 'x') {
-        break;
+      // Spin ROS and HighGui
+      ros::spinOnce();
+      c = waitKey(30);
+      if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
+        alive = false;
       }
     }
-#endif
-  } catch (const Exception& err) {
-    cout << "CV Exception: " << err.what() << endl;
+  };
+
+
+protected:
+  ros::NodeHandle local_nh;
+
+  ReconfigureServer* dynCfgServer;
+  boost::recursive_mutex dynCfgMutex;
+  bool dynCfgSyncReq;
+
+  cv::VideoCapture cam;
+  cv::Mat sourceImg, sourceImgRot, grayImg, overlaidImg;
+  std::vector<cv::Point2d> lineSegments;
+
+  ftag2::CamTestbenchConfig params;
+
+  bool alive;
+
+  int dstID;
+  char* dstFilename;
+
+  Profiler durationProf, rateProf;
+  ros::Time latestProfTime;
+};
+
+
+int main(int argc, char** argv) {
+  ros::init(argc, argv, "cam_testbench");
+
+  try {
+    FTag2Testbench testbench;
+    testbench.spin();
+  } catch (const cv::Exception& err) {
+    cout << "CV EXCEPTION: " << err.what() << endl;
+  } catch (const std::string& err) {
+    cout << "ERROR: " << err << endl;
   }
 
   return EXIT_SUCCESS;

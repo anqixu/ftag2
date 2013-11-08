@@ -59,6 +59,9 @@ inline double angularDist(double a, double b, double range = 360.0) { return fab
 inline double dist(double x1, double y1, double x2, double y2) {
   return sqrt((x1-x2)*(x1-x2)+(y1-y2)*(y1-y2));
 };
+inline double dist(cv::Point2d xy1, cv::Point2d xy2) {
+  return sqrt((xy1.x-xy2.x)*(xy1.x-xy2.x)+(xy1.y-xy2.y)*(xy1.y-xy2.y));
+};
 
 /**
  * Wraps angle in degrees to [0, maxAngle) range
