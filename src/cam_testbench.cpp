@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cassert>
 #include "common/VectorAndCircularMath.hpp"
+#include <list>
+#include <vector>
 
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
@@ -26,7 +28,30 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
-bool lessThanInY(const cv::Point3d& a, const cv::Point3d& b) { return (a.y < b.y); }
+struct Edgel {
+  double x;
+  double y;
+  double dir;
+  int idx;
+
+  Edgel() : x(0), y(0), dir(vc_math::INVALID_ANGLE), idx(-1) {};
+  Edgel(const cv::Point2d& pt, double d, int i) : x(pt.x), y(pt.y), dir(d), idx(i) {};
+};
+typedef std::list<Edgel> Edgels;
+typedef Edgels::iterator EdgelsIt;
+typedef std::pair<EdgelsIt, EdgelsIt> EdgelsItPair;
+
+
+struct Segment {
+  std::vector<int> edgelsIdx;
+  double minDir, maxDir;
+
+  Segment() : minDir(vc_math::INVALID_ANGLE), maxDir(vc_math::INVALID_ANGLE) {};
+};
+
+
+bool lessThanInY(const Edgel& a, const Edgel& b) { return (a.y < b.y); }
+
 
 /**
  * Displays double-typed matrix after rescaling from [0, max] to [0, 255]
@@ -315,17 +340,17 @@ std::vector<cv::Point> houghNMS(const cv::Mat& accum,
  * @param minLength: minimum accepted length, for filtering short segments; in pixels
  * @param minGap: minimum distance to NOT de-gap 2 consecutive segments
  */
-std::vector<cv::Point2d> houghExtractSegments(
+std::vector<Segment> houghExtractSegments(
     double currRho, double currTheta,
     cv::Mat edgelsXY, cv::Mat edgelDir,
     double maxDistToLine, double thetaMargin,
     double minLength, double minGap) {
-  std::vector<cv::Point2d> segments;
-  std::vector<cv::Point3d> edgelRotWithDirInSegments, segmentsRotWithDir;
+  std::vector<Segment> segments;
+  Edgels edgelsRot;
+  std::vector<EdgelsItPair> segmentsRot;
   cv::Mat edgelsXYRot;
   unsigned int edgelI;
   double currEdgelDir;
-  double x, y;
 
   cv::Mat rotT(2, 2, CV_64FC1);
   double* rotTPtr = (double*) rotT.data;
@@ -353,44 +378,44 @@ std::vector<cv::Point2d> houghExtractSegments(
     currEdgelDir = edgelDir.at<double>(currPt.y, currPt.x); // TODO: 0 this can be cached via edgelI, and passed as input arg
     if (fabs(currPtRot.x) <= maxDistToLine &&
         (vc_math::angularDist(currEdgelDir, currTheta, vc_math::pi) <= thetaMargin)) {
-      edgelRotWithDirInSegments.push_back(cv::Point3d(currPtRot.x, currPtRot.y, currEdgelDir));
+      edgelsRot.push_back(Edgel(currPtRot, currEdgelDir, edgelI));
     }
   }
-  if (edgelRotWithDirInSegments.size() <= 0) { return segments; }
-  std::sort(edgelRotWithDirInSegments.begin(), edgelRotWithDirInSegments.end(), lessThanInY);
+  if (edgelsRot.size() <= 0) { return segments; }
+  edgelsRot.sort(lessThanInY);
 
   // Extract line segments, filter short segments, and de-gap short gaps
-  edgelRotWithDirInSegments.push_back(cv::Point3d(0, 0, vc_math::INVALID_ANGLE)); // Insert stub last entry to facilitate loop
-  std::vector<cv::Point3d>::iterator prevPt = edgelRotWithDirInSegments.begin();
-  std::vector<cv::Point3d>::iterator currPt = prevPt; currPt++;
-  std::vector<cv::Point3d>::iterator segStart = edgelRotWithDirInSegments.begin();
-  std::vector<cv::Point3d>::iterator segEnd = segStart;
-  const std::vector<cv::Point3d>::iterator itEnd = edgelRotWithDirInSegments.end();
+  edgelsRot.push_back(Edgel()); // Insert stub last entry to facilitate loop
+  EdgelsIt prevPt = edgelsRot.begin();
+  EdgelsIt currPt = prevPt; currPt++;
+  EdgelsIt segStart = edgelsRot.begin();
+  EdgelsIt segEnd = segStart;
   bool needToAppend = false;
-  for (; currPt != itEnd; prevPt = currPt, currPt++) {
-    if ((currPt->z == vc_math::INVALID_ANGLE) ||
+  for (; currPt != edgelsRot.end(); prevPt = currPt, currPt++) {
+    if ((currPt->idx < 0) ||
         (vc_math::dist(currPt->x, currPt->y, prevPt->x, prevPt->y) > MAX_PX_GAP) ||
-        (vc_math::angularDist(currPt->z, prevPt->z, vc_math::two_pi) > vc_math::half_pi)) { // new line segment
+        (vc_math::angularDist(currPt->dir, prevPt->dir, vc_math::two_pi) > vc_math::half_pi)) { // new line segment
       // Check if latest-seen segment is sufficiently long
       segEnd = prevPt;
       if (vc_math::dist(segStart->x, segStart->y, segEnd->x, segEnd->y) >= minLength) {
         needToAppend = true;
 
         // Check if latest-seen 2 segments can be de-gapped
-        if (segmentsRotWithDir.size() > 0) {
-          cv::Point3d& lastSegEnd = segmentsRotWithDir.back();
-          if ((vc_math::dist(lastSegEnd.x, lastSegEnd.y, segStart->x, segStart->y) <= minGap) &&
-              (vc_math::angularDist(lastSegEnd.z, segStart->z, vc_math::two_pi) <= vc_math::half_pi)) {
-            lastSegEnd = *segEnd;
+        if (segmentsRot.size() > 0) {
+          const EdgelsIt& lastSegEnd = segmentsRot.back().second;
+          if ((vc_math::dist(lastSegEnd->x, lastSegEnd->y, segStart->x, segStart->y) <= minGap) &&
+              (vc_math::angularDist(lastSegEnd->dir, segStart->dir, vc_math::two_pi) <= vc_math::half_pi)) {
+            segmentsRot.back().second = segEnd;
             needToAppend = false;
           }
         }
 
         if (needToAppend) {
-          segmentsRotWithDir.push_back(*segStart);
-          segmentsRotWithDir.push_back(*segEnd);
+          segmentsRot.push_back(EdgelsItPair(segStart, segEnd));
           needToAppend = false;
         }
+      } else { // Prune last segment due to insufficient length
+        edgelsRot.erase(segStart, ++segEnd);
       }
 
       // Track new segment
@@ -399,22 +424,123 @@ std::vector<cv::Point2d> houghExtractSegments(
     } // else still in current line segment
   } // no need to take care of last segment, since segStart == segEnd == inserted stub point
 
-  // Rotate and translate to convert back to original coordinate frame
-  cv::Mat segmentsXYRot(segmentsRotWithDir.size(), 2, CV_64FC1);
-  double* segmentsXYRotPtr = (double*) segmentsXYRot.data;
-  for (const cv::Point3d& xy: segmentsRotWithDir) {
-    *segmentsXYRotPtr = xy.x; segmentsXYRotPtr++;
-    *segmentsXYRotPtr = xy.y; segmentsXYRotPtr++;
-  }
-  cv::Mat segmentsXYShifted = segmentsXYRot*rotT;
-  double* segmentsXYPtr = (double*) segmentsXYShifted.data;
-  for (edgelI = 0; edgelI < segmentsRotWithDir.size(); edgelI++) {
-    x = *segmentsXYPtr + xLine; segmentsXYPtr++;
-    y = *segmentsXYPtr + yLine; segmentsXYPtr++;
-    segments.push_back(cv::Point2d(x, y));
+  // Identify all edgels belong to each segment, and compute the range of their
+  // gradient directions
+  //
+  // NOTE: to account for angular wrap-around, keep both a min/max in the
+  //       [0, 2*pi) range and a min/max in the [pi, 3*pi) shifted range
+  EdgelsIt currEdgel;
+  double minDir, maxDir, minDirShifted, maxDirShifted, currDir;
+  for (const EdgelsItPair& segment: segmentsRot) {
+    currEdgel = segment.first;
+    minDir = vc_math::two_pi;
+    maxDir = -1;
+    minDirShifted = vc_math::pi*3;
+    maxDirShifted = vc_math::pi - 1;
+    Segment currSegment;
+
+    while (true) {
+      currSegment.edgelsIdx.push_back(currEdgel->idx);
+
+      currDir = vc_math::wrapAngle(currEdgel->dir, vc_math::two_pi);
+      if (currDir < minDir) { minDir = currDir; }
+      if (currDir > maxDir) { maxDir = currDir; }
+
+      if (currDir < vc_math::pi) { currDir += vc_math::two_pi; }
+      if (currDir < minDirShifted) { minDirShifted = currDir; }
+      if (currDir > maxDirShifted) { maxDirShifted = currDir; }
+
+      if (currEdgel == segment.second) { break; }
+      currEdgel++;
+    }
+
+    if ((maxDir - minDir) <= (maxDirShifted - minDirShifted)) {
+      currSegment.minDir = minDir;
+      currSegment.maxDir = maxDir;
+    } else {
+      currSegment.minDir = minDirShifted;
+      currSegment.maxDir = maxDirShifted;
+    }
+
+    segments.push_back(currSegment);
   }
 
   return segments;
+};
+
+
+// TODO: 0.0 test this fn
+bool appendToIdxA(std::vector<int>& a, std::vector<int>& b) {
+  std::vector<int>::iterator frontOfB = std::find(a.begin(), a.end(), b.front());
+  if (frontOfB != a.end()) {
+    std::vector<int>::iterator backOfA = std::find(b.begin(), b.end(), a.back());
+    if (backOfA != b.end()) { // partial overlap
+      b.erase(b.begin(), ++backOfA);
+      if (!b.empty()) {
+        a.insert(a.end(), b.begin(), b.end());
+      }
+      return true;
+    } else { // complete overlap
+      b.clear();
+      return true;
+    }
+  }
+
+  return false;
+};
+
+
+// TODO: 0.1 test this fn
+bool mergeOverlappingSegments(Segment& a, std::vector<Segment>::iterator b) {
+  if ((a.minDir <= b->minDir && b->minDir <= a.maxDir) ||
+      (a.minDir <= b->maxDir && b->maxDir <= a.maxDir) ||
+      (b->minDir <= a.minDir && a.minDir <= b->maxDir) ||
+      (b->minDir <= a.maxDir && a.maxDir <= b->maxDir)) {
+    if (appendToIdxA(a.edgelsIdx, b->edgelsIdx)) {
+      if (b->minDir < a.minDir) { a.minDir = b->minDir; }
+      if (b->maxDir > a.maxDir) { a.maxDir = b->maxDir; }
+      return true;
+    } else if (appendToIdxA(b->edgelsIdx, a.edgelsIdx)) {
+      a.edgelsIdx.swap(b->edgelsIdx);
+      if (b->minDir < a.minDir) { a.minDir = b->minDir; }
+      if (b->maxDir > a.maxDir) { a.maxDir = b->maxDir; }
+      return true;
+    }
+  }
+
+  return false;
+};
+
+
+/**
+ * Finds the union of all (partially) overlapping segments, and returns
+ * lists of each merged segment represented by their two end-points
+ */
+std::vector<cv::Point2d> houghMergeSegments(std::vector<Segment> segments,
+    const cv::Mat& edgelsXY) {
+  // TODO: 0.3 there are some visual evidence that this algo doesn't fully remove duplicates yet... need a case breakdown analysis
+
+  std::vector<cv::Point2d> result;
+  Segment currSegment;
+  std::vector<Segment>::iterator segIt;
+
+  while (!segments.empty()) {
+    currSegment = segments.back();
+    segments.pop_back();
+    for (segIt = segments.begin(); segIt != segments.end();) {
+      if (mergeOverlappingSegments(currSegment, segIt)) {
+        segIt = segments.erase(segIt);
+      } else {
+        segIt++;
+      }
+    }
+
+    // TODO: 0.2 test this logic!!!
+    result.push_back(edgelsXY.at<cv::Point2d>(currSegment.edgelsIdx.front(), 0));
+    result.push_back(edgelsXY.at<cv::Point2d>(currSegment.edgelsIdx.back(), 0));
+  }
+
+  return result;
 };
 
 
@@ -555,17 +681,22 @@ std::vector<cv::Point2d> detectLineSegments(cv::Mat grayImg,
 
   // Identify edgels that match with each (rho, theta) local maxima,
   // and group into line segments
-  std::vector<cv::Point2d> lineSegments;
+  std::vector<Segment> partialSegments;
   double currTheta, currRho;
   for (const cv::Point2d& currMax: localMaxima) {
     currRho = houghRhoRes * currMax.x - rhoHalfRange;
     currTheta = houghThetaRes * currMax.y;
-    std::vector<cv::Point2d> currLineSegments =
+    std::vector<Segment> currLineSegments =
       houghExtractSegments(currRho, currTheta, edgelsXY, edgelDir,
       houghMaxDistToLine, houghEdgelThetaMargin,
       houghMinSegmentLength, houghMaxSegmentGap);
-    lineSegments.insert(lineSegments.end(), currLineSegments.begin(), currLineSegments.end());
+    partialSegments.insert(partialSegments.end(),
+        currLineSegments.begin(), currLineSegments.end());
   }
+
+  // Merge partially overlapping segments into final list of segments
+  std::vector<cv::Point2d> lineSegments =
+      houghMergeSegments(partialSegments, edgelsXY);
 
   return lineSegments;
 };
