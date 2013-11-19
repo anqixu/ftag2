@@ -74,13 +74,13 @@ link_directories(
   ${OpenCV_LIBRARY_DIRS}
 )
 
-FILE ( GLOB COMMON_HEADERS   "include/utils/*.h*" )
+FILE ( GLOB COMMON_HEADERS   "include/common/*.h*" )
 FILE ( GLOB DETECTOR_HEADERS "include/detector/*.h*" )
 FILE ( GLOB DECODER_HEADERS  "include/decoder/*.h*" )
 FILE ( GLOB ENCODER_HEADERS  "include/encoder/*.h*" )
 FILE ( GLOB TRACKER_HEADERS  "include/tracker/*.h*" )
 
-FILE ( GLOB COMMON_SOURCES   "src/utils/*.c*" )
+FILE ( GLOB COMMON_SOURCES   "src/common/*.c*" )
 FILE ( GLOB DETECTOR_SOURCES "src/detector/*.c*" )
 FILE ( GLOB DECODER_SOURCES  "src/decoder/*.c*" )
 FILE ( GLOB ENCODER_SOURCES  "src/encoder/*.c*" )

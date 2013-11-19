@@ -74,208 +74,6 @@ public:
     return count;
   };
 
-
-  /**
-   * Generalized k-means -- k-means of multi-dimensional space, where ALL
-   * dimensions are either linear or circular (assumed to have range of [0, 1])
-   *
-   * NOTE: modified from original code in cv::kmeans from OpenCV 2.3
-   *
-   * NOTE: implementation has been optimized by:
-   * - pre-computing sine and cosines of data once, rather than computing on-depend for each k-means iteration
-   * - using optimized approximate sine and cosine functions
-   * - separate optimized clauses for dims == 1
-   *
-   * ADDED: circular k-means mode, KMEANS_USE_INITIAL_CENTERS flag mode
-   *
-   * \param data: N rows x 'dims' cols matrix of floats,
-   *   corresponding to N data samples, each having dims dimensions
-   * \param K: desired number of clusters
-   * \param best_labels: (input/)output N-element matrix containing clustered
-   *    class labels; can also be used to specify initial labels if flags contain
-   *    KMEANS_USE_INITIAL_LABELS and does not contain KMEANS_USE_INITIAL_CENTERS
-   * \param criteria.type: OR-flag of {TermCriteria::COUNT, TermCriteria::EPS}
-   * \param criteria.maxCount: maximum number of k-means iterations,
-   *    bounded by [1, KMEANS_CRITERIA_MAX_COUNT] (even if user specifies
-   *    epsilon-based criterion)
-   * \param criteria.epsilon: minimum stopping threshold for the maximum
-   *    Euclidean distance change of any single entry in the k-means centroids
-   *    across consecutive iterations (>= 2)
-   * \param attempts: number of times the k-means algorithm is executed;
-   *    if flag == KMEANS_USE_INITIAL_CENTERS, then attempts > 2 will use
-   *    random / kmeans++ sampled initial centers (need to OR-flags to
-   *    indicate desired sampling method, i.e. KMEANS_RANDOM_CENTERS or KMEANS_PP_CENTERS)
-   * \param _centers: (input/)output K x 'dims' matrix of row vectors containing
-   *    final cluster centroids; can also be used to specify initial centers if
-   *    flags contain KMEANS_USE_INITIAL_CENTERS
-   * \param isCircular: if true, then all data are assumed to belong to
-   *    the circular range [0, 1]
-   *
-   * \output: compactness measure, computed as sum of Euclidean distances between
-   *    each and every individual sample and their corresponding cluster centroid
-   */
-  template <class labelType>
-  static double ckmeans(
-      const cv::Mat& data,
-      labelType K,
-      cv::Mat& best_labels,
-      const cv::TermCriteria& criteria,
-      int attempts,
-      int flags,
-      cv::Mat* _centers = NULL,
-      const bool isCircularSpace = false);
-
-  /**
-   * A more generic version of circular k-means (ckmeans()) algorithm, where
-   * the dimensions are mixed (i.e. some are linear and some are angular).
-   *
-   * WARNING: This function assumes that isCircularSpaces points to K
-   *          allocated boolean elements.
-   *
-   * NOTE: implementation has been optimized by:
-   * - pre-computing sine and cosines of circular data elements once, rather than computing on-depend for each k-means iteration
-   * - using optimized approximate sine and cosine functions
-   * - separate optimized clauses for isCircularSpaces == {false, true}
-   */
-  template <class labelType>
-  static double mixed_kmeans(
-      const cv::Mat& data,
-      labelType K,
-      cv::Mat& best_labels,
-      const cv::TermCriteria& criteria,
-      int attempts,
-      int flags,
-      cv::Mat* _centers,
-      const bool* isCircularSpaces);
-  constexpr static int KMEANS_CRITERIA_MAX_COUNT_CAP = 1000;
-  constexpr static int KMEANS_USE_INITIAL_CENTERS = 256;
-  constexpr static int KMEANS_FLAGS = KMEANS_USE_INITIAL_CENTERS;
-  constexpr static int KMEANS_ATTEMPTS = 1;
-  constexpr static unsigned char KMEANS_K_HUE = 2;
-  constexpr static unsigned char KMEANS_K_HUE_VAL = 3;
-  constexpr static unsigned char KMEANS_K_GRAYSCALE = 2;
-#ifdef CKMEANS_PROFILE
-  static std::vector<unsigned int> ckmeans_iters;
-  static unsigned int ckmeans_term_via_count;
-  static unsigned int ckmeans_term_via_eps;
-#endif
-#ifdef MIXED_KMEANS_PROFILE
-  static std::vector<unsigned int> mixed_kmeans_iters;
-  static unsigned int mixed_kmeans_term_via_count;
-  static unsigned int mixed_kmeans_term_via_eps;
-#endif
-
-  /**
-   * Segments colored image using K-means clustering on hue channel
-   *
-   * \param bgrImage: input colored image; must be in BLUE-GREEN-RED order
-   * \param K: number of K-Means clusters
-   * \param termCrit: K-Means terminal criteria
-   * \param labelBuffer: output buffer containing segmented labels, in 2-D image matrix format
-   * \param centersBuffer: output buffer containing final K-Means cluster centers
-   * \param dataBuffer: scratch matrix
-   * \param hsvImage: scratch matrix
-   * \param hueImage: scratch matrix
-   */
-  static void segmentHue(
-      const cv::Mat& bgrImage,
-      unsigned char K,
-      const cv::TermCriteria& termCrit,
-      cv::Mat& labelBuffer,
-      cv::Mat& centersBuffer,
-      cv::Mat& dataBuffer,
-      cv::Mat& hsvImage,
-      cv::Mat& hueImage);
-
-  /**
-   * Segments colored image using K-means clustering on hue/val channel,
-   * conditioned on value of sat channel
-   *
-   * \param bgrImage: input colored image; must be in BLUE-GREEN-RED order
-   * \param K: number of K-Means clusters
-   * \param termCrit: K-Means terminal criteria
-   * \param labelBuffer: output buffer containing segmented labels, in 2-D image matrix format
-   * \param centersBuffer: output buffer containing final K-Means cluster centers
-   * \param dataBuffer: scratch matrix
-   * \param hsvImage: scratch matrix
-   */
-  static void segmentHueVal(
-      const cv::Mat& bgrImage,
-      unsigned char K,
-      const cv::TermCriteria& termCrit,
-      cv::Mat& labelBuffer,
-      cv::Mat& centersBuffer,
-      cv::Mat& dataBuffer,
-      cv::Mat& hsvImage);
-  constexpr static float SEGMENT_HUE_VAL_DEFAULT_HUE = 0.0f;
-  constexpr static float SEGMENT_HUE_VAL_DEFAULT_VAL = 1.0f;
-  constexpr static float SEGMENT_HUE_VAL_DEFAULT_OPPOSITE_VAL = 0.0f;
-  constexpr static float SEGMENT_HUE_VAL_SAT_THRESHOLD_RATIO = 0.2f;
-
-  /**
-   * Segments colored image using K-means clustering using grayscale (luminosity) channel
-   *
-   * \param bgrImage: input colored image; must be in BLUE-GREEN-RED order
-   * \param K: number of K-Means clusters
-   * \param termCrit: K-Means terminal criteria
-   * \param labelBuffer: output buffer containing segmented labels, in 2-D image matrix format
-   * \param centersBuffer: output buffer containing final K-Means cluster centers
-   * \param dataBuffer: scratch matrix
-   * \param grayImage: scratch matrix
-   */
-  static void segmentGrayscale(
-      const cv::Mat& bgrImage,
-      unsigned char K,
-      const cv::TermCriteria& termCrit,
-      cv::Mat& labelBuffer,
-      cv::Mat& centersBuffer,
-      cv::Mat& dataBuffer,
-      cv::Mat& grayImage);
-
-  /**
-   * Estimates 2 K-means labels by computing the average hue values for
-   * half-images.
-   *
-   * WARNING: If kmeansK > 0, then only the first 2 cluster centroids will
-   *   be populated, with the other centroids left uninitialized (as 0).
-   *
-   * \param hueImage: input image containing hue values in the range [0, 180]
-   * \param centersBuffer: output K x 'dims' matrix buffer containing estimated
-   *   hue-based centers
-   * \param kmeansK: number of cluster centroids (see WARNING above; only 2
-   *   centroids will be computed)
-   * \param splitHeading: 0 == split along left/right side of image;
-   *                     90 == split along top/bottom side of image
-   */
-  static bool estimateHueCenters(
-      const cv::Mat& hueImage,
-      cv::Mat& centersBuffer,
-      unsigned int kmeansK,
-      double splitHeading);
-
-  /**
-   * Re-labels a set of multi-class labels into binary sets. Depending on
-   * the type of clustering performed to obtain the multi-class labels,
-   * certain centers will be given preference as the non-merged binarized
-   * label class over others.
-   *
-   * \param labelBuffer: input, obtained from kmeans() or derivative
-   * \param centersBuffer: input, obtained from kmeans() or derivative
-   * \param binLabelBuffer: output buffer
-   * \param clusteringType: see BTConfig::CLUSTERING_TYPE
-   *
-   * \output: ID among multi-class labels selected as non-merged
-   *   binarized label class
-   */
-  static unsigned char binarizeLabels(
-      const cv::Mat& labelBuffer,
-      const cv::Mat& centersBuffer,
-      cv::Mat& binLabelBuffer,
-      int clusteringType);
-  constexpr static float BINARIZE_LABEL_PREFERRED_HUE = 0.f; // Red
-  constexpr static float BINARIZE_LABEL_PREFERRED_VAL = 1.f; // Bright
-  constexpr static float BINARIZE_LABEL_PREFERRED_GRAYSCALE = 1.f; // Bright / White
-
   /**
    * Applies binary mode (a.k.a. box) filter on binarized image in-place.
    *
@@ -318,7 +116,6 @@ public:
       std::vector<unsigned char>& setLabels,
       bool eightConnected);
 
-
   /**
    * Removes empty-sized labels and updates new contiguous labels for a
    * given disjoint set structure
@@ -333,8 +130,6 @@ public:
       std::vector<unsigned char>& setLabels,
       unsigned int nStepParentInvariance = 1);
 
-
-
   /**
    * Determines whether 1-step parent invariance is violated
    *
@@ -346,7 +141,6 @@ public:
       const cv::Mat& imageIDs,
       const std::vector<unsigned int>& parentIDs,
       const std::vector<unsigned char>& setLabels) throw (const std::string&);
-
 
   /**
    * Computes disjoint sets, i.e. islands, of connected pixels that all share
@@ -396,32 +190,6 @@ public:
       const std::vector<unsigned char>& setLabels,
       double minSetRatio = REMOVE_SMALL_PENINSULAS_MIN_SET_RATIO);
   constexpr static double REMOVE_SMALL_PENINSULAS_MIN_SET_RATIO = 0.025; // Removes peninsulas with sizes smaller than 1/6 width * 1/6 height
-
-  /**
-   * Merges all disjoint sets that are not the largest 0- or 1-set to their
-   * neighbors.
-   *
-   * binLabelImage, imageIDs, and parentIDs will be modified in-place.
-   *
-   * NOTE: the output disjoint set manifests 1-step parent invariance, i.e.
-   *       parentIDs[parentIDs[imageID_ij]] == parentIDs[imageID_ij],
-   *       although not necessarily imageID_ij == parentIDs[imageID_ij]
-   *
-   * NOTE: setLabels do not need to be updated since imageIDs and parentIDs
-   *       of merged sets will be different, hence the set labels for classes
-   *       with previously-merged parent IDs will no longer matter.
-   *       Nevertheless, it is crucial to access setLabels via 1-step parent,
-   *       rather than with image ID!
-   *
-   * WARNING: imageIDs, parentIDs, and setLabels MUST be pre-populated properly,
-   *          either by calling computeDisjointSets or removeIslands
-   */
-  static void removePeninsulas(
-      cv::Mat& binLabelImage,
-      cv::Mat& imageIDs,
-      std::vector<unsigned int>& parentIDs,
-      const std::vector<unsigned char>& setLabels,
-      int boundaryType);
 
   /**
    * Computes the set of pixels 4-/8-connected to a target pixel and which
@@ -559,10 +327,6 @@ public:
   static unsigned int ransac_term_via_fit;
 #endif
 };
-
-
-// Declarations for nms.cpp
-void nonMaximaSuppression(const cv::Mat& src, const int sz, cv::Mat& dst, const cv::Mat mask);
 
 
 #endif /* BASECV_HPP_ */
