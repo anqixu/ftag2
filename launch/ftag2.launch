@@ -1,7 +1,7 @@
 <launch>
   <node pkg="ftag2" type="cam_testbench" name="cam_testbench" output="screen">
     <param name="source" type="str" value="/home/thalassa/anqixu/Desktop/test.png" />
-    <param name="source" type="str" value="" />
     <param name="source" type="str" value="/home/thalassa/anqixu/Desktop/source.png" />
+    <param name="source" type="str" value="" />
   </node>
 </launch>

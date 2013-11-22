@@ -2,11 +2,9 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <iostream>
-#include "common/Profiler.hpp"
 #include <chrono>
 #include <algorithm>
 #include <cassert>
-#include "common/VectorAndCircularMath.hpp"
 #include <list>
 #include <vector>
 
@@ -14,16 +12,12 @@
 #include <dynamic_reconfigure/server.h>
 #include <ftag2/CamTestbenchConfig.h>
 
-
-
-#include <iostream>
-#include <fstream>
-
-
+#include "common/Profiler.hpp"
+#include "common/VectorAndCircularMath.hpp"
 
 
 //#define SAVE_IMAGES_FROM overlaidImg
-//#define ENABLE_PROFILER
+#define ENABLE_PROFILER
 
 
 using namespace std;
@@ -111,14 +105,6 @@ struct Segment {
 };
 typedef std::list<Segment> Segments;
 typedef Segments::iterator SegmentsIt;
-
-
-struct Segment2 {
-  std::vector<cv::Point2i> points; // UNSORTED!
-  double minAngleSlack, maxAngleSlack, minAngle, maxAngle;
-  cv::Vec4f line;
-  cv::Point2i endpointA, endpointB;
-};
 
 
 bool lessThanInY(const Edgel& a, const Edgel& b) { return (a.y < b.y); }
@@ -665,7 +651,7 @@ void drawLineSegments(cv::Mat img, const std::vector<cv::Point2d> lineSegments) 
  * Identifies potential lines in image using Hough Transform, then use result
  * to identify grouped line segments
  */
-std::vector<cv::Point2d> detectLineSegments(cv::Mat grayImg,
+std::vector<cv::Point2d> detectLineSegmentsHough(cv::Mat grayImg,
     int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
     double houghRhoRes, double houghThetaRes,
     double houghEdgelThetaMargin,
@@ -776,284 +762,6 @@ std::vector<cv::Point2d> detectLineSegments(cv::Mat grayImg,
       houghMergeSegments(partialSegments, edgelsXY);
 
   return lineSegments;
-};
-
-
-
-/**
- * angleMargin: in radians
- */
-bool detectLineSegmentsCC(cv::Mat grayImg,
-    int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
-    unsigned int ccMinNumEdgels, double angleMargin,
-    unsigned int segmentMinNumEdgels) {
-  bool exit = false;
-
-  cv::Mat edgelImg, dxImg, dyImg;
-
-  const unsigned int imWidth = grayImg.cols;
-  const unsigned int imHeight = grayImg.rows;
-
-  // Identify edgels
-  blur(grayImg, edgelImg, Size(sobelBlurWidth, sobelBlurWidth));
-  Canny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
-  // TODO: 1 tune params: sobelBlurWidth==3 removes most unwanted edges but fails when tag is moving; sobelBlurWidth==5 gets more spurious edges in general but detects tag boundary when moving
-  imshow("edgels", edgelImg);
-
-  // Compute derivative components along x and y axes (needed to compute orientation of edgels)
-  cv::Sobel(grayImg, dxImg, CV_16S, 1, 0, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
-  cv::Sobel(grayImg, dyImg, CV_16S, 0, 1, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
-
-  // Compute disjoint set classes
-  cv::Mat imageIDs;
-  std::vector<unsigned int> parentIDs;
-  std::vector<unsigned char> setLabels;
-  BaseCV::computeDisjointSets(edgelImg, imageIDs, parentIDs, setLabels, true);
-  BaseCV::condenseDisjointSetLabels(imageIDs, parentIDs, setLabels, 1); // Enforce 0-step parent invariance
-
-  // Identify all connected components / disjoint sets within edgel image
-  std::vector<int> setIDs(parentIDs.size(), -1);
-  unsigned int numEdgelCCs = 0;
-  unsigned int* imageIDRow = NULL;
-  unsigned int i, j;
-  int currY, currX, currSetID;
-  for (i = 0; i < parentIDs.size() ;i++) {
-    if (setLabels[parentIDs[i]] != 0 ) {
-      setIDs[i] = numEdgelCCs;
-      numEdgelCCs += 1;
-    }
-  }
-  std::vector< std::vector<cv::Point2i> > edgelCCs(numEdgelCCs);
-  for (currY = 0; currY < imHeight; currY++) {
-    imageIDRow = imageIDs.ptr<unsigned int>(currY);
-    for (currX = 0; currX < imWidth; currX++) {
-      currSetID = setIDs[imageIDRow[currX]]; // we already enforced 0-step parent invariance above
-      if (currSetID >= 0) {
-        edgelCCs[currSetID].push_back(cv::Point2i(currX, currY));
-      }
-    }
-  }
-  std::vector< std::vector<cv::Point2i> >::iterator ccIt = edgelCCs.begin();
-  unsigned int TODO_EDGEL_COUNT = 0;
-  while (ccIt != edgelCCs.end()) {
-    if (ccIt->size() < ccMinNumEdgels) {
-      ccIt->clear();
-      ccIt = edgelCCs.erase(ccIt);
-    } else {
-      TODO_EDGEL_COUNT += ccIt->size();
-      ccIt++;
-    }
-  }
-
-  // Identify connected components within angular range
-  cv::Mat remEdgelImg = edgelImg.clone();
-  std::list< Segment2 > segments;
-  std::vector<cv::Point2i> stack;
-  cv::Point2i currPt;
-  double currAngle, slackAngle;
-  bool include;
-  int o;
-  for (std::vector<cv::Point2i>& edgelCC: edgelCCs) { // for each connected component
-    for (cv::Point2i& initPt: edgelCC) { // for each edgel inside the CC
-      if (remEdgelImg.at<unsigned char>(initPt.y, initPt.x) != 0) { // Floodfill only if edgel has not been filled yet
-        Segment2 currSegment;
-        stack.push_back(initPt);
-        currSegment.points.push_back(initPt);
-        remEdgelImg.at<unsigned char>(initPt.y, initPt.x) = 0;
-
-        // Define [minAngleSlack, maxAngleSlack] range in [0, 4*pi] range (assuming margin is < pi)
-        currAngle = atan2(dyImg.at<short>(initPt.y, initPt.x), dxImg.at<short>(initPt.y, initPt.x));
-        currSegment.minAngleSlack = currAngle - 2*angleMargin;
-        if (currSegment.minAngleSlack < 0) {
-          currSegment.minAngleSlack = vc_math::wrapAngle(currSegment.minAngleSlack, vc_math::two_pi);
-        }
-        currAngle = currSegment.minAngleSlack + 2*angleMargin;
-        currSegment.maxAngleSlack = currAngle + 2*angleMargin;
-        currSegment.minAngle = currAngle;
-        currSegment.maxAngle = currAngle;
-
-        // Depth-first floodfill while reducing [minAngleSlack, maxAngleSlack] range
-        while (!stack.empty()) {
-          currPt = stack.back();
-          stack.pop_back();
-
-          // Iteratively include 8-connected edgels into segment
-          for (j = max(currPt.y - 1, 0); j <= min(currPt.y + 1, int(imHeight) - 1); j++) {
-            for (i = max(currPt.x - 1, 0); i <= min(currPt.x + 1, int(imWidth) - 1); i++) {
-              if (remEdgelImg.at<unsigned char>(j, i) != 0) {
-                include = false;
-                currAngle = atan2(dyImg.at<short>(j, i), dxImg.at<short>(j, i));
-                if (currAngle < 0) currAngle += vc_math::two_pi;
-                if (currAngle >= vc_math::pi) currAngle -= vc_math::pi;
-
-                for (o = 0; o < 4; o++, currAngle += vc_math::pi) {
-                  if (currSegment.minAngleSlack <= currAngle && currAngle <= currSegment.maxAngleSlack) {
-                    include = true;
-                    break;
-                  }
-                }
-
-                if (include) {
-                  stack.push_back(cv::Point2i(i, j));
-                  currSegment.points.push_back(stack.back());
-                  remEdgelImg.at<unsigned char>(j, i) = 0;
-
-                  if (currAngle < currSegment.minAngle) {
-                    currSegment.minAngle = currAngle;
-                    slackAngle = 2*angleMargin - (currSegment.maxAngle - currSegment.minAngle);
-                    currSegment.minAngleSlack = currSegment.minAngle - slackAngle;
-                    currSegment.maxAngleSlack = currSegment.maxAngle + slackAngle;
-                  } else if (currAngle > currSegment.maxAngle) {
-                    currSegment.maxAngle = currAngle;
-                    slackAngle = 2*angleMargin - (currSegment.maxAngle - currSegment.minAngle);
-                    currSegment.minAngleSlack = currSegment.minAngle - slackAngle;
-                    currSegment.maxAngleSlack = currSegment.maxAngle + slackAngle;
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // Only accept sufficiently long segments
-        if (currSegment.points.size() >= segmentMinNumEdgels) {
-          segments.push_back(currSegment);
-        }
-      }
-    }
-  }
-
-  // Sort edgels in each segment in continguous order, as defined by their closest fitted line
-  double lineAngle, sinAngle, cosAngle;
-  int minID, maxID, idx;
-  double minRotValue, maxRotValue, currRotValue;
-  for (Segment2& currSegment: segments) {
-    if (currSegment.points.empty()) continue;
-
-    cv::fitLine(currSegment.points, currSegment.line, CV_DIST_L2, 0, 0.01, 0.01);
-
-    lineAngle = atan2(currSegment.line[1], currSegment.line[0]);
-    sinAngle = sin(lineAngle);
-    cosAngle = cos(lineAngle);
-
-    minID = 0;
-    maxID = 0;
-    idx = 0;
-    for (cv::Point2i& currPt: currSegment.points) {
-      currRotValue = currPt.x * cosAngle + currPt.y * sinAngle;
-      if (idx == 0) {
-        minRotValue = currRotValue;
-        maxRotValue = currRotValue;
-      } else {
-        if (currRotValue < minRotValue) {
-          minRotValue = currRotValue;
-          minID = idx;
-        }
-        if (currRotValue > maxRotValue) {
-          maxRotValue = currRotValue;
-          maxID = idx;
-        }
-      }
-      idx += 1;
-    }
-    currSegment.endpointA = currSegment.points[minID];
-    currSegment.endpointB = currSegment.points[maxID];
-  }
-
-  // TEMP: cycle through all segments
-  cv::Mat overlayImg;
-  cout << "Found " << segments.size() << " segments [from a total of " << edgelCCs.size() << " edgel sets and " << setIDs.size() << " connected components]" << endl;
-  std::list<Segment2>::iterator currSegIt = segments.begin();
-  for (i = 0; i < segments.size(); i++, currSegIt++) {
-    if (currSegIt->points.empty()) {
-      cout << "WARNING: segment " << i << " is empty!" << endl;
-    }
-
-    overlayImg = edgelImg * 0.2;
-
-    // Fit line and draw
-    double l = imWidth + imHeight;
-    cv::Point2d p1 = cv::Point2d(currSegIt->line[2] + l*currSegIt->line[0], currSegIt->line[3] + l*currSegIt->line[1]);
-    cv::Point2d p2 = cv::Point2d(currSegIt->line[2] - l*currSegIt->line[0], currSegIt->line[3] - l*currSegIt->line[1]);
-    cv::line(overlayImg, p1, p2, cv::Scalar(130));
-
-    for (cv::Point2i& currPt: currSegIt->points) {
-      overlayImg.at<unsigned char>(currPt.y, currPt.x) = 200;
-    }
-
-    cv::circle(overlayImg, currSegIt->endpointA, 2, cv::Scalar(255), 1);
-    cv::circle(overlayImg, currSegIt->endpointB, 2, cv::Scalar(255), 2);
-
-    cout << "(" << currSegIt->endpointA.x << ", " << currSegIt->endpointA.y << ") -> (" << currSegIt->endpointB.x << ", " << currSegIt->endpointB.y << ")" << endl;
-
-    imshow("segment_i", overlayImg);
-    cout << "Showing " << (i+1) << " / " << segments.size() << " segments (" << currSegIt->points.size() << " pts)" << endl;
-    char c = cv::waitKey(0);
-    ros::spinOnce();
-    if (((c & 0x00FF) == 'x') || ((c & 0x00FF) == 'X')) {
-      exit = true;
-      break;
-    } else if (((c & 0x00FF) == 'k') || ((c & 0x00FF) == 'K')) {
-      break;
-    }
-  }
-
-
-  /*
-  // TEMP: cycle through all segments
-  cv::Mat overlayImg;
-  overlayImg = edgelImg * 0.3;
-  unsigned int remCount = 0;
-  std::list<Segment2>::iterator currSegIt = segments.begin();
-  for (i = 0; i < segments.size(); i++, currSegIt++) {
-    if (currSegIt->points.size() < segmentMinNumEdgels) {
-      continue;
-    }
-
-    remCount += 1;
-    for (cv::Point2i& currPt: currSegIt->points) {
-      overlayImg.at<unsigned char>(currPt.y, currPt.x) = 255;
-    }
-  }
-  cv::imshow("debug", overlayImg);
-  cout << "Found " << remCount << " segments, filtered out " << segments.size() - remCount << " segments [from a total of " << edgelCCs.size() << " edgel sets and " << setIDs.size() << " connected components]" << endl;
-  char c = cv::waitKey(30);
-  ros::spinOnce();
-  if (((c & 0x00FF) == 'x') || ((c & 0x00FF) == 'X')) {
-    exit = true;
-  }
-  */
-
-
-  /*
-  // TEMP: cycle through all connected components
-  cv::Mat overlayImg;
-  cout << "Found " << edgelCCs.size() << " edgel sets [from a total of " << setIDs.size() << " connected components]" << endl;
-  for (i = 0; i < edgelCCs.size(); i++) {
-    std::vector<cv::Point2i>& currEdgels = edgelCCs[i];
-
-    if (currEdgels.empty()) {
-      cout << "WARNING: set " << i << " is empty!" << endl;
-    }
-
-    overlayImg = edgelImg * 0.5;
-    for (j = 0; j < currEdgels.size(); j++) {
-      cv::Point2i& currPt = currEdgels[j];
-      overlayImg.at<unsigned char>(currPt.y, currPt.x) = 255;
-    }
-
-    imshow("edgel_i", overlayImg);
-    cout << "Showing " << (i+1) << " / " << edgelCCs.size() << " edgel sets" << endl;
-    char c = cv::waitKey(30);
-    ros::spinOnce();
-    if (((c & 0x00FF) == 'x') || ((c & 0x00FF) == 'X')) {
-      exit = true;
-      break;
-    }
-  }
-  */
-
-  return exit;
 };
 
 
@@ -1169,10 +877,9 @@ public:
     //namedWindow("source", CV_GUI_EXPANDED);
     namedWindow("debug", CV_GUI_EXPANDED);
     namedWindow("edgels", CV_GUI_EXPANDED);
-    namedWindow("edgel_i", CV_GUI_EXPANDED);
     //namedWindow("accum", CV_GUI_EXPANDED);
     //namedWindow("lines", CV_GUI_EXPANDED);
-    //namedWindow("segments", CV_GUI_EXPANDED);
+    namedWindow("segments", CV_GUI_EXPANDED);
 
     alive = true;
   };
@@ -1226,9 +933,10 @@ public:
       cv::warpAffine(sourceImg, sourceImgRot, rotMat, sourceImg.size());
       cv::cvtColor(sourceImgRot, grayImg, CV_RGB2GRAY);
 
-      // Process through Hough transform
-//#define OLD_CODE
-#ifdef OLD_CODE
+      // Extract line segments
+      /*
+      // OpenCV probabilistic Hough Transform implementation
+      // WARNING: often misses obvious segments in image; not exactly sure which params are responsible
       int threshold = 50, linbinratio = 100, angbinratio = 100;
       cv::Mat edgeImg, linesImg;
       std::vector<cv::Vec4i> lines;
@@ -1237,18 +945,21 @@ public:
       cv::blur(grayImg, edgelImg, cv::Size(params.sobelBlurWidth, params.sobelBlurWidth));
       cv::Canny(edgelImg, edgelImg, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
       cv::HoughLinesP(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold, 10*1.5, 10*1.5/3);
-      //cv::HoughLines(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold);
 
       overlaidImg = sourceImg.clone();
       for (unsigned int i = 0; i < lines.size(); i++) {
         cv::line(overlaidImg, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2, 8);
       }
-      imshow("lines", overlaidImg);
-#else
+      imshow("segments", overlaidImg);
+      */
+
       /*
+      // Our improved Standard Hough Transform implementation
+      // WARNING: since the Hough space unevenly samples lines with different angles at larger radii from
+      //          the offset point, this implementation often obvious clear segments in image; also it is quite slow
       rho_res = params.houghRhoRes;
       theta_res = params.houghThetaRes*degree;
-      lineSegments = detectLineSegments(grayImg,
+      lineSegments = detectLineSegmentsHough(grayImg,
           params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
           rho_res, theta_res,
           params.houghEdgelThetaMargin*degree,
@@ -1263,13 +974,25 @@ public:
       imshow("segments", overlaidImg);
       */
 
-      if (detectLineSegmentsCC(grayImg,
+      // Optimized segment detector using angle-bounded connected edgel components
+      std::list<cv::Vec4i> segments = detectLineSegments(grayImg,
           params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
           (unsigned int) params.houghMinAccumValue, params.houghEdgelThetaMargin*degree,
-          params.houghMinSegmentLength)) {
-        alive = false;
+          params.houghMinSegmentLength);
+      cv::Mat overlayImg = sourceImgRot.clone();
+      //drawLineSegments(overlaidImg, segments); // TODO: 000 debug why passing overlaidImg as value (or ref) ends up with a 0x0 sized image
+      for (const cv::Vec4i& endpts: segments) {
+        cv::line(overlayImg, cv::Point2i(endpts[0], endpts[1]), cv::Point2i(endpts[2], endpts[3]), CV_RGB(255, 255, 0), 3);
       }
-#endif
+      for (const cv::Vec4i& endpts: segments) {
+        cv::line(overlayImg, cv::Point2i(endpts[0], endpts[1]), cv::Point2i(endpts[2], endpts[3]), CV_RGB(255, 0, 0), 1);
+      }
+      for (const cv::Vec4i& endpts: segments) {
+        cv::circle(overlayImg, cv::Point2i(endpts[0], endpts[1]), 2, CV_RGB(0, 0, 255));
+        cv::circle(overlayImg, cv::Point2i(endpts[2], endpts[3]), 2, CV_RGB(0, 255, 255));
+      }
+      cv::imshow("segments", overlayImg);
+      cout << "Detected " << segments.size() << " line segments" << endl;
 
 #ifdef SAVE_IMAGES_FROM
       sprintf(dstFilename, "img%05d.jpg", dstID++);
@@ -1282,7 +1005,7 @@ public:
 
       ros::Time currTime = ros::Time::now();
       ros::Duration td = currTime - latestProfTime;
-      if (td.toSecs() > 1.0) {
+      if (td.toSec() > 1.0) {
         cout << "Pipeline Duration: " << durationProf.getStatsString() << endl;
         cout << "Pipeline Rate: " << rateProf.getStatsString() << endl;
         latestProfTime = currTime;
