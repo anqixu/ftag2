@@ -1,6 +1,5 @@
 #include "detector/FTag2Detector.hpp"
 #include "common/BaseCV.hpp"
-#include "common/Profiler.hpp" // TODO: 0 remove after profile
 #include <cmath>
 #include <vector>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -270,20 +269,4 @@ std::list<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
   */
 
   return segmentEndpoints;
-};
-
-
-void drawLineSegments(cv::Mat img, const std::list<cv::Vec4i> lineSegments) {
-  std::cout << "img: " << img.cols << " x " << img.rows << std::endl;
-  for (const cv::Vec4i& endpts: lineSegments) {
-    cv::line(img, cv::Point2i(endpts[0], endpts[1]), cv::Point2i(endpts[2], endpts[3]), CV_RGB(255, 255, 0), 3);
-  }
-  for (const cv::Vec4i& endpts: lineSegments) {
-    cv::line(img, cv::Point2i(endpts[0], endpts[1]), cv::Point2i(endpts[2], endpts[3]), CV_RGB(255, 0, 0), 1);
-  }
-  for (const cv::Vec4i& endpts: lineSegments) {
-    cv::circle(img, cv::Point2i(endpts[0], endpts[1]), 2, CV_RGB(0, 0, 255));
-    cv::circle(img, cv::Point2i(endpts[2], endpts[3]), 2, CV_RGB(0, 255, 255));
-  }
-  cv::imshow("segments", img);
 };

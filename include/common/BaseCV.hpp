@@ -48,6 +48,69 @@ extern const cv::Point2f INVALID_POINT;
 
 
 /**
+ * Displays double-typed matrix after rescaling from [0, max] to [0, 255]
+ *
+ * NOTE: negative values in the original matrix will be saturated to 0
+ */
+inline void imshow64F(const std::string& winName, const cv::Mat& im) {
+  if (im.type() == CV_64FC1) {
+    double maxValue;
+    cv::Mat im8U;
+    cv::minMaxLoc(im, NULL, &maxValue);
+    im.convertTo(im8U, CV_8UC1, 255.0/maxValue, 0);
+    cv::imshow(winName, im8U);
+  } else {
+    cv::imshow(winName, im);
+  }
+};
+
+
+/**
+ * Draws lines parametrized in the Hough space (radius rho from (0, 0), and
+ * theta angle from x axis) over provided image
+ */
+inline void drawLines(cv::Mat img, const std::vector<cv::Point2d> rhoThetas) {
+  cv::Point pa, pb;
+  double angleHemi;
+  for (const cv::Point2d& rhoTheta: rhoThetas) {
+    angleHemi = vc_math::wrapAngle(rhoTheta.y, vc_math::pi);
+    if (angleHemi > vc_math::half_pi) { angleHemi = vc_math::pi - angleHemi; }
+    if (angleHemi > vc_math::half_pi/2) {
+      pa.x = -img.cols;
+      pa.y = round((rhoTheta.x - cos(rhoTheta.y)*pa.x)/sin(rhoTheta.y));
+      pb.x = 2*img.cols;
+      pb.y = round((rhoTheta.x - cos(rhoTheta.y)*pb.x)/sin(rhoTheta.y));
+    } else {
+      pa.y = -img.rows;
+      pa.x = round((rhoTheta.x - sin(rhoTheta.y)*pa.y)/cos(rhoTheta.y));
+      pb.y = 2*img.rows;
+      pb.x = round((rhoTheta.x - sin(rhoTheta.y)*pb.y)/cos(rhoTheta.y));
+    }
+    cv::line(img, pa, pb, CV_RGB(0, 255, 255), 3);
+    cv::line(img, pa, pb, CV_RGB(0, 0, 255), 1);
+  }
+};
+
+
+/**
+ * Draws line segments (of the form [endA.x, endA.y, endB.x, endB.y] over
+ * provided image
+ */
+inline void drawLineSegments(cv::Mat img, const std::list<cv::Vec4i> lineSegments) {
+  for (const cv::Vec4i& endpts: lineSegments) {
+    cv::line(img, cv::Point2i(endpts[0], endpts[1]), cv::Point2i(endpts[2], endpts[3]), CV_RGB(255, 255, 0), 3);
+  }
+  for (const cv::Vec4i& endpts: lineSegments) {
+    cv::line(img, cv::Point2i(endpts[0], endpts[1]), cv::Point2i(endpts[2], endpts[3]), CV_RGB(255, 0, 0), 1);
+  }
+  for (const cv::Vec4i& endpts: lineSegments) {
+    cv::circle(img, cv::Point2i(endpts[0], endpts[1]), 2, CV_RGB(0, 0, 255));
+    cv::circle(img, cv::Point2i(endpts[2], endpts[3]), 2, CV_RGB(0, 255, 255));
+  }
+};
+
+
+/**
  * This class contains a collection of generic computer vision algorithms,
  * which are implemented as static functions to ensure variable isolation
  * and prevent accidental variable cross-contamination. Nevertheless, since

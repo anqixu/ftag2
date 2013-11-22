@@ -18,8 +18,6 @@
  * @params sobelBlurWidth: width of blur mask for Sobel edge detector (must be 3, 5, or 7)
  * @params ccMinNumEdgels: minimum number of edgels
  * @params angleMargin: in radians
- *
- * TODO: 1 tune params: sobelBlurWidth==3 removes most unwanted edges but fails when tag is moving; sobelBlurWidth==5 gets more spurious edges in general but detects tag boundary when moving
  */
 std::list<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
     int sobelThreshHigh = 100, int sobelThreshLow = 30, int sobelBlurWidth = 3,
@@ -27,10 +25,15 @@ std::list<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
     unsigned int segmentMinNumEdgels = 15);
 
 
-/**
- * Draws line segments over provided image
- */
-void drawLineSegments(cv::Mat img, const std::list<cv::Vec4i> lineSegments);
+std::list<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
+    int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
+    double houghRhoRes, double houghThetaRes,
+    double houghEdgelThetaMargin,
+    double houghRhoBlurRange, double houghThetaBlurRange,
+    double houghRhoNMSRange, double houghThetaNMSRange,
+    double houghMinAccumValue,
+    double houghMaxDistToLine,
+    double houghMinSegmentLength, double houghMaxSegmentGap);
 
 
 class FTag2Detector : public BaseCV {
