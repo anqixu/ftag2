@@ -17,7 +17,7 @@
 
 
 //#define SAVE_IMAGES_FROM overlaidImg
-#define ENABLE_PROFILER
+//#define ENABLE_PROFILER
 
 
 using namespace std;
@@ -28,6 +28,466 @@ using namespace vc_math;
 
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
+
+/**
+ * Returns 0 if the line segments intersect, 1 if their lines
+ * intersect, and -1 if they are co-linear.
+ * In addition, the intersection point is stored in intPt if available.
+ */
+char getSegmentIntersection(const cv::Vec4i& segA, const cv::Vec4i& segB, cv::Point2d& intPt) {
+  double s1_x, s1_y, s2_x, s2_y, det, dx, dy, s, t;
+  s1_x = segA[2] - segA[0]; s1_y = segA[3] - segA[1];
+  s2_x = segB[2] - segB[0]; s2_y = segB[3] - segB[1];
+  det = (-s2_x * s1_y + s1_x * s2_y);
+  if (det == 0) {
+    intPt.x = 0; intPt.y = 0;
+    return -1;
+  }
+
+  dx = segA[0] - segB[0];
+  dy = segA[1] - segB[1];
+  s = (-s1_y * dx + s1_x * dy) / det;
+  t = ( s2_x * dy - s2_y * dx) / det;
+  intPt.x = segA[0] + t*s1_x;
+  intPt.y = segA[1] + t*s1_y;
+
+  if (s >= 0 && s <= 1 && t >= 0 && t <= 1) {
+    return 1;
+  }
+  return 0;
+};
+
+
+inline bool areEndpointsNear(const cv::Vec4i& segA, const cv::Vec4i& segB, double endptThresh) {
+  return ((dist(segA[0], segA[1], segB[0], segB[1]) <= endptThresh) ||
+          (dist(segA[0], segA[1], segB[2], segB[3]) <= endptThresh) ||
+          (dist(segA[2], segA[3], segB[0], segB[1]) <= endptThresh) ||
+          (dist(segA[2], segA[3], segB[2], segB[3]) <= endptThresh));
+};
+
+
+bool isClockwiseOrder(const cv::Vec4i& segA, const cv::Vec4i& segB, const cv::Point2d& intPt) {
+  cv::Point2d endA1(segA[0], segA[1]);
+  cv::Point2d endA2(segA[2], segA[3]);
+  cv::Point2d endB1(segB[0], segB[1]);
+  cv::Point2d endB2(segB[2], segB[3]);
+  cv::Point2d vecA, vecB;
+  double distA1 = vc_math::dist(intPt, endA1);
+  double distA2 = vc_math::dist(intPt, endA2);
+  double distB1 = vc_math::dist(intPt, endB1);
+  double distB2 = vc_math::dist(intPt, endB2);
+
+  if (distA1 >= distA2) {
+    if (distB1 >= distB2) {
+      vecA = endA1 - intPt;
+      vecB = endB1 - intPt;
+    } else { // distB2 > distB1
+      vecA = endA1 - intPt;
+      vecB = endB2 - intPt;
+    }
+  } else { // distA2 > distA1
+    if (distB1 >= distB2) {
+      vecA = endA2 - intPt;
+      vecB = endB1 - intPt;
+    } else { // distB2 > distB1
+      vecA = endA2 - intPt;
+      vecB = endB2 - intPt;
+    }
+  }
+
+  return ((vecA.y*vecB.x - vecA.x*vecB.y) >= 0);
+};
+
+
+bool detectQuads(const std::vector<cv::Vec4i> segments, double endptThresh, const cv::Mat img) { // TODO: 000 remove img after debug
+  // Identify connected segments
+  // TODO: 0 filter out segments with steep angles
+  std::vector< std::list<unsigned int> > adjList(segments.size());
+  std::vector<bool> incomingAdj(segments.size(), false); // whether segment has incoming adjacent segment(s)
+  unsigned int i, j;
+  cv::Point2d intPt;
+  char intersect;
+  for (i = 0; i < segments.size(); i++) {
+    for (j = i+1; j < segments.size(); j++) {
+      intersect = getSegmentIntersection(segments[i], segments[j], intPt);
+      if (intersect == 0 && areEndpointsNear(segments[i], segments[j], endptThresh)) {
+        intersect = 1;
+      }
+
+      // Determine adjacency order between the two segments
+      if (intersect > 0) {
+        if (isClockwiseOrder(segments[i], segments[j], intPt)) {
+          adjList[i].push_back(j);
+          incomingAdj[j] = true;
+        } else {
+          adjList[j].push_back(i);
+          incomingAdj[i] = true;
+        }
+      }
+    }
+  }
+
+  // TEMP: Display adjascent edges (blue -> red)
+  /*
+  char c;
+  bool alive = true;
+  bool done = false;
+  cv::namedWindow("adj");
+  cv::Mat segmentsImg, overlaidImg;
+  img.copyTo(segmentsImg);
+  drawLineSegments(segmentsImg, segments);
+  for (i = 0; i < segments.size(); i++) {
+    for (int jj: adjList[i]) {
+      std::cout << i << " -> " << jj << std::endl;
+      segmentsImg.copyTo(overlaidImg);
+      cv::line(overlaidImg, cv::Point2i(segments[i][0], segments[i][1]), cv::Point2i(segments[i][2], segments[i][3]), CV_RGB(0, 0, 255), 3);
+      cv::line(overlaidImg, cv::Point2i(segments[jj][0], segments[jj][1]), cv::Point2i(segments[jj][2], segments[jj][3]), CV_RGB(255, 0, 0), 3);
+      cv::imshow("adj", overlaidImg);
+      c = cv::waitKey();
+      if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
+        alive = false;
+        done = true;
+        break;
+      } else if ((c & 0x0FF) == 'k' || (c & 0x0FF) == 'K') {
+        done = true;
+        break;
+      }
+    }
+    if (done) { break; }
+  }
+  return alive;
+  */
+
+  // Keep only intersecting edgels and create reduced adjacency matrix
+  std::vector<int> toIntSegIDs(segments.size(), -1);
+  std::vector<int> toOrigSegIDs;
+  for (i = 0; i < segments.size(); i++) {
+    if (adjList[i].size() > 0 || incomingAdj[i]) {
+      j = toOrigSegIDs.size();
+      toIntSegIDs[i] = j;
+      toOrigSegIDs.push_back(i);
+    }
+  }
+  cv::Mat adj = cv::Mat::zeros(toOrigSegIDs.size(), toOrigSegIDs.size(), CV_64FC1);
+  for (j = 0; j < toOrigSegIDs.size(); j++) {
+    i = toOrigSegIDs[j];
+    for (unsigned int neighI: adjList[i]) {
+      adj.at<double>(j, toIntSegIDs[neighI]) = 1;
+    }
+  }
+
+  // Determine quads by 4-multiplying
+  cv::Mat quadsCyclesAdj = adj*adj*adj*adj;
+  std::vector<int> quad_idx;
+  std::vector<int> quad_k(quadsCyclesAdj.rows, 0);
+  for (i = 0; i < toOrigSegIDs.size(); i++) {
+    if (quadsCyclesAdj.at<double>(i, i) > 0) {
+      quad_k[i] = 1;
+      quad_idx.push_back(i);
+    }
+  }
+
+  // TEMP: show results in connectivity
+  cv::Mat segmentsM(segments);
+  segmentsM = segmentsM.reshape(1, segments.size());
+  cv::Mat intSegIDs(toOrigSegIDs);
+  std::cout << "segments = " << std::endl << cv::format(segmentsM, "matlab") << std::endl << std::endl;
+  std::cout << "intSegIDs = " << std::endl << cv::format(intSegIDs, "matlab") << std::endl << std::endl;
+  std::cout << "adj = " << std::endl << cv::format(adj, "matlab") << std::endl << std::endl;
+  std::cout << "quadsCyclesAdj = " << std::endl << cv::format(quadsCyclesAdj, "matlab") << std::endl << std::endl;
+
+  // Determine possible obstructed quads by 5-multiplying
+
+  // Show result
+
+  #ifdef DAVIDS_CODE
+  std::vector<cv::Vec4i > quad_vect;
+  cv::Vec4i quad_current;
+
+  // FOR ALL THE CYCLES FOUND OF LENGTH 4, TRACE USING DFS AND EXTRACT QUADS
+  for ( unsigned int i = 0; i < quad_idx.size(); i++)
+  {
+    cout << "Node " << i << ":\tAdj. list: " ;
+    for ( unsigned int j = 0; j < adj_list[quad_idx[i]].size(); j++ )
+      cout << adj_list[quad_idx[i]][j] << "\t";
+    cout << endl;
+    DFS(adj_list, quad_vect, quad_current, quad_k, quad_idx[i], quad_idx[i], 0);
+  }
+  std::sort (quad_vect.begin(), quad_vect.end(), vec4iCompare);
+
+  displayQuadList(quad_vect);
+
+  // REMOVE DUPLICATES
+  for ( unsigned int i=0; i < quad_vect.size()-1; i++ )
+  {
+    cout << "i= " << i << ":\t";
+    unsigned int j = i+1;
+    bool sameQuad;
+    cv::Vec4i v1 = quad_vect[i];
+    do
+    {
+      cv::Vec4i v2 = quad_vect[j];
+      sameQuad = ( vec4iCompare(v1,v2) == false && vec4iCompare(v2,v1) == false );
+      cout << sameQuad << "\t";
+      if (sameQuad==true)
+        quad_vect.erase(quad_vect.begin()+j);
+      else
+        j++;
+    }while(sameQuad==true && j<quad_vect.size());
+    cout << endl;
+  }
+
+  cout << "NO MORE DUPLICATESS: " << endl;
+  displayQuadList(quad_vect);
+  // DISPLAY ALL QUADS
+  for (unsigned int i = 0; i < quad_vect.size(); i++)
+  {
+    cv::Vec4i qi = quad_vect[i];
+    cv::Vec4i li0 = lines_Backup[qi[0]];
+    cv::Vec4i li1 = lines_Backup[qi[1]];
+    cv::Vec4i li2 = lines_Backup[qi[2]];
+    cv::Vec4i li3 = lines_Backup[qi[3]];
+    cv::line(quads_Image, cv::Point(li0[0], li0[1]), cv::Point(li0[2], li0[3]), CV_RGB(0,255,0),2);
+    cv::line(quads_Image, cv::Point(li1[0], li1[1]), cv::Point(li1[2], li1[3]), CV_RGB(0,255,0),2);
+    cv::line(quads_Image, cv::Point(li2[0], li2[1]), cv::Point(li2[2], li2[3]), CV_RGB(0,255,0),2);
+    cv::line(quads_Image, cv::Point(li3[0], li3[1]), cv::Point(li3[2], li3[3]), CV_RGB(0,255,0),2);
+  }
+  cv::imshow("FINAL QUADS", quads_Image);
+  cv::waitKey();
+
+  // EXTRACT EXACT CORNERS OF QUADS
+  std::vector< std::vector<cv::Point2f> > corners;
+  for (unsigned int i = 0; i < quad_vect.size(); i++)
+  {
+    std::vector<cv::Point2f> quadCorner;
+    cv::Vec4i qi = quad_vect[i];
+    for (int j = 0; j<4; j++)
+    {
+      cv::Point2f pt;
+      pt.x = intMat_x.at<int>(qi[j],qi[(j+1)%4]);
+      pt.y = intMat_y.at<int>(qi[j],qi[(j+1)%4]);
+      quadCorner.push_back(pt);
+    }
+    corners.push_back(quadCorner);
+  }
+
+  cout << "ALL CORNERS OF ALL QUADS: " << endl;
+  for(unsigned int i=0; i<corners.size(); i++)
+  {
+    cout << "Quad " << i << ":\t";
+    for(unsigned int j=0; j<corners[i].size(); j++ )
+    {
+      cout << "( " << corners[i][j].x << ", " << corners[i][j].y << " )\t";
+    }
+    cout << endl;
+  }
+
+  std::vector<float> quad_shortest_edge_size;
+  for (unsigned int i = 0; i < quad_vect.size(); i++)
+  {
+    cv::Point2f p0 = corners[i][0];
+    cv::Point2f p1 = corners[i][1];
+    cv::Point2f p2 = corners[i][2];
+    cv::Point2f p3 = corners[i][3];
+
+    float length1 = sqrt( (p0.x-p1.x)*(p0.x-p1.x) + (p0.y-p1.y)*(p0.y-p1.y) );
+    float length2 = sqrt( (p1.x-p2.x)*(p1.x-p2.x) + (p1.y-p2.y)*(p1.y-p2.y) );
+    float length3 = sqrt( (p2.x-p3.x)*(p2.x-p3.x) + (p2.y-p3.y)*(p2.y-p3.y) );
+    float length4 = sqrt( (p3.x-p0.x)*(p3.x-p0.x) + (p3.y-p0.y)*(p3.y-p0.y) );
+    float minLength = min(length1, min(length2, min(length3,length4)));
+    quad_shortest_edge_size.push_back(minLength);
+  }
+
+  // Get Perspective Transform only for 1st quad
+  cv::Mat quad;
+  std::vector< cv::Mat > quads;
+  for(unsigned  int i=0; i<corners.size(); i++)
+  {
+    cv::Mat quad = cv::Mat::zeros((int)quad_shortest_edge_size[i], (int)quad_shortest_edge_size[i], CV_8U);
+    std::vector<cv::Point2f> quad_pts;
+    quad_pts.push_back(cv::Point2f(0, 0));
+    quad_pts.push_back(cv::Point2f(quad.cols, 0));
+    quad_pts.push_back(cv::Point2f(quad.cols, quad.rows));
+    quad_pts.push_back(cv::Point2f(0, quad.rows));
+    cv::Mat transmtx = cv::getPerspectiveTransform(corners[i], quad_pts);
+    cv::warpPerspective(origbw, quad, transmtx, quad.size());
+    std::ostringstream stringStream;
+    //cv::imshow(stringStream.str(), quad);
+    Mat trimmedQuad = quad.colRange(quad.cols / 8,7*quad.cols / 8);
+    trimmedQuad = trimmedQuad.rowRange(quad.rows / 8,7*quad.rows / 8);
+    quads.push_back(trimmedQuad);
+  }
+
+  cv::Mat horiz_rays;
+  cv::Mat vert_rays;
+  int nRaysPerRow = 3;
+  for( unsigned int i=0; i<quads.size(); i++ )
+  {
+    cv::Mat trimmedQuad = quads[i];
+    cv::imshow("QuadNoBorder", trimmedQuad);
+
+    vert_rays = extract_n_Vert_Rays_Per_Col(trimmedQuad,nRaysPerRow);
+    cv::Mat plot8U = cv::Mat::zeros(vert_rays.rows,vert_rays.cols, CV_8U);
+    vert_rays.convertTo(plot8U,CV_8U);
+    cv::imshow("V1", plot8U);
+    cv::waitKey();
+    cv::Mat plot = cv::Mat::zeros(255, vert_rays.cols, CV_32S);
+    for( int j = 0; j<vert_rays.cols-1; j++ )
+    {
+      plot.at<int>(255-vert_rays.at<int>(0,j),j) = 255;
+    }
+    plot.convertTo(plot8U,CV_8U);
+    cv::imshow("V2", plot8U);
+
+    horiz_rays = extract_n_Horiz_Rays_Per_Row(trimmedQuad,nRaysPerRow);
+    plot8U = cv::Mat::zeros(horiz_rays.rows,vert_rays.cols, CV_8U);
+    horiz_rays.convertTo(plot8U,CV_8U);
+    cv::imshow("H1", plot8U);
+    cv::waitKey();
+    plot = cv::Mat::zeros(255, horiz_rays.cols, CV_32S);
+    for( int j = 0; j<horiz_rays.cols-1; j++ )
+    {
+      //cout << (int)vert_rays.at<int>(0,j) << ", ";
+      plot.at<int>(255-horiz_rays.at<int>(0,j),j) = 255;
+    }
+    plot.convertTo(plot8U,CV_8U);
+    cv::imshow("H2", plot8U);
+    cv::waitKey();
+  }
+#endif
+  return true;
+};
+
+
+#ifdef DAVIDS_CODE
+cv::Mat extract_n_Horiz_Rays_Per_Row(Mat quad, int n)
+{
+  float rowHeight = quad.rows/6.0;
+  cv::Mat rays_added = Mat::zeros(6, quad.cols, CV_8U);
+  for ( unsigned int i=0; i<6; i++ )
+  {
+    Mat addedRow = rays_added.row(i);
+    for ( int j=0; j<n; j++ )
+    {
+      int row = (rowHeight)*i + rowHeight/(2*n) + j*rowHeight/n;
+      Mat newRow = quad.row(row);
+      addedRow = newRow/n + addedRow; // I'm currently averaging to make displaying
+                      // easier but the division by n can be removed
+    }
+  }
+//  cv::imshow("HorRAYS", rays_added);
+  Mat raysCV32 ;
+  rays_added.convertTo(raysCV32,CV_32S);
+  return raysCV32;
+}
+
+cv::Mat extract_n_Vert_Rays_Per_Col(cv::Mat quad, int n)
+{
+  Mat q = quad.t();
+  Mat raysCV32 = extract_n_Horiz_Rays_Per_Row(q,n);
+  return raysCV32;
+}
+
+void DFS(std::vector<std::vector <int> > adj_list, std::vector<cv::Vec4i> &quad_vect, cv::Vec4i &quad_current, std::vector<int> quad_k, int start_node, int current_node, int depth)
+{
+//  cout << endl << endl << "Depth: " << depth << "\t Current node: " << current_node << "\t Start node: " << start_node << endl;
+  if ( current_node == start_node && depth == 4 )
+  {
+    cv::Vec4i aux (quad_current);
+//    cout << endl << "Pushing quad: ";
+    vec4iSort(aux, 0, 3);
+/*    for (int i = 0; i<=depth; i++)
+      cout << aux[i] << "\t" << endl << endl;
+*/
+    quad_vect.push_back(aux);
+    return;
+  }
+  if ( depth > 4 )
+    return;
+  quad_current[depth] = current_node;
+/*  cout << "Current quad: ";
+  for (int i = 0; i<=depth; i++)
+    cout << quad_current[i] << "\t";
+  cout << endl;
+*/
+  if(current_node != start_node)
+    quad_k[current_node] = -1;
+
+  for (unsigned int i=0; i < (adj_list[current_node]).size(); i++)
+  {
+    int newNode = adj_list[current_node][i];
+    if ( quad_k[newNode] <= 0 )
+      continue;
+    DFS(adj_list, quad_vect, quad_current, quad_k, start_node, newNode, depth+1);
+  }
+}
+
+void vec4iSort(cv::Vec4i &vect4, int ini, int end)
+{
+   if (end<=ini)
+     return;
+   int mid = (ini+end)/2;
+   vec4iSort(vect4, ini, mid);
+   vec4iSort(vect4, mid+1,end);
+   int i=ini;
+   int j=mid+1;
+   cv::Vec4i aux;
+   int k = i;
+   while(i<=mid && j<=end)
+   {
+     if(vect4[i]<=vect4[j])
+     {
+      aux[k] = vect4[i];
+      i++;
+     }
+     else
+     {
+       aux[k] = vect4[j];
+       j++;
+     }
+     k++;
+   }
+   while(i<=mid)
+   {
+     aux[k] = vect4[i];
+     k++;
+     i++;
+   }
+
+   while(j<=end)
+   {
+     aux[k] = vect4[j];
+     k++;
+     j++;
+   }
+
+   for(k=ini;k<=end;k++)
+     vect4[k]=aux[k];
+}
+
+bool vec4iCompare (cv::Vec4i v1,cv::Vec4i v2)
+{
+  if(v1[0] < v2[0])
+    return true;
+  else
+    return false;
+
+  if(v1[1] < v2[1])
+    return true;
+  else
+    return false;
+
+  if(v1[2] < v2[2])
+    return true;
+  else
+    return false;
+
+  if(v1[3] < v2[3])
+    return true;
+  else
+    return false;
+}
+#endif
 
 // DEBUG fn
 cv::Mat genSquareImg(double deg) {
@@ -233,13 +693,16 @@ public:
       */
 
       // Optimized segment detector using angle-bounded connected edgel components
-      std::list<cv::Vec4i> segments = detectLineSegments(grayImg,
+      std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
           params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
           (unsigned int) params.houghMinAccumValue, params.houghEdgelThetaMargin*degree,
           params.houghMinSegmentLength);
       sourceImgRot.copyTo(overlaidImg);
       drawLineSegments(overlaidImg, segments);
       cv::imshow("segments", overlaidImg);
+
+      // Detect quads
+      alive = detectQuads(segments, params.houghMaxSegmentGap, sourceImgRot);
 
 #ifdef SAVE_IMAGES_FROM
       sprintf(dstFilename, "img%05d.jpg", dstID++);
@@ -262,7 +725,7 @@ public:
       // Spin ROS and HighGui
       if (!alive) { break; }
       ros::spinOnce();
-      c = waitKey(30);
+      c = waitKey();
       if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
         alive = false;
       }

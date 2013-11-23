@@ -19,13 +19,13 @@
  * @params ccMinNumEdgels: minimum number of edgels
  * @params angleMargin: in radians
  */
-std::list<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
+std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
     int sobelThreshHigh = 100, int sobelThreshLow = 30, int sobelBlurWidth = 3,
     unsigned int ccMinNumEdgels = 50, double angleMargin = 20.0*vc_math::degree,
     unsigned int segmentMinNumEdgels = 15);
 
 
-std::list<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
+std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
     int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
     double houghRhoRes, double houghThetaRes,
     double houghEdgelThetaMargin,

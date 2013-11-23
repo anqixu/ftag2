@@ -540,9 +540,9 @@ bool mergeOverlappingSegments(SegmentHough& a, SegmentHoughsIt b) {
  * Finds the union of all (partially) overlapping segments, and returns
  * lists of each merged segment represented by their two end-points
  */
-std::list<cv::Vec4i> houghMergeSegments(SegmentHoughs segments,
+std::vector<cv::Vec4i> houghMergeSegments(SegmentHoughs segments,
     const cv::Mat& edgelsXY) {
-  std::list<cv::Vec4i> result;
+  std::vector<cv::Vec4i> result;
   SegmentHoughsIt segIt;
 
   while (!segments.empty()) {
@@ -568,7 +568,7 @@ std::list<cv::Vec4i> houghMergeSegments(SegmentHoughs segments,
  * Identifies potential lines in image using Hough Transform, then use result
  * to identify grouped line segments
  */
-std::list<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
+std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
     int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
     double houghRhoRes, double houghThetaRes,
     double houghEdgelThetaMargin,
@@ -675,7 +675,7 @@ std::list<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
   }
 
   // Merge partially overlapping segments into final list of segments
-  std::list<cv::Vec4i> lineSegments = houghMergeSegments(partialSegments, edgelsXY);
+  std::vector<cv::Vec4i> lineSegments = houghMergeSegments(partialSegments, edgelsXY);
 
   return lineSegments;
 };

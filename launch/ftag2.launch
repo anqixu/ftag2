@@ -1,7 +1,9 @@
 <launch>
+  <!-- node pkg="ftag2" type="cam_testbench" name="cam_testbench" output="screen" launch-prefix="gdb -ex run - -args" -->
   <node pkg="ftag2" type="cam_testbench" name="cam_testbench" output="screen">
     <param name="source" type="str" value="/home/thalassa/anqixu/Desktop/source.png" />
     <param name="source" type="str" value="" />
+    <param name="source" type="str" value="/home/mimic/Desktop/square.png" />
     
     <!-- The following are recommended parameter values line detector using connected components -->
     <param name="sobelThreshHigh" value="100" />
@@ -10,5 +12,7 @@
     <param name="houghEdgelThetaMargin" value="20.0" />
     <param name="houghMinAccumValue" value="50.0" /> <!-- minimum number of edgels within each connected component -->
     <param name="houghMinSegmentLength" value="15.0" />
+    
+    <param name="houghMaxSegmentGap" value="5.0" />
   </node>
 </launch>

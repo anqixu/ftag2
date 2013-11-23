@@ -96,9 +96,9 @@ inline void drawLines(cv::Mat img, const std::vector<cv::Point2d> rhoThetas) {
  * Draws line segments (of the form [endA.x, endA.y, endB.x, endB.y] over
  * provided image
  */
-inline void drawLineSegments(cv::Mat img, const std::list<cv::Vec4i> lineSegments) {
+inline void drawLineSegments(cv::Mat img, const std::vector<cv::Vec4i> lineSegments) {
   for (const cv::Vec4i& endpts: lineSegments) {
-    cv::line(img, cv::Point2i(endpts[0], endpts[1]), cv::Point2i(endpts[2], endpts[3]), CV_RGB(255, 255, 0), 3);
+    cv::line(img, cv::Point2i(endpts[0], endpts[1]), cv::Point2i(endpts[2], endpts[3]), CV_RGB(0, 255, 0), 3);
   }
   for (const cv::Vec4i& endpts: lineSegments) {
     cv::line(img, cv::Point2i(endpts[0], endpts[1]), cv::Point2i(endpts[2], endpts[3]), CV_RGB(255, 0, 0), 1);

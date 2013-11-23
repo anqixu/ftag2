@@ -206,7 +206,7 @@ cv::Vec4i computeSegmentEndpoints(Segment& currSegment,
 };
 
 
-std::list<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
+std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
     int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
     unsigned int ccMinNumEdgels, double angleMarginRad,
     unsigned int segmentMinNumEdgels) {
@@ -246,7 +246,7 @@ std::list<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
   }
 
   // Sort edgels in each segment in continguous order, as defined by their closest fitted line
-  std::list<cv::Vec4i> segmentEndpoints;
+  std::vector<cv::Vec4i> segmentEndpoints;
   for (Segment& currSegment: segments) {
     segmentEndpoints.push_back(computeSegmentEndpoints(currSegment));
   }
