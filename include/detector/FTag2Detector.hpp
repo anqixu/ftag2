@@ -4,8 +4,16 @@
 
 #include <opencv2/core/core.hpp>
 #include <list>
+#include <vector>
 #include "common/VectorAndCircularMath.hpp"
 #include "common/BaseCV.hpp"
+
+
+struct Quad {
+  std::vector<cv::Point2f> corners;
+
+  Quad() : corners(4, cv::Point2d(0, 0)) {};
+};
 
 
 /**
@@ -34,6 +42,28 @@ std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
     double houghMinAccumValue,
     double houghMaxDistToLine,
     double houghMinSegmentLength, double houghMaxSegmentGap);
+
+
+std::list<Quad> detectQuads(const std::vector<cv::Vec4i> segments,
+    double intSegMinAngle = 30.0*vc_math::degree,
+    double endptThresh = 4.0);
+
+
+inline void drawQuads(cv::Mat img, std::list<Quad> quads) {
+  for (Quad& quad: quads) {
+    cv::line(img, quad.corners[0], quad.corners[1], CV_RGB(0, 255, 0), 3);
+    cv::line(img, quad.corners[0], quad.corners[1], CV_RGB(255, 0, 255), 1);
+    cv::line(img, quad.corners[1], quad.corners[2], CV_RGB(0, 255, 0), 3);
+    cv::line(img, quad.corners[1], quad.corners[2], CV_RGB(255, 0, 255), 1);
+    cv::line(img, quad.corners[2], quad.corners[3], CV_RGB(0, 255, 0), 3);
+    cv::line(img, quad.corners[2], quad.corners[3], CV_RGB(255, 0, 255), 1);
+    cv::line(img, quad.corners[3], quad.corners[0], CV_RGB(0, 255, 0), 3);
+    cv::line(img, quad.corners[3], quad.corners[0], CV_RGB(255, 0, 255), 1);
+  }
+};
+
+
+cv::Mat extractQuadImg(cv::Mat img, Quad& quad);
 
 
 class FTag2Detector : public BaseCV {

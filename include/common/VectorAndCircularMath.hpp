@@ -10,6 +10,29 @@
 #include <cmath>
 
 
+inline bool operator==(const cv::Vec4i& lhs, const cv::Vec4i& rhs) {
+  return ((lhs[0] == rhs[0]) &&
+          (lhs[1] == rhs[1]) &&
+          (lhs[2] == rhs[2]) &&
+          (lhs[3] == rhs[3]));
+};
+
+
+inline bool operator<(const cv::Vec4i& lhs, const cv::Vec4i& rhs) {
+  if (lhs[0] < rhs[0]) return true;
+  else if (lhs[0] > rhs[0]) return false;
+  if (lhs[1] < rhs[1]) return true;
+  else if (lhs[1] > rhs[1]) return false;
+  if (lhs[2] < rhs[2]) return true;
+  else if (lhs[2] > rhs[2]) return false;
+  if (lhs[3] < rhs[3]) return true;
+  return false;
+};
+inline bool lessThan(const cv::Vec4i& lhs, const cv::Vec4i& rhs) {
+  return (lhs < rhs);
+};
+
+
 namespace vc_math {
 
 
@@ -59,7 +82,13 @@ inline double angularDist(double a, double b, double range = 360.0) { return fab
 inline double dist(double x1, double y1, double x2, double y2) {
   return sqrt((x1-x2)*(x1-x2)+(y1-y2)*(y1-y2));
 };
-inline double dist(cv::Point2d xy1, cv::Point2d xy2) {
+inline double dist(const cv::Point2d& xy1, const cv::Point2d& xy2) {
+  return sqrt((xy1.x-xy2.x)*(xy1.x-xy2.x)+(xy1.y-xy2.y)*(xy1.y-xy2.y));
+};
+inline double dist(const cv::Point2f& xy1, const cv::Point2f& xy2) {
+  return sqrt((xy1.x-xy2.x)*(xy1.x-xy2.x)+(xy1.y-xy2.y)*(xy1.y-xy2.y));
+};
+inline double dist(const cv::Point2i& xy1, const cv::Point2i& xy2) {
   return sqrt((xy1.x-xy2.x)*(xy1.x-xy2.x)+(xy1.y-xy2.y)*(xy1.y-xy2.y));
 };
 
@@ -367,7 +396,10 @@ inline cv::Point findClosestPoint(
   return result;
 };
 
-
+/**
+ * Computes (minimum) scale factor between 2 sizes (i.e. prefer letterbox over
+ * cropping)
+ */
 inline double computeScaleFactor(const cv::Size& from, const cv::Size& to) {
   if (from == cv::Size() || to == cv::Size()) {
     return 1.0;
@@ -377,7 +409,76 @@ inline double computeScaleFactor(const cv::Size& from, const cv::Size& to) {
   }
 };
 
+/**
+ * Computes orientation of line segment
+ */
+inline double orientation(cv::Vec4i seg) {
+  return std::atan2(seg[3] - seg[1], seg[2] - seg[0]);
 };
 
+/**
+ * Sort values in increasing order
+ * NOTE: faster than recursive implementations and specifically
+ *       cv::sort(vec4iA, vec4iB, CV_SORT_EVERY_COLUMN | CV_SORT_ASCENDING)
+ */
+inline cv::Vec4i sort(cv::Vec4i v) {
+  cv::Vec4i s(v);
+  if (v[0] > v[1]) {
+    s[0] = v[1]; s[1] = v[0];
+  }
+  if (v[2] > v[3]) {
+    s[2] = v[3]; s[3] = v[2];
+  }
+
+  if (s[0] > s[2]) {
+    v[0] = s[2];
+    if (s[3] > s[1]) {
+      v[1] = s[0]; v[2] = s[1]; v[3] = s[3];
+    } else if (s[3] > s[0]) {
+      v[1] = s[0]; v[2] = s[3]; v[3] = s[1];
+    } else {
+      v[1] = s[3]; v[2] = s[0]; v[3] = s[1];
+    }
+  } else {
+    v[0] = s[0];
+    if (s[1] > s[3]) {
+      v[1] = s[2]; v[2] = s[3]; v[3] = s[1];
+    } else if (s[1] > s[2]) {
+      v[1] = s[2]; v[2] = s[1]; v[3] = s[3];
+    } else {
+      v[1] = s[1]; v[2] = s[2]; v[3] = s[3];
+    }
+  }
+  return v;
+};
+
+/**
+ * Cycles vector such that smallest value is listed first, but the (cyclic)
+ * ordering of values are preserved
+ */
+inline cv::Vec4i minCyclicOrder(cv::Vec4i v) {
+  if ((v[1] <= v[0]) && (v[1] <= v[2]) && (v[1] <= v[3])) {
+    return cv::Vec4i(v[1], v[2], v[3], v[0]);
+  } else if ((v[2] <= v[0]) && (v[2] <= v[1]) && (v[2] <= v[3])) {
+    return cv::Vec4i(v[2], v[3], v[0], v[1]);
+  } else if ((v[3] <= v[0]) && (v[3] <= v[1]) && (v[3] <= v[2])) {
+    return cv::Vec4i(v[3], v[0], v[1], v[2]);
+  }
+  return v;
+};
+
+/**
+ * Removes duplicate entries in-place
+ */
+inline void unique(std::vector<cv::Vec4i>& v) {
+  std::vector<cv::Vec4i> u;
+  for (cv::Vec4i& d: v) {
+    if (u.empty()) { u.push_back(d); }
+    else if (u.back() < d) { u.push_back(d); }
+  }
+  v.swap(u);
+};
+
+};
 
 #endif /* VECTORANDCIRCULARMATH_HPP_ */
