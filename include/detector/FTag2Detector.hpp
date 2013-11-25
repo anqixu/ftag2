@@ -75,12 +75,23 @@ inline void drawQuads(cv::Mat img, std::list<Quad> quads) {
 };
 
 
-cv::Mat extractQuadImg(cv::Mat img, Quad& quad);
+/**
+ * oversample: extract approximately 1 pixel more from each of the sides
+ */
+cv::Mat extractQuadImg(cv::Mat img, Quad& quad, bool oversample = false);
+
+
+/**
+ * Removes columns and/or rows of white pixels from borders of an extracted
+ * tag image, caused by rounding accuracy / oversampling in extractQuadImg
+ */
+cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff);
 
 
 void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
                 double low_thresh, double high_thresh,
                 int aperture_size, cv::Mat& dx, cv::Mat& dy, bool L2gradient = false );
+
 
 class FTag2Detector : public BaseCV {
 public:

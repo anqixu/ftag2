@@ -89,6 +89,7 @@ public:
     params.lineMinEdgelsSeg = 15;
     params.quadMinAngleIntercept = 30.0;
     params.quadMinEndptDist = 4.0;
+    params.quadMaxStripAvgDiff = 15.0;
     params.imRotateDeg = 0;
 
     #define GET_PARAM(v) \
@@ -101,6 +102,7 @@ public:
     GET_PARAM(lineMinEdgelsSeg);
     GET_PARAM(quadMinAngleIntercept);
     GET_PARAM(quadMinEndptDist);
+    GET_PARAM(quadMaxStripAvgDiff);
     GET_PARAM(imRotateDeg);
     #undef GET_PARAM
     dynCfgSyncReq = true;
@@ -133,9 +135,7 @@ public:
     //namedWindow("lines", CV_GUI_EXPANDED);
     namedWindow("segments", CV_GUI_EXPANDED);
     namedWindow("quad_1", CV_GUI_EXPANDED);
-    //namedWindow("quad_2", CV_GUI_EXPANDED);
-    //namedWindow("quad_3", CV_GUI_EXPANDED);
-    //namedWindow("quad_4", CV_GUI_EXPANDED);
+    namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
     namedWindow("quads", CV_GUI_EXPANDED);
 
     alive = true;
@@ -260,8 +260,8 @@ public:
             largestQuadIt = quadIt;
           }
         }
-        cv::Mat tag = extractQuadImg(sourceImgRot, *largestQuadIt);
-        cv::imshow("quad_1", tag);
+        cv::Mat tag = extractQuadImg(sourceImgRot, *largestQuadIt, true);
+        trimFTag2Quad(tag, params.quadMaxStripAvgDiff);
       }
 
 #ifdef SAVE_IMAGES_FROM

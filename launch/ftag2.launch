@@ -5,7 +5,7 @@
     <param name="source" type="str" value="/home/thalassa/anqixu/Desktop/source.png" />
     <param name="source" type="str" value="" />
 
-    <param name="waitkey_delay" value="1" />
+    <param name="waitkey_delay" value="0" />
     
     <!-- The following are recommended parameter values line detector using connected components -->
     <param name="sobelThreshHigh" value="100" />

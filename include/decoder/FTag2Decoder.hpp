@@ -12,7 +12,7 @@ public:
   FTag2Decoder();
   ~FTag2Decoder();
 
-  FTag2 decodeTag(cv::Mat img);
+  static FTag2 decodeTag(cv::Mat img);
 };
 
 

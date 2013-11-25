@@ -376,7 +376,7 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
 };
 
 
-cv::Mat extractQuadImg(cv::Mat img, Quad& quad) {
+cv::Mat extractQuadImg(cv::Mat img, Quad& quad, bool oversample) {
   int shortestEdgeWidth = floor(
       std::min(std::min(vc_math::dist(quad.corners[0], quad.corners[1]),
                         vc_math::dist(quad.corners[1], quad.corners[2])),
@@ -385,14 +385,83 @@ cv::Mat extractQuadImg(cv::Mat img, Quad& quad) {
 
   cv::Mat quadImg;
   std::vector<cv::Point2f> rectifiedCorners;
-  rectifiedCorners.push_back(cv::Point2f(0, 0));
-  rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth, 0));
-  rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth, shortestEdgeWidth));
-  rectifiedCorners.push_back(cv::Point2f(0, shortestEdgeWidth));
+  if (oversample) {
+    rectifiedCorners.push_back(cv::Point2f(1, 1));
+    rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth-1, 1));
+    rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth-1, shortestEdgeWidth-1));
+    rectifiedCorners.push_back(cv::Point2f(1, shortestEdgeWidth-1));
+  } else {
+    rectifiedCorners.push_back(cv::Point2f(0, 0));
+    rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth, 0));
+    rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth, shortestEdgeWidth));
+    rectifiedCorners.push_back(cv::Point2f(0, shortestEdgeWidth));
+  }
   cv::Mat T = cv::getPerspectiveTransform(quad.corners, rectifiedCorners);
   cv::warpPerspective(img, quadImg, T, cv::Size(shortestEdgeWidth, shortestEdgeWidth),
       cv::INTER_LINEAR);
   return quadImg;
+};
+
+
+cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff) {
+  const unsigned int numRows = tag.rows;
+  const unsigned int numCols = tag.cols;
+
+  cv::Mat tagGray;
+  if (tag.channels() != 1) {
+    cv::cvtColor(tag, tagGray, CV_RGB2GRAY);
+  } else {
+    tagGray = tag;
+  }
+
+  double row1Avg = double(sum(tagGray.row(0))[0])/numCols;
+  double row2Avg = double(sum(tagGray.row(1))[0])/numCols;
+  double row3Avg = double(sum(tagGray.row(2))[0])/numCols;
+  double rowRm1Avg = double(sum(tagGray.row(numRows-2))[0])/numCols;
+  double rowRAvg = double(sum(tagGray.row(numRows-1))[0])/numCols;
+  double col1Avg = double(sum(tagGray.col(0))[0])/numRows;
+  double col2Avg = double(sum(tagGray.col(1))[0])/numRows;
+  double col3Avg = double(sum(tagGray.col(2))[0])/numRows;
+  double colCm1Avg = double(sum(tagGray.row(numCols-2))[0])/numRows;
+  double colCAvg = double(sum(tagGray.row(numCols-1))[0])/numRows;
+  int trimLeft = 0, trimRight = 0, trimTop = 0, trimBottom = 0;
+  bool trim = false;
+
+  if (row2Avg - row3Avg > maxStripAvgDiff) {
+    trimTop = 2;
+    trim = true;
+  } else if (row1Avg - row2Avg > maxStripAvgDiff) {
+    trimTop = 1;
+    trim = true;
+  }
+  if (rowRAvg - rowRm1Avg > maxStripAvgDiff) {
+    trimBottom = 1;
+    trim = true;
+  }
+  if (col2Avg - col3Avg > maxStripAvgDiff) {
+    trimLeft = 2;
+    trim = true;
+  } else if (col1Avg - col2Avg > maxStripAvgDiff) {
+    trimLeft = 1;
+    trim = true;
+  }
+  if (colCAvg - colCm1Avg > maxStripAvgDiff) {
+    trimRight = 1;
+    trim = true;
+  }
+
+  cv::Mat trimmedTag;
+  if (trim) {
+    trimmedTag = tag(cv::Range(trimTop, numRows - trimBottom),
+        cv::Range(trimLeft, numCols - trimRight));
+  } else {
+    trimmedTag = tag;
+  }
+
+  cv::imshow("quad_1", tagGray);
+  cv::imshow("quad_1_trimmed", trimmedTag);
+
+  return trimmedTag;
 };
 
 
