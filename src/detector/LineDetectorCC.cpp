@@ -149,7 +149,7 @@ std::list<Segment> groupLinearSegmentsInCC(const std::vector< std::vector<cv::Po
   const int imWidth = edgelImg.cols;
   const int imHeight = edgelImg.rows;
   cv::Mat remEdgelImg = edgelImg.clone();
-  std::list<Segment> segments;
+  std::list<Segment> segments, segmentsCC;
   std::list<cv::Point2i> floodfillQueue;
   cv::Point2i currPt;
   double currAngle, slackAngle;
@@ -231,32 +231,35 @@ std::list<Segment> groupLinearSegmentsInCC(const std::vector< std::vector<cv::Po
       // Only register line segment if it contains 2 or more edgels
       if (currSegment.points.size() >= 2) {
         populateSegmentEndpoints(currSegment);
-        segments.push_back(currSegment);
+        segmentsCC.push_back(currSegment);
       }
     } // for each edgel inside the CC
+
+    // Merge nearby co-linear segments
+    if (segmentsCC.size() > 1) {
+      std::list<Segment>::iterator segA = segmentsCC.begin(), segB;
+      for (; segA != segmentsCC.end(); segA++) {
+        if (segA->points.empty()) continue;
+
+        segB = segA; segB++;
+        for (; segB != segmentsCC.end(); segB++) {
+          if (segB->points.empty()) continue;
+          tryMergeColinear(*segA, *segB);
+        }
+      }
+
+      // Erase merged segments
+      segA = segmentsCC.begin();
+      while (segA != segmentsCC.end()) {
+        if (segA->points.empty()) {
+          segA = segmentsCC.erase(segA);
+        } else {
+          segA++;
+        }
+      }
+    }
+    segments.splice(segments.end(), segmentsCC);
   } // for each connected component
-
-  // Merge nearby co-linear segments
-  std::list<Segment>::iterator segA = segments.begin(), segB;
-  for (segA = segments.begin(); segA != segments.end(); segA++) {
-    if (segA->points.empty()) continue;
-
-    segB = segA; segB++;
-    for (; segB != segments.end(); segB++) {
-      if (segB->points.empty()) continue;
-      tryMergeColinear(*segA, *segB);
-    }
-  }
-
-  // Erase merged segments
-  segA = segments.begin();
-  while (segA != segments.end()) {
-    if (segA->points.empty()) {
-      segA = segments.erase(segA);
-    } else {
-      segA++;
-    }
-  }
 
   return segments;
 };
@@ -270,15 +273,18 @@ std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
   assert(grayImg.type() == CV_8UC1);
   assert(angleMarginRad < vc_math::pi);
 
-  // Identify edgels
+  // Identify edgels and compute derivate components along x and y axes (needed to compute orientation of edgels)
   cv::Mat edgelImg, dxImg, dyImg;
   blur(grayImg, edgelImg, cv::Size(sobelBlurWidth, sobelBlurWidth));
-  Canny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
-  imshow("edgels", edgelImg); // TODO: 0 remove after debug
 
-  // Compute derivative components along x and y axes (needed to compute orientation of edgels)
-  cv::Sobel(grayImg, dxImg, CV_16S, 1, 0, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
-  cv::Sobel(grayImg, dyImg, CV_16S, 0, 1, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
+  // NOTE: The commented implementation using OpenCV's Canny + Sobel functions
+  //       is wasteful since Canny calls Sobel internally. We therefore copied
+  //       Canny's source code, and asked it to also return dx and dy.
+  //Canny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
+  //cv::Sobel(grayImg, dxImg, CV_16S, 1, 0, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
+  //cv::Sobel(grayImg, dyImg, CV_16S, 0, 1, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
+  OpenCVCanny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth, dxImg, dyImg);
+  imshow("edgels", edgelImg); // TODO: 0 remove after debug
 
   // Identify all connected edgel components above minimum count threshold
   std::vector< std::vector<cv::Point2i> > edgelCCs = identifyEdgelCCs(edgelImg);
@@ -302,7 +308,6 @@ std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
     }
   }
 
-  // Sort edgels in each segment in continguous order, as defined by their closest fitted line
   std::vector<cv::Vec4i> segmentEndpoints;
   for (Segment& currSegment: segments) {
     segmentEndpoints.push_back(cv::Vec4i(

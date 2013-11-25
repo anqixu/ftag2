@@ -84,17 +84,11 @@ public:
     params.sobelThreshHigh = 100;
     params.sobelThreshLow = 30;
     params.sobelBlurWidth = 3;
-    params.houghRhoRes = 1.0;
-    params.houghThetaRes = 1.0; // *degree
-    params.houghEdgelThetaMargin = 10.0; // *degree
-    params.houghBlurRhoWidth = 5.0; // *houghThetaRes
-    params.houghBlurThetaWidth = 7.0; // *houghThetaRes
-    params.houghNMSRhoWidth = 9.0; // *houghThetaRes
-    params.houghNMSThetaWidth = 13.0; // *houghThetaRes
-    params.houghMinAccumValue = 10;
-    params.houghMaxDistToLine = 5;
-    params.houghMinSegmentLength = 5;
-    params.houghMaxSegmentGap = 5;
+    params.lineAngleMargin = 20.0; // *degree
+    params.lineMinEdgelsCC = 50;
+    params.lineMinEdgelsSeg = 15;
+    params.quadMinAngleIntercept = 30.0;
+    params.quadMinEndptDist = 4.0;
     params.imRotateDeg = 0;
 
     #define GET_PARAM(v) \
@@ -102,17 +96,11 @@ public:
     GET_PARAM(sobelThreshHigh);
     GET_PARAM(sobelThreshLow);
     GET_PARAM(sobelBlurWidth);
-    GET_PARAM(houghRhoRes);
-    GET_PARAM(houghThetaRes);
-    GET_PARAM(houghEdgelThetaMargin);
-    GET_PARAM(houghBlurRhoWidth);
-    GET_PARAM(houghBlurThetaWidth);
-    GET_PARAM(houghNMSRhoWidth);
-    GET_PARAM(houghNMSThetaWidth);
-    GET_PARAM(houghMinAccumValue);
-    GET_PARAM(houghMaxDistToLine);
-    GET_PARAM(houghMinSegmentLength);
-    GET_PARAM(houghMaxSegmentGap);
+    GET_PARAM(lineAngleMargin);
+    GET_PARAM(lineMinEdgelsCC);
+    GET_PARAM(lineMinEdgelsSeg);
+    GET_PARAM(quadMinAngleIntercept);
+    GET_PARAM(quadMinEndptDist);
     GET_PARAM(imRotateDeg);
     #undef GET_PARAM
     dynCfgSyncReq = true;
@@ -144,11 +132,11 @@ public:
     //namedWindow("accum", CV_GUI_EXPANDED);
     //namedWindow("lines", CV_GUI_EXPANDED);
     namedWindow("segments", CV_GUI_EXPANDED);
-    namedWindow("quads", CV_GUI_EXPANDED);
     namedWindow("quad_1", CV_GUI_EXPANDED);
-    namedWindow("quad_2", CV_GUI_EXPANDED);
-    namedWindow("quad_3", CV_GUI_EXPANDED);
-    namedWindow("quad_4", CV_GUI_EXPANDED);
+    //namedWindow("quad_2", CV_GUI_EXPANDED);
+    //namedWindow("quad_3", CV_GUI_EXPANDED);
+    //namedWindow("quad_4", CV_GUI_EXPANDED);
+    namedWindow("quads", CV_GUI_EXPANDED);
 
     alive = true;
   };
@@ -242,42 +230,38 @@ public:
       */
 
       // Optimized segment detector using angle-bounded connected edgel components
+      lineSegP.tic();
       std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
           params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
-          (unsigned int) params.houghMinAccumValue, params.houghEdgelThetaMargin*degree,
-          params.houghMinSegmentLength);
+          params.lineMinEdgelsCC, params.lineAngleMargin*degree,
+          params.lineMinEdgelsSeg);
+      lineSegP.toc();
       sourceImgRot.copyTo(overlaidImg);
       drawLineSegments(overlaidImg, segments);
       cv::imshow("segments", overlaidImg);
 
       // Detect quads
+      quadP.tic();
       std::list<Quad> quads = detectQuads(segments,
-          params.houghBlurThetaWidth*degree,
-          params.houghMaxSegmentGap); // TODO: 0 stop borrowing outdated params; create cam_testbench2 with proper dyncfg instead
+          params.quadMinAngleIntercept*degree,
+          params.quadMinEndptDist);
+      quadP.toc();
       cv::Mat quadsImg = sourceImgRot.clone();
       //drawLineSegments(quadsImg, segments);
-      std::cout << "found " << quads.size() << " quads" << std::endl;
       drawQuads(quadsImg, quads);
       cv::imshow("quads", quadsImg);
 
-      std::list<Quad>::iterator quadIt = quads.begin();
-      if (quads.size() >= 1) {
-        cv::imshow("quad_1", extractQuadImg(sourceImgRot, *quadIt));
-      }
-      if (quads.size() >= 2) {
-        quadIt++;
-        cv::Mat q = extractQuadImg(sourceImgRot, *quadIt);
-        cv::imshow("quad_2", q);
-      }
-      if (quads.size() >= 3) {
-        quadIt++;
-        cv::Mat q = extractQuadImg(sourceImgRot, *quadIt);
-        cv::imshow("quad_3", q);
-      }
-      if (quads.size() >= 4) {
-        quadIt++;
-        cv::Mat q = extractQuadImg(sourceImgRot, *quadIt);
-        cv::imshow("quad_4", q);
+      if (!quads.empty()) {
+        std::list<Quad>::iterator quadIt, largestQuadIt;
+        double largestQuadArea = -1;
+        for (quadIt = quads.begin(); quadIt != quads.end(); quadIt++) {
+          if (quadIt->area > largestQuadArea) {
+            largestQuadArea = quadIt->area;
+            largestQuadIt = quadIt;
+          }
+        }
+        cv::Mat tag = extractQuadImg(sourceImgRot, *largestQuadIt);
+        cv::imshow("quad_1", tag);
       }
 
 #ifdef SAVE_IMAGES_FROM
@@ -292,6 +276,10 @@ public:
       ros::Time currTime = ros::Time::now();
       ros::Duration td = currTime - latestProfTime;
       if (td.toSec() > 1.0) {
+
+        cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
+        cout << "detectQuads: " << quadP.getStatsString() << endl;
+
         cout << "Pipeline Duration: " << durationProf.getStatsString() << endl;
         cout << "Pipeline Rate: " << rateProf.getStatsString() << endl;
         latestProfTime = currTime;
@@ -326,7 +314,7 @@ protected:
   int dstID;
   char* dstFilename;
 
-  Profiler durationProf, rateProf;
+  Profiler lineSegP, quadP, durationProf, rateProf;
   ros::Time latestProfTime;
 
   int waitKeyDelay;

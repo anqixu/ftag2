@@ -91,6 +91,9 @@ inline double dist(const cv::Point2f& xy1, const cv::Point2f& xy2) {
 inline double dist(const cv::Point2i& xy1, const cv::Point2i& xy2) {
   return sqrt((xy1.x-xy2.x)*(xy1.x-xy2.x)+(xy1.y-xy2.y)*(xy1.y-xy2.y));
 };
+inline double dist(const cv::Vec4i& xy12) {
+  return sqrt((xy12[0]-xy12[2])*(xy12[0]-xy12[2])+(xy12[1]-xy12[3])*(xy12[1]-xy12[3]));
+};
 
 /**
  * Wraps angle in degrees to [0, maxAngle) range
@@ -410,7 +413,7 @@ inline double computeScaleFactor(const cv::Size& from, const cv::Size& to) {
 };
 
 /**
- * Computes orientation of line segment
+ * Computes orientation of line segment (of the form [x1, y1, x2, y2])
  */
 inline double orientation(cv::Vec4i seg) {
   return std::atan2(seg[3] - seg[1], seg[2] - seg[0]);
@@ -468,9 +471,11 @@ inline cv::Vec4i minCyclicOrder(cv::Vec4i v) {
 };
 
 /**
- * Removes duplicate entries in-place
+ * Sorts and removes duplicate entries in-place
  */
 inline void unique(std::vector<cv::Vec4i>& v) {
+  std::sort(v.begin(), v.end(), lessThan);
+
   std::vector<cv::Vec4i> u;
   for (cv::Vec4i& d: v) {
     if (u.empty()) { u.push_back(d); }
@@ -478,6 +483,22 @@ inline void unique(std::vector<cv::Vec4i>& v) {
   }
   v.swap(u);
 };
+
+/**
+ * Returns dot product of 2 line segments (of the form [x1, y1, x2, y2])
+ */
+inline double dot(const cv::Vec4i& A, const cv::Vec4i& B) {
+  return (A[2]-A[0])*(B[2]-B[0]) + (A[3]-A[1])*(B[3]-B[1]);
+};
+
+/**
+ * Returns dot product of 2 line segments
+ */
+inline double dot(const cv::Point2f& endA1, const cv::Point2f& endA2,
+    const cv::Point2f& endB1, const cv::Point2f& endB2) {
+  return (endA2.x-endA1.x)*(endB2.x-endB1.x) + (endA2.y-endA1.y)*(endB2.y-endB1.y);
+};
+
 
 };
 

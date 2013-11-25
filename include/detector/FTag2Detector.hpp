@@ -5,14 +5,26 @@
 #include <opencv2/core/core.hpp>
 #include <list>
 #include <vector>
+#include <cmath>
 #include "common/VectorAndCircularMath.hpp"
 #include "common/BaseCV.hpp"
 
 
 struct Quad {
   std::vector<cv::Point2f> corners;
+  double area;
 
-  Quad() : corners(4, cv::Point2d(0, 0)) {};
+  void updateArea() {
+    double lenA = vc_math::dist(corners[0], corners[1]);
+    double lenB = vc_math::dist(corners[1], corners[2]);
+    double lenC = vc_math::dist(corners[2], corners[3]);
+    double lenD = vc_math::dist(corners[3], corners[0]);
+    double angleAD = std::acos(vc_math::dot(corners[1], corners[0], corners[0], corners[3])/lenA/lenD);
+    double angleBC = std::acos(vc_math::dot(corners[1], corners[2], corners[2], corners[3])/lenB/lenC);
+    area = 0.5*(lenA*lenD*std::sin(angleAD) + lenB*lenC*std::sin(angleBC));
+  };
+
+  Quad() : corners(4, cv::Point2d(0, 0)), area(-1.0) {};
 };
 
 
@@ -44,9 +56,9 @@ std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
     double houghMinSegmentLength, double houghMaxSegmentGap);
 
 
-std::list<Quad> detectQuads(const std::vector<cv::Vec4i> segments,
+std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle = 30.0*vc_math::degree,
-    double endptThresh = 4.0);
+    double minEndptDist = 4.0);
 
 
 inline void drawQuads(cv::Mat img, std::list<Quad> quads) {
@@ -65,6 +77,10 @@ inline void drawQuads(cv::Mat img, std::list<Quad> quads) {
 
 cv::Mat extractQuadImg(cv::Mat img, Quad& quad);
 
+
+void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
+                double low_thresh, double high_thresh,
+                int aperture_size, cv::Mat& dx, cv::Mat& dy, bool L2gradient = false );
 
 class FTag2Detector : public BaseCV {
 public:
