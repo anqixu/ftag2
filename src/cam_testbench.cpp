@@ -30,6 +30,44 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
+FILE* gnuplotPipe;
+
+
+void plot(FILE* gnuplotPipe, const std::vector<cv::Point2d>& pts) {
+  FILE* temp = fopen("/tmp/gnuplot.data", "w");
+  for (const cv::Point2d& pt: pts) {
+    std::fprintf(temp, "%lf %lf\n", pt.x, pt.y);
+  }
+  fclose(temp);
+
+  std::fprintf(gnuplotPipe, "clear \n");
+  std::fprintf(gnuplotPipe, "set autoscale \n");
+  std::fprintf(gnuplotPipe, "set xtic auto \n");
+  std::fprintf(gnuplotPipe, "set ytic auto \n");
+  std::fprintf(gnuplotPipe, "plot '/tmp/gnuplot.data' \n");
+  std::fprintf(gnuplotPipe, "unset label\n");
+  std::fflush(gnuplotPipe);
+};
+
+
+void bar(FILE* gnuplotPipe, const std::vector<double>& pts) {
+  FILE* temp = fopen("/tmp/gnuplot.data", "w");
+  unsigned int i;
+  for (i = 0; i < pts.size(); i++) {
+    std::fprintf(temp, "%d %lf\n", i, pts[i]);
+  }
+  fclose(temp);
+
+  std::fprintf(gnuplotPipe, "clear \n");
+  std::fprintf(gnuplotPipe, "set autoscale \n");
+  std::fprintf(gnuplotPipe, "set xtic auto \n");
+  std::fprintf(gnuplotPipe, "set ytic auto \n");
+  std::fprintf(gnuplotPipe, "plot '/tmp/gnuplot.data' with impulses \n");
+  std::fprintf(gnuplotPipe, "unset label\n");
+  std::fflush(gnuplotPipe);
+};
+
+
 // DEBUG fn
 cv::Mat genSquareImg(double deg) {
   int width = 300;
@@ -87,6 +125,7 @@ public:
     params.lineAngleMargin = 20.0; // *degree
     params.lineMinEdgelsCC = 50;
     params.lineMinEdgelsSeg = 15;
+    params.quadMinWidth = 10.0;
     params.quadMinAngleIntercept = 30.0;
     params.quadMinEndptDist = 4.0;
     params.quadMaxStripAvgDiff = 15.0;
@@ -100,6 +139,7 @@ public:
     GET_PARAM(lineAngleMargin);
     GET_PARAM(lineMinEdgelsCC);
     GET_PARAM(lineMinEdgelsSeg);
+    GET_PARAM(quadMinWidth);
     GET_PARAM(quadMinAngleIntercept);
     GET_PARAM(quadMinEndptDist);
     GET_PARAM(quadMaxStripAvgDiff);
@@ -268,8 +308,16 @@ public:
             largestQuadIt = quadIt;
           }
         }
-        cv::Mat tag = extractQuadImg(sourceImgRot, *largestQuadIt, true);
-        trimFTag2Quad(tag, params.quadMaxStripAvgDiff);
+        cv::Mat tag = extractQuadImg(sourceImgRot, *largestQuadIt, params.quadMinWidth, true);
+        if (!tag.empty()) {
+          std::vector<double> pts;
+          unsigned char* tagData = tag.ptr<unsigned char>(tag.rows/2);
+          for (int i = 0; i < tag.cols; i++) { pts.push_back((double) *tagData); tagData++; }
+          bar(gnuplotPipe, pts);
+          std::cout << "plotted " << pts.size() << " pts" << std::endl;
+
+          trimFTag2Quad(tag, params.quadMaxStripAvgDiff);
+        }
       }
 
 #ifdef SAVE_IMAGES_FROM
@@ -332,6 +380,8 @@ protected:
 
 
 int main(int argc, char** argv) {
+  gnuplotPipe = popen("gnuplot -persistent", "w");
+
   ros::init(argc, argv, "cam_testbench");
 
   try {
@@ -344,6 +394,8 @@ int main(int argc, char** argv) {
   } catch (std::system_error& err) {
     cout << "SYSTEM ERROR: " << err.what() << endl;
   }
+
+  pclose(gnuplotPipe);
 
   return EXIT_SUCCESS;
 };

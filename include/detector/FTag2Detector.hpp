@@ -58,7 +58,7 @@ std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
 
 std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle = 30.0*vc_math::degree,
-    double minEndptDist = 4.0);
+    double minEndptDist = 6.0);
 
 
 inline void drawQuads(cv::Mat img, std::list<Quad> quads) {
@@ -78,14 +78,14 @@ inline void drawQuads(cv::Mat img, std::list<Quad> quads) {
 /**
  * oversample: extract approximately 1 pixel more from each of the sides
  */
-cv::Mat extractQuadImg(cv::Mat img, Quad& quad, bool oversample = false);
+cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth = 8, bool oversample = true);
 
 
 /**
  * Removes columns and/or rows of white pixels from borders of an extracted
  * tag image, caused by rounding accuracy / oversampling in extractQuadImg
  */
-cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff);
+cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff = 12.0);
 
 
 void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,

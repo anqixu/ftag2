@@ -376,12 +376,14 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
 };
 
 
-cv::Mat extractQuadImg(cv::Mat img, Quad& quad, bool oversample) {
+cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth, bool oversample) {
   int shortestEdgeWidth = floor(
       std::min(std::min(vc_math::dist(quad.corners[0], quad.corners[1]),
                         vc_math::dist(quad.corners[1], quad.corners[2])),
                std::min(vc_math::dist(quad.corners[2], quad.corners[3]),
                         vc_math::dist(quad.corners[3], quad.corners[0]))));
+
+  if (shortestEdgeWidth < minWidth) return cv::Mat();
 
   cv::Mat quadImg;
   std::vector<cv::Point2f> rectifiedCorners;
@@ -451,6 +453,8 @@ cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff) {
     trim = true;
   }
 
+  std::cout << "trimming " << tag.rows << " x " << tag.cols << " matrix into subrange (" << trimTop << ":" << (numRows - trimBottom) << ". " << trimLeft << ":" << (numCols - trimRight) << ")" << std::endl; // TODO: 0 remove
+
   cv::Mat trimmedTag;
   if (trim) {
     trimmedTag = tag(cv::Range(trimTop, numRows - trimBottom),
@@ -458,6 +462,8 @@ cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff) {
   } else {
     trimmedTag = tag;
   }
+
+  std::cout << "trimmed" << std::endl;
 
   cv::imshow("quad_1", tagGray);
   cv::imshow("quad_1_trimmed", trimmedTag);
