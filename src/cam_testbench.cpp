@@ -7,6 +7,7 @@
 #include <cassert>
 #include <list>
 #include <vector>
+#include <thread>
 
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
@@ -27,7 +28,6 @@ using namespace vc_math;
 
 
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
-
 
 
 // DEBUG fn
@@ -139,6 +139,8 @@ public:
     namedWindow("quads", CV_GUI_EXPANDED);
 
     alive = true;
+
+    spinThread = std::thread(&FTag2Testbench::spin, this);
   };
 
 
@@ -146,6 +148,12 @@ public:
     alive = false;
     free(dstFilename);
     dstFilename = NULL;
+    //spinThread.join(); // No need to double-call, since FTag2Testbench::join() is calling it
+  };
+
+
+  void join() {
+    spinThread.join();
   };
 
 
@@ -298,6 +306,8 @@ public:
 
 
 protected:
+  std::thread spinThread;
+
   ros::NodeHandle local_nh;
 
   ReconfigureServer* dynCfgServer;
@@ -326,11 +336,13 @@ int main(int argc, char** argv) {
 
   try {
     FTag2Testbench testbench;
-    testbench.spin();
+    testbench.join();
   } catch (const cv::Exception& err) {
     cout << "CV EXCEPTION: " << err.what() << endl;
   } catch (const std::string& err) {
     cout << "ERROR: " << err << endl;
+  } catch (std::system_error& err) {
+    cout << "SYSTEM ERROR: " << err.what() << endl;
   }
 
   return EXIT_SUCCESS;

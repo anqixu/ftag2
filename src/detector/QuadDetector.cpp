@@ -386,6 +386,7 @@ cv::Mat extractQuadImg(cv::Mat img, Quad& quad, bool oversample) {
   cv::Mat quadImg;
   std::vector<cv::Point2f> rectifiedCorners;
   if (oversample) {
+    shortestEdgeWidth += 2;
     rectifiedCorners.push_back(cv::Point2f(1, 1));
     rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth-1, 1));
     rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth-1, shortestEdgeWidth-1));
