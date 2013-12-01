@@ -1,7 +1,7 @@
 #include "detector/FTag2Detector.hpp"
+#include "decoder/FTag2Decoder.hpp"
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <iostream>
 #include <chrono>
 #include <algorithm>
 #include <cassert>
@@ -15,10 +15,11 @@
 
 #include "common/Profiler.hpp"
 #include "common/VectorAndCircularMath.hpp"
+#include "common/GNUPlot.hpp"
 
 
-//#define SAVE_IMAGES_FROM overlaidImg
-#define ENABLE_PROFILER
+//#define SAVE_IMAGES_FROM sourceImgRot
+//#define ENABLE_PROFILER
 
 
 using namespace std;
@@ -28,44 +29,6 @@ using namespace vc_math;
 
 
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
-
-
-FILE* gnuplotPipe;
-
-
-void plot(FILE* gnuplotPipe, const std::vector<cv::Point2d>& pts) {
-  FILE* temp = fopen("/tmp/gnuplot.data", "w");
-  for (const cv::Point2d& pt: pts) {
-    std::fprintf(temp, "%lf %lf\n", pt.x, pt.y);
-  }
-  fclose(temp);
-
-  std::fprintf(gnuplotPipe, "clear \n");
-  std::fprintf(gnuplotPipe, "set autoscale \n");
-  std::fprintf(gnuplotPipe, "set xtic auto \n");
-  std::fprintf(gnuplotPipe, "set ytic auto \n");
-  std::fprintf(gnuplotPipe, "plot '/tmp/gnuplot.data' \n");
-  std::fprintf(gnuplotPipe, "unset label\n");
-  std::fflush(gnuplotPipe);
-};
-
-
-void bar(FILE* gnuplotPipe, const std::vector<double>& pts) {
-  FILE* temp = fopen("/tmp/gnuplot.data", "w");
-  unsigned int i;
-  for (i = 0; i < pts.size(); i++) {
-    std::fprintf(temp, "%d %lf\n", i, pts[i]);
-  }
-  fclose(temp);
-
-  std::fprintf(gnuplotPipe, "clear \n");
-  std::fprintf(gnuplotPipe, "set autoscale \n");
-  std::fprintf(gnuplotPipe, "set xtic auto \n");
-  std::fprintf(gnuplotPipe, "set ytic auto \n");
-  std::fprintf(gnuplotPipe, "plot '/tmp/gnuplot.data' with impulses \n");
-  std::fprintf(gnuplotPipe, "unset label\n");
-  std::fflush(gnuplotPipe);
-};
 
 
 // DEBUG fn
@@ -147,11 +110,12 @@ public:
     #undef GET_PARAM
     dynCfgSyncReq = true;
     local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
+    local_nh.param("save_img_dir", saveImgDir, saveImgDir);
 
     std::string source = "";
     local_nh.param("source", source, source);
     if (source.length() <= 0) {
-      cam.open(0);
+      cam.open(-1);
       if (!cam.isOpened()) {
         throw std::string("OpenCV did not detect any cameras.");
       }
@@ -208,147 +172,187 @@ public:
     cv::Mat rotMat;
     char c;
 
-    while (ros::ok() && alive) {
-#ifdef ENABLE_PROFILER
-      rateProf.try_toc();
-      rateProf.tic();
-      durationProf.tic();
-#endif
+    try {
+      while (ros::ok() && alive) {
+  #ifdef ENABLE_PROFILER
+        rateProf.try_toc();
+        rateProf.tic();
+        durationProf.tic();
+  #endif
 
-      // Update params back to dyncfg
-      if (dynCfgSyncReq) {
-        if (dynCfgMutex.try_lock()) { // Make sure that dynamic reconfigure server or config callback is not active
-          dynCfgMutex.unlock();
-          dynCfgServer->updateConfig(params);
-          ROS_INFO_STREAM("Updated params");
-          dynCfgSyncReq = false;
-        }
-      }
-
-      // Fetch image
-      if (cam.isOpened()) {
-        cam >> sourceImg;
-      }
-
-      // Rotate image and convert to grayscale
-      sourceCenter = cv::Point2d(sourceImg.cols/2.0, sourceImg.rows/2.0);
-      rotMat = cv::getRotationMatrix2D(sourceCenter, params.imRotateDeg, 1.0);
-      cv::warpAffine(sourceImg, sourceImgRot, rotMat, sourceImg.size());
-      cv::cvtColor(sourceImgRot, grayImg, CV_RGB2GRAY);
-
-      // Extract line segments
-      /*
-      // OpenCV probabilistic Hough Transform implementation
-      // WARNING: often misses obvious segments in image; not exactly sure which params are responsible
-      int threshold = 50, linbinratio = 100, angbinratio = 100;
-      cv::Mat edgeImg, linesImg;
-      std::vector<cv::Vec4i> lines;
-
-      // Detect lines
-      cv::blur(grayImg, edgelImg, cv::Size(params.sobelBlurWidth, params.sobelBlurWidth));
-      cv::Canny(edgelImg, edgelImg, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
-      cv::HoughLinesP(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold, 10*1.5, 10*1.5/3);
-
-      overlaidImg = sourceImg.clone();
-      for (unsigned int i = 0; i < lines.size(); i++) {
-        cv::line(overlaidImg, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2, 8);
-      }
-      imshow("segments", overlaidImg);
-      */
-
-      /*
-      // Our improved Standard Hough Transform implementation
-      // WARNING: since the Hough space unevenly samples lines with different angles at larger radii from
-      //          the offset point, this implementation often obvious clear segments in image; also it is quite slow
-      double rho_res = params.houghRhoRes;
-      double theta_res = params.houghThetaRes*degree;
-      std::list<cv::Vec4i> lineSegments = detectLineSegmentsHough(grayImg,
-          params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
-          rho_res, theta_res,
-          params.houghEdgelThetaMargin*degree,
-          params.houghBlurRhoWidth*rho_res, params.houghBlurThetaWidth*theta_res,
-          params.houghNMSRhoWidth*rho_res, params.houghNMSThetaWidth*theta_res,
-          params.houghMinAccumValue,
-          params.houghMaxDistToLine,
-          params.houghMinSegmentLength, params.houghMaxSegmentGap);
-
-      overlaidImg = sourceImgRot.clone();
-      drawLineSegments(overlaidImg, lineSegments);
-      imshow("segments", overlaidImg);
-      */
-
-      // Optimized segment detector using angle-bounded connected edgel components
-      lineSegP.tic();
-      std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
-          params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
-          params.lineMinEdgelsCC, params.lineAngleMargin*degree,
-          params.lineMinEdgelsSeg);
-      lineSegP.toc();
-      sourceImgRot.copyTo(overlaidImg);
-      drawLineSegments(overlaidImg, segments);
-      cv::imshow("segments", overlaidImg);
-
-      // Detect quads
-      quadP.tic();
-      std::list<Quad> quads = detectQuads(segments,
-          params.quadMinAngleIntercept*degree,
-          params.quadMinEndptDist);
-      quadP.toc();
-      cv::Mat quadsImg = sourceImgRot.clone();
-      //drawLineSegments(quadsImg, segments);
-      drawQuads(quadsImg, quads);
-      cv::imshow("quads", quadsImg);
-
-      if (!quads.empty()) {
-        std::list<Quad>::iterator quadIt, largestQuadIt;
-        double largestQuadArea = -1;
-        for (quadIt = quads.begin(); quadIt != quads.end(); quadIt++) {
-          if (quadIt->area > largestQuadArea) {
-            largestQuadArea = quadIt->area;
-            largestQuadIt = quadIt;
+        // Update params back to dyncfg
+        if (dynCfgSyncReq) {
+          if (dynCfgMutex.try_lock()) { // Make sure that dynamic reconfigure server or config callback is not active
+            dynCfgMutex.unlock();
+            dynCfgServer->updateConfig(params);
+            ROS_INFO_STREAM("Updated params");
+            dynCfgSyncReq = false;
           }
         }
-        cv::Mat tag = extractQuadImg(sourceImgRot, *largestQuadIt, params.quadMinWidth, true);
-        if (!tag.empty()) {
-          std::vector<double> pts;
-          unsigned char* tagData = tag.ptr<unsigned char>(tag.rows/2);
-          for (int i = 0; i < tag.cols; i++) { pts.push_back((double) *tagData); tagData++; }
-          bar(gnuplotPipe, pts);
-          std::cout << "plotted " << pts.size() << " pts" << std::endl;
 
-          trimFTag2Quad(tag, params.quadMaxStripAvgDiff);
+        // Fetch image
+        if (cam.isOpened()) {
+          cam >> sourceImg;
+        }
+
+        // Rotate image and convert to grayscale
+        sourceCenter = cv::Point2d(sourceImg.cols/2.0, sourceImg.rows/2.0);
+        rotMat = cv::getRotationMatrix2D(sourceCenter, params.imRotateDeg, 1.0);
+        cv::warpAffine(sourceImg, sourceImgRot, rotMat, sourceImg.size());
+        cv::cvtColor(sourceImgRot, grayImg, CV_RGB2GRAY);
+
+        // Extract line segments
+        /*
+        // OpenCV probabilistic Hough Transform implementation
+        // WARNING: often misses obvious segments in image; not exactly sure which params are responsible
+        int threshold = 50, linbinratio = 100, angbinratio = 100;
+        cv::Mat edgeImg, linesImg;
+        std::vector<cv::Vec4i> lines;
+
+        // Detect lines
+        cv::blur(grayImg, edgelImg, cv::Size(params.sobelBlurWidth, params.sobelBlurWidth));
+        cv::Canny(edgelImg, edgelImg, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
+        cv::HoughLinesP(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold, 10*1.5, 10*1.5/3);
+
+        overlaidImg = sourceImg.clone();
+        for (unsigned int i = 0; i < lines.size(); i++) {
+          cv::line(overlaidImg, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2, 8);
+        }
+        imshow("segments", overlaidImg);
+        */
+
+        /*
+        // Our improved Standard Hough Transform implementation
+        // WARNING: since the Hough space unevenly samples lines with different angles at larger radii from
+        //          the offset point, this implementation often obvious clear segments in image; also it is quite slow
+        double rho_res = params.houghRhoRes;
+        double theta_res = params.houghThetaRes*degree;
+        std::list<cv::Vec4i> lineSegments = detectLineSegmentsHough(grayImg,
+            params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
+            rho_res, theta_res,
+            params.houghEdgelThetaMargin*degree,
+            params.houghBlurRhoWidth*rho_res, params.houghBlurThetaWidth*theta_res,
+            params.houghNMSRhoWidth*rho_res, params.houghNMSThetaWidth*theta_res,
+            params.houghMinAccumValue,
+            params.houghMaxDistToLine,
+            params.houghMinSegmentLength, params.houghMaxSegmentGap);
+
+        overlaidImg = sourceImgRot.clone();
+        drawLineSegments(overlaidImg, lineSegments);
+        imshow("segments", overlaidImg);
+        */
+
+        // Optimized segment detector using angle-bounded connected edgel components
+        lineSegP.tic();
+        std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
+            params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
+            params.lineMinEdgelsCC, params.lineAngleMargin*degree,
+            params.lineMinEdgelsSeg);
+        lineSegP.toc();
+        sourceImgRot.copyTo(overlaidImg);
+        drawLineSegments(overlaidImg, segments);
+        cv::imshow("segments", overlaidImg);
+
+        // Detect quads
+        quadP.tic();
+        std::list<Quad> quads = detectQuads(segments,
+            params.quadMinAngleIntercept*degree,
+            params.quadMinEndptDist);
+        quadP.toc();
+        cv::Mat quadsImg = sourceImgRot.clone();
+        //drawLineSegments(quadsImg, segments);
+        drawQuads(quadsImg, quads);
+        cv::imshow("quads", quadsImg);
+
+        if (!quads.empty()) {
+          std::list<Quad>::iterator quadIt, largestQuadIt;
+          double largestQuadArea = -1;
+          for (quadIt = quads.begin(); quadIt != quads.end(); quadIt++) {
+            if (quadIt->area > largestQuadArea) {
+              largestQuadArea = quadIt->area;
+              largestQuadIt = quadIt;
+            }
+          }
+          cv::Mat tagImg = extractQuadImg(sourceImgRot, *largestQuadIt, params.quadMinWidth);
+          if (!tagImg.empty()) {
+            cv::Mat croppedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
+            croppedTagImg = cropFTag2Border(croppedTagImg);
+
+            FTag2 tag = FTag2Decoder::decodeTag(croppedTagImg);
+
+            /*
+            // Plot spatial signal
+            std::vector<double> pts;
+            for (int i = 0; i < tag.horzRays.cols; i++) { pts.push_back(tag.horzRays.at<double>(0, i)); }
+            gp::bar(pts, 0, "First Ray");
+
+            // Plot magnitude spectrum
+            std::vector<cv::Point2d> spec;
+            for (int i = 1; i < std::min(magSpec.cols, 9); i++) { spec.push_back(cv::Point2d(i, magSpec.at<double>(0, i))); }
+            gp::plot(spec, 1, "Magnitude Spectrum");
+
+            // Plot phase spectrum
+            spec.clear();
+            for (int i = 1; i < std::min(phaseSpec.cols, 9); i++) { spec.push_back(cv::Point2d(i, vc_math::wrapAngle(phaseSpec.at<double>(0, i), 360.0))); }
+            gp::plot(spec, 2, "Phase Spectrum");
+            */
+
+            if (tag.hasSignature) {
+              cv::Mat tagImgRot, croppedTagImgRot;
+              BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
+              BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
+              cv::imshow("quad_1", tagImgRot);
+              cv::imshow("quad_1_trimmed", croppedTagImgRot);
+              std::cout << "=====> RECOGNIZED TAG: " << tag.ID << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
+              //std::cout << "psk = ..." << std::endl << cv::format(tag.PSK, "matlab") << std::endl << std::endl;
+            } else {
+              cv::imshow("quad_1", tagImg);
+              cv::imshow("quad_1_trimmed", croppedTagImg);
+              std::cout << std::endl << "==========" << std::endl;
+              std::cout << "hmags = ..." << std::endl << cv::format(tag.horzMags, "matlab") << std::endl << std::endl;
+              std::cout << "vmags = ..." << std::endl << cv::format(tag.vertMags, "matlab") << std::endl << std::endl;
+              std::cout << "hpsk = ..." << std::endl << cv::format(tag.horzPhases, "matlab") << std::endl << std::endl;
+              std::cout << "vpsk = ..." << std::endl << cv::format(tag.vertPhases, "matlab") << std::endl << std::endl;
+            }
+          }
+        }
+
+  #ifdef SAVE_IMAGES_FROM
+        if (saveImgDir.size() > 0) {
+          sprintf(dstFilename, "%s/img%05d.jpg", saveImgDir.c_str(), dstID++);
+        } else {
+          sprintf(dstFilename, "img%05d.jpg", dstID++);
+        }
+        imwrite(dstFilename, SAVE_IMAGES_FROM);
+        ROS_INFO_STREAM("Wrote to " << dstFilename);
+  #endif
+
+  #ifdef ENABLE_PROFILER
+        durationProf.toc();
+
+        ros::Time currTime = ros::Time::now();
+        ros::Duration td = currTime - latestProfTime;
+        if (td.toSec() > 1.0) {
+
+          cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
+          cout << "detectQuads: " << quadP.getStatsString() << endl;
+
+          cout << "Pipeline Duration: " << durationProf.getStatsString() << endl;
+          cout << "Pipeline Rate: " << rateProf.getStatsString() << endl;
+          latestProfTime = currTime;
+        }
+  #endif
+
+        // Spin ROS and HighGui
+        if (!alive) { break; }
+        ros::spinOnce();
+        c = waitKey(waitKeyDelay);
+        if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
+          alive = false;
         }
       }
-
-#ifdef SAVE_IMAGES_FROM
-      sprintf(dstFilename, "img%05d.jpg", dstID++);
-      imwrite(dstFilename, SAVE_IMAGES_FROM);
-      ROS_INFO_STREAM("Wrote to " << dstFilename);
-#endif
-
-#ifdef ENABLE_PROFILER
-      durationProf.toc();
-
-      ros::Time currTime = ros::Time::now();
-      ros::Duration td = currTime - latestProfTime;
-      if (td.toSec() > 1.0) {
-
-        cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
-        cout << "detectQuads: " << quadP.getStatsString() << endl;
-
-        cout << "Pipeline Duration: " << durationProf.getStatsString() << endl;
-        cout << "Pipeline Rate: " << rateProf.getStatsString() << endl;
-        latestProfTime = currTime;
-      }
-#endif
-
-      // Spin ROS and HighGui
-      if (!alive) { break; }
-      ros::spinOnce();
-      c = waitKey(waitKeyDelay);
-      if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
-        alive = false;
-      }
+    } catch (const cv::Exception& err) {
+      std::cerr << "CV Exception: " << err.what() << std::endl;
     }
   };
 
@@ -376,12 +380,11 @@ protected:
   ros::Time latestProfTime;
 
   int waitKeyDelay;
+  std::string saveImgDir;
 };
 
 
 int main(int argc, char** argv) {
-  gnuplotPipe = popen("gnuplot -persistent", "w");
-
   ros::init(argc, argv, "cam_testbench");
 
   try {
@@ -394,8 +397,6 @@ int main(int argc, char** argv) {
   } catch (std::system_error& err) {
     cout << "SYSTEM ERROR: " << err.what() << endl;
   }
-
-  pclose(gnuplotPipe);
 
   return EXIT_SUCCESS;
 };

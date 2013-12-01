@@ -370,20 +370,21 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
   std::cout << "segQuads = ..." << std::endl << cv::format(quadsM, "matlab") << ";" << std::endl << std::endl;
   */
 
-  // TODO: 1 Determine possibly-obstructed quads by 5-multiplying and finding co-linear end-segments
+  // TODO: 1 determine corner-obstructed quads by finding 4-connected non-cyclic path, where the intersection of the 2 end segments form a convex quad
+  // TODO: 1 Determine side-obstructed quads by finding 5-connected non-cyclic path, with co-linear end segments
 
   return quads;
 };
 
 
-cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth, bool oversample) {
+cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth, bool oversample, bool grayscale) {
   int shortestEdgeWidth = floor(
       std::min(std::min(vc_math::dist(quad.corners[0], quad.corners[1]),
                         vc_math::dist(quad.corners[1], quad.corners[2])),
                std::min(vc_math::dist(quad.corners[2], quad.corners[3]),
                         vc_math::dist(quad.corners[3], quad.corners[0]))));
 
-  if (shortestEdgeWidth < minWidth) return cv::Mat();
+  if (shortestEdgeWidth < int(minWidth)) return cv::Mat();
 
   cv::Mat quadImg;
   std::vector<cv::Point2f> rectifiedCorners;
@@ -402,6 +403,11 @@ cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth, bool over
   cv::Mat T = cv::getPerspectiveTransform(quad.corners, rectifiedCorners);
   cv::warpPerspective(img, quadImg, T, cv::Size(shortestEdgeWidth, shortestEdgeWidth),
       cv::INTER_LINEAR);
+
+  if (grayscale && quadImg.channels() != 1) {
+    cv::cvtColor(quadImg, quadImg, CV_RGB2GRAY);
+  }
+
   return quadImg;
 };
 
@@ -453,8 +459,6 @@ cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff) {
     trim = true;
   }
 
-  std::cout << "trimming " << tag.rows << " x " << tag.cols << " matrix into subrange (" << trimTop << ":" << (numRows - trimBottom) << ". " << trimLeft << ":" << (numCols - trimRight) << ")" << std::endl; // TODO: 0 remove
-
   cv::Mat trimmedTag;
   if (trim) {
     trimmedTag = tag(cv::Range(trimTop, numRows - trimBottom),
@@ -463,82 +467,39 @@ cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff) {
     trimmedTag = tag;
   }
 
-  std::cout << "trimmed" << std::endl;
-
-  cv::imshow("quad_1", tagGray);
-  cv::imshow("quad_1_trimmed", trimmedTag);
-
   return trimmedTag;
 };
 
 
-#ifdef DAVIDS_CODE
-void extractRays(...) {
-cv::Mat horiz_rays;
-cv::Mat vert_rays;
-int nRaysPerRow = 3;
-for( unsigned int i=0; i<quads.size(); i++ )
-{
-  cv::Mat trimmedQuad = quads[i];
-  cv::imshow("QuadNoBorder", trimmedQuad);
-
-  vert_rays = extract_n_Vert_Rays_Per_Col(trimmedQuad,nRaysPerRow);
-  cv::Mat plot8U = cv::Mat::zeros(vert_rays.rows,vert_rays.cols, CV_8U);
-  vert_rays.convertTo(plot8U,CV_8U);
-  cv::imshow("V1", plot8U);
-  cv::waitKey();
-  cv::Mat plot = cv::Mat::zeros(255, vert_rays.cols, CV_32S);
-  for( int j = 0; j<vert_rays.cols-1; j++ )
-  {
-    plot.at<int>(255-vert_rays.at<int>(0,j),j) = 255;
-  }
-  plot.convertTo(plot8U,CV_8U);
-  cv::imshow("V2", plot8U);
-
-  horiz_rays = extract_n_Horiz_Rays_Per_Row(trimmedQuad,nRaysPerRow);
-  plot8U = cv::Mat::zeros(horiz_rays.rows,vert_rays.cols, CV_8U);
-  horiz_rays.convertTo(plot8U,CV_8U);
-  cv::imshow("H1", plot8U);
-  cv::waitKey();
-  plot = cv::Mat::zeros(255, horiz_rays.cols, CV_32S);
-  for( int j = 0; j<horiz_rays.cols-1; j++ )
-  {
-    //cout << (int)vert_rays.at<int>(0,j) << ", ";
-    plot.at<int>(255-horiz_rays.at<int>(0,j),j) = 255;
-  }
-  plot.convertTo(plot8U,CV_8U);
-  cv::imshow("H2", plot8U);
-  cv::waitKey();
-}
+cv::Mat cropFTag2Border(cv::Mat tag, unsigned int numRays, unsigned int borderBlocks) {
+  const unsigned int numBlocks = numRays + 2*borderBlocks;
+  double hBorder = double(tag.cols)/numBlocks*borderBlocks;
+  double vBorder = double(tag.rows)/numBlocks*borderBlocks;
+  cv::Mat croppedTag = tag(cv::Range(std::round(vBorder), std::round(tag.rows - vBorder)),
+      cv::Range(std::round(hBorder), std::round(tag.cols - hBorder)));
+  return croppedTag;
+};
 
 
-cv::Mat extract_n_Horiz_Rays_Per_Row(Mat quad, int n)
-{
-  float rowHeight = quad.rows/6.0;
-  cv::Mat rays_added = Mat::zeros(6, quad.cols, CV_8U);
-  for ( unsigned int i=0; i<6; i++ )
-  {
-    Mat addedRow = rays_added.row(i);
-    for ( int j=0; j<n; j++ )
-    {
-      int row = (rowHeight)*i + rowHeight/(2*n) + j*rowHeight/n;
-      Mat newRow = quad.row(row);
-      addedRow = newRow/n + addedRow; // I'm currently averaging to make displaying
-                      // easier but the division by n can be removed
+cv::Mat extractHorzRays(cv::Mat croppedTag, unsigned int numSamples,
+    unsigned int numRays, bool markRays) {
+  double rowHeight = double(croppedTag.rows)/numRays;
+  cv::Mat rays = cv::Mat::zeros(numRays, croppedTag.cols, CV_64FC1);
+  cv::Mat tagRayF;
+  unsigned int i, j;
+  int quadRow;
+  for (i = 0; i < numRays; i++) {
+    cv::Mat raysRow = rays.row(i);
+    for (j = 0; j < numSamples; j++) {
+      quadRow = rowHeight * (i + double(j + 1)/(numSamples + 1));
+      cv::Mat tagRay = croppedTag.row(quadRow);
+      tagRay.convertTo(tagRayF, CV_64FC1);
+      raysRow += tagRayF;
+      if (markRays) { tagRay.setTo(255); }
     }
   }
-//  cv::imshow("HorRAYS", rays_added);
-  Mat raysCV32 ;
-  rays_added.convertTo(raysCV32,CV_32S);
-  return raysCV32;
-}
-
-cv::Mat extract_n_Vert_Rays_Per_Col(cv::Mat quad, int n)
-{
-  Mat q = quad.t();
-  Mat raysCV32 = extract_n_Horiz_Rays_Per_Row(q,n);
-  return raysCV32;
-}
-
-
-#endif
+  if (numSamples > 1) {
+    rays /= numSamples;
+  }
+  return rays;
+};

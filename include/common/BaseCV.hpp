@@ -379,6 +379,11 @@ public:
   static void drawArrow(cv::Mat& bgrBuffer, double headingDeg,
       cv::Scalar edgeColor, cv::Scalar fillColor, double alphaRatio = 1.0);
 
+  /**
+   * Rotates image (cv::Mat) counter-clockwise by 90*K deg (via deep copy)
+   */
+  static void rotate90(const cv::Mat& src, cv::Mat& dst, int K);
+
 
 #ifdef SOLVE_LINE_RANSAC_PROFILE
   static std::vector<unsigned int> ransac_iters;

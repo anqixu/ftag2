@@ -78,7 +78,8 @@ inline void drawQuads(cv::Mat img, std::list<Quad> quads) {
 /**
  * oversample: extract approximately 1 pixel more from each of the sides
  */
-cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth = 8, bool oversample = true);
+cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth = 8,
+    bool oversample = true, bool grayscale = true);
 
 
 /**
@@ -86,6 +87,19 @@ cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth = 8, bool 
  * tag image, caused by rounding accuracy / oversampling in extractQuadImg
  */
 cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff = 12.0);
+
+
+cv::Mat cropFTag2Border(cv::Mat tag, unsigned int numRays = 6, unsigned int borderBlocks = 1);
+
+
+cv::Mat extractHorzRays(cv::Mat croppedTag, unsigned int numSamples = 1,
+    unsigned int numRays = 6, bool markRays = false);
+
+
+inline cv::Mat extractVertRays(cv::Mat croppedTag, unsigned int numSamples = 1,
+    unsigned int numRays = 6, bool markRays = false) {
+  return extractHorzRays(croppedTag.t(), numSamples, numRays, markRays);
+};
 
 
 void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,

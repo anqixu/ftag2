@@ -3,10 +3,11 @@
   <node pkg="ftag2" type="cam_testbench" name="cam_testbench" output="screen">
     <param name="source" type="str" value="/home/thalassa/anqixu/Desktop/test2.png" />
     <param name="source" type="str" value="/home/thalassa/anqixu/Desktop/source.png" />
-    <param name="source" type="str" value="/localdata/anqixu/AQUA_TAG_BAGS/frame0000.jpg" />
+    <param name="source" type="str" value="/localdata/anqixu/AQUA_TAG_BAGS/contrast.jpg" />
     <param name="source" type="str" value="" />
 
     <param name="waitkey_delay" value="30" />
+    <param name="save_img_dir" value="/localdata" />
     
     <!-- The following are recommended parameter values line detector using connected components -->
     <param name="sobelThreshHigh" value="100" />

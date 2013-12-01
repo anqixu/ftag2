@@ -1314,3 +1314,19 @@ void BaseCV::drawArrow(cv::Mat& bgrBuffer, double headingDeg,
     addWeighted(canvas, alphaRatio, bgrBuffer, (1.0 - alphaRatio), 0, bgrBuffer);
   }
 };
+
+
+void BaseCV::rotate90(const cv::Mat& src, cv::Mat& dst, int K) {
+  K = K % 4;
+  if (K == 0) {
+    src.copyTo(dst);
+  } else if (K == 1) { // Rotate 90' counter-clockwise
+    dst = src.t();
+    cv::flip(dst, dst, 0);
+  } else if (K == 2) { // Rotate 180'
+    cv::flip(src, dst, -1);
+  } else if (K == 3) { // Rotate 90' clockwise
+    cv::flip(src, dst, 0);
+    dst = dst.t();
+  }
+};
