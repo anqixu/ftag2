@@ -401,6 +401,8 @@ cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth, bool over
     rectifiedCorners.push_back(cv::Point2f(0, shortestEdgeWidth));
   }
   cv::Mat T = cv::getPerspectiveTransform(quad.corners, rectifiedCorners);
+  std::cout << "Q. corners: " << quad.corners << " Rect. corners" << rectifiedCorners << std::endl;
+  //cv::waitKey();
   cv::warpPerspective(img, quadImg, T, cv::Size(shortestEdgeWidth, shortestEdgeWidth),
       cv::INTER_LINEAR);
 

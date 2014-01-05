@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   sensor_msgs
+  tf
 )
 
 find_package(Boost REQUIRED COMPONENTS date_time-mt system-mt thread-mt serialization-mt program_options-mt)
@@ -57,7 +58,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${FTAG2_LIB_NAME}
-  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport std_msgs geometry_msgs sensor_msgs
+  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport std_msgs geometry_msgs sensor_msgs tf
 #  DEPENDS system_lib
 )
 
@@ -99,9 +100,16 @@ target_link_libraries(cam_testbench
   ${FTAG2_LIB_NAME}
   ${OpenCV_LIBRARIES}
   ${catkin_LIBRARIES}
+  yaml-cpp
 )
 add_dependencies(cam_testbench ${PROJECT_NAME}_gencfg)
 
+#add_executable(pnpsolve src/pnpsolve.cpp)
+#target_link_libraries(pnpsolve
+#  ${FTAG2_LIB_NAME}
+#  ${OpenCV_LIBRARIES}
+#  ${catkin_LIBRARIES}
+#)
 
 #############
 ## Install ##
