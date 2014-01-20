@@ -1,5 +1,6 @@
 #include "detector/FTag2Detector.hpp"
 #include "decoder/FTag2Decoder.hpp"
+#include "tracker/ParticleFilter.hpp"
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <chrono>
@@ -134,6 +135,8 @@ public:
     geometry_msgs::PoseStamped marker;
     YAML::Emitter out;
     int frameNo;
+    VideoWriter outVideo;
+    bool recording;
 
     FTag2Testbench() :
       local_nh("~"),
@@ -223,6 +226,9 @@ public:
     out << YAML::BeginSeq;
     frameNo = 0;
 
+    outVideo.open ( "/home/dacocp/Dropbox/catkin_ws/outputVideo.avi", CV_FOURCC('D','I','V','X'), 21, cv::Size ( 300,200), true );
+    recording = false;
+
     alive = true;
 
     spinThread = std::thread(&FTag2Testbench::spin, this);
@@ -238,6 +244,7 @@ public:
     std::cout << "Here's the output YAML:\n" << out.c_str();
     fout << out.c_str();
     fout.close();
+    outVideo.release();
     //spinThread.join(); // No need to double-call, since FTag2Testbench::join() is calling it
   };
 
@@ -470,6 +477,7 @@ public:
               			  << YAML::EndSeq ;
               	  out << YAML::EndMap;
               out << YAML::EndMap;
+              recording = true;
 
             } else {
               cv::imshow("quad_1", tagImg);
@@ -481,6 +489,13 @@ public:
               std::cout << "vpsk = ..." << std::endl << cv::format(tag.vertPhases, "matlab") << std::endl << std::endl;
             }
           }
+        }
+
+        if (recording == true)
+        {
+        	cv::Mat resizedImg = quadsImg.clone();
+        	cv::resize(quadsImg,resizedImg,cv::Size(300,200));
+        	outVideo.write(resizedImg);
         }
 
   #ifdef SAVE_IMAGES_FROM
