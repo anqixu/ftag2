@@ -5,7 +5,6 @@
 #include <opencv2/core/core.hpp>
 #include <vector>
 
-#include "tracker/ParticleFilter.hpp"
 
 struct FTag2 {
   const static unsigned int MAX_NUM_FREQS;
@@ -33,8 +32,6 @@ struct FTag2 {
   cv::Mat horzPhases;
   cv::Mat vertPhases;
   cv::Mat PSK;
-
-  ParticleFilter PF;
 
   FTag2() : ID(0), hasSignature(false), imgRotDir(0) {};
 };
