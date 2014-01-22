@@ -1,6 +1,5 @@
 #include "detector/FTag2Detector.hpp"
 #include "decoder/FTag2Decoder.hpp"
-#include "tracker/ParticleFilter.hpp"
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <chrono>
@@ -18,13 +17,6 @@
 #include "common/VectorAndCircularMath.hpp"
 #include "common/GNUPlot.hpp"
 
-#include <visualization_msgs/Marker.h>
-#include "tf/LinearMath/Transform.h"
-#include <geometry_msgs/PoseStamped.h>
-#include <tf/transform_broadcaster.h>
-
-#include <fstream>
-#include "yaml-cpp/yaml.h"
 
 //#define SAVE_IMAGES_FROM sourceImgRot
 //#define ENABLE_PROFILER
@@ -37,49 +29,6 @@ using namespace vc_math;
 
 
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
-
-std::vector<cv::Point2f> Generate2DPoints( Quad quad )
-{
-	std::vector<cv::Point2f> points;
-
-	for ( unsigned int i=0 ; i<4; i++ )
-	{
-		points.push_back(quad.corners[i]);
-//		cv::circle(testImg, quad.corners[i], 5, cv::Scalar(255), 2, 8, 0);
-	}
-
-	for(unsigned int i = 0; i < points.size(); ++i)
-	{
-		std::cout << points[i] << std::endl;
-	}
-
-	return points;
-}
-
-std::vector<cv::Point3f> Generate3DPoints()
-{
-	std::vector<cv::Point3f> points;
-	float x,y,z;
-
-	x=-47.5;y=-47.5;z=0;
-	points.push_back(cv::Point3f(x,y,z));
-
-	x=47.5;y=-47.5;z=0;
-	points.push_back(cv::Point3f(x,y,z));
-
-	x=47.5;y=47.5;z=0;
-	points.push_back(cv::Point3f(x,y,z));
-
-	x=-47.5;y=47.5;z=0;
-	points.push_back(cv::Point3f(x,y,z));
-
-	for(unsigned int i = 0; i < points.size(); ++i)
-    {
-		std::cout << points[i] << std::endl;
-    }
-
-	return points;
-}
 
 
 // DEBUG fn
@@ -124,21 +73,7 @@ cv::Mat genSquareImg(double deg) {
 
 class FTag2Testbench {
 public:
-	CvMat *intrinsic;
-	CvMat *distortion;
-    cv::Mat distCoeffs;
-    cv::Mat cameraMatrix;
-    ros::NodeHandle n;
-    ros::Publisher marker_pub;
-    uint32_t shape;
-    //visualization_msgs::Marker marker;
-    geometry_msgs::PoseStamped marker;
-    YAML::Emitter out;
-    int frameNo;
-    VideoWriter outVideo;
-    bool recording;
-
-    FTag2Testbench() :
+  FTag2Testbench() :
       local_nh("~"),
       dynCfgSyncReq(false),
       alive(false),
@@ -206,28 +141,6 @@ public:
     namedWindow("quad_1", CV_GUI_EXPANDED);
     namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
     namedWindow("quads", CV_GUI_EXPANDED);
-/*
-    std::string camMatrixFname = "";
-    local_nh.param("camMatrix", camMatrixFname, camMatrixFname);
-    std::string distCoefFname = "";
-    local_nh.param("distCoef", distCoefFname, distCoefFname);
-*/
-    intrinsic = (CvMat*)cvLoad("/home/dacocp/Dropbox/catkin_ws/Intrinsics.xml");
-    distortion = (CvMat*)cvLoad("/home/dacocp/Dropbox/catkin_ws/Distortion.xml");
-    distCoeffs = distortion;
-    cameraMatrix = intrinsic;
-    std::cout << "Camera Intrinsic Matrix: " << cameraMatrix << std::endl;
-
-    //marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
-    marker_pub = n.advertise<geometry_msgs::PoseStamped>("PoseStamped", 1);
-    shape = visualization_msgs::Marker::ARROW;
-    marker.header.frame_id = "/my_frame";
-
-    out << YAML::BeginSeq;
-    frameNo = 0;
-
-    outVideo.open ( "/home/dacocp/Dropbox/catkin_ws/outputVideo.avi", CV_FOURCC('D','I','V','X'), 21, cv::Size ( 300,200), true );
-    recording = false;
 
     alive = true;
 
@@ -239,12 +152,6 @@ public:
     alive = false;
     free(dstFilename);
     dstFilename = NULL;
-    out << YAML::EndSeq;
-    std::ofstream fout("/home/dacocp/Dropbox/catkin_ws/trajectory.yaml");
-    std::cout << "Here's the output YAML:\n" << out.c_str();
-    fout << out.c_str();
-    fout.close();
-    outVideo.release();
     //spinThread.join(); // No need to double-call, since FTag2Testbench::join() is calling it
   };
 
@@ -307,7 +214,7 @@ public:
         cv::Canny(edgelImg, edgelImg, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
         cv::HoughLinesP(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold, 10*1.5, 10*1.5/3);
 
-        overlaidImg = sourceImg.clone();error
+        overlaidImg = sourceImg.clone();
         for (unsigned int i = 0; i < lines.size(); i++) {
           cv::line(overlaidImg, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2, 8);
         }
@@ -357,7 +264,6 @@ public:
         drawQuads(quadsImg, quads);
         cv::imshow("quads", quadsImg);
 
-
         if (!quads.empty()) {
           std::list<Quad>::iterator quadIt, largestQuadIt;
           double largestQuadArea = -1;
@@ -393,94 +299,14 @@ public:
             gp::plot(spec, 2, "Phase Spectrum");
             */
 
-            frameNo++;
-
-            if (tag.signature == FTag2Marker6S5F3B::SIG_KEY) {
+            if (tag.isSuccessful) {
               cv::Mat tagImgRot, croppedTagImgRot;
               BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
               BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
-
-              std::cout << "=====> RECOGNIZED TAG: " << tag.ID << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
-              //std::cout << "psk = ..." << std::endl << cv::format(tag.PSK, "matlab") << std::endl << std::endl;
               cv::imshow("quad_1", tagImgRot);
               cv::imshow("quad_1_trimmed", croppedTagImgRot);
-
-              std::vector<cv::Point3f> objectPoints = Generate3DPoints();
-              std::vector<cv::Point2f> imagePoints = quads.front().corners;
-
-              for (int k = 0; k<tag.imgRotDir/90; k++)
-              {
-              	cv::Point2f temp = imagePoints[0];
-                imagePoints.erase(imagePoints.begin());
-                imagePoints.push_back(temp);
-              }
-
-              for(unsigned int k = 0; k < quads.front().corners.size(); ++k)
-              {
-            	if(k==0)
-            		cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(0, 0, 255), 3, 8, 0);
-            	else if (k==1)
-            		cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(0, 255, 0), 3, 8, 0);
-            	else if (k==2)
-            		cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(255, 0, 0), 3, 8, 0);
-            	else
-            		cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(255, 255, 255), 3, 8, 0);
-              }
-              cv::imshow("quads", quadsImg);
-
-              cv::Mat rvec(3,1,cv::DataType<double>::type);
-              cv::Mat tvec(3,1,cv::DataType<double>::type);
-
-              cv::solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec);
-
-              std::cout << "rvec: (" << rvec.at<double>(0,0) << ", " << rvec.at<double>(1,0) << ", " << rvec.at<double>(2,0) << ")" << std::endl;
-              std::cout << "tvec: (" << tvec.at<double>(0,0) << ", " << tvec.at<double>(1,0) << ", " << tvec.at<double>(2,0) << ")" << std::endl;
-
-              marker.header.stamp = ros::Time::now();
-
-              marker.pose.position.x = tvec.at<double>(0)/100.0;
-              marker.pose.position.y = tvec.at<double>(1)/100.0;
-              marker.pose.position.z = tvec.at<double>(2)/100.0;
-              tf::Quaternion rMat;
-              rMat.setRPY(rvec.at<double>(0,0), rvec.at<double>(1,0),rvec.at<double>(2,0));
-              marker.pose.orientation.x = rMat.getX();
-              marker.pose.orientation.y = rMat.getY();
-              marker.pose.orientation.z = rMat.getZ();
-              marker.pose.orientation.w = rMat.getW();
-
-              // Publish the marker
-              marker_pub.publish(marker);
-
-              static tf::TransformBroadcaster br;
-              tf::Transform transform;
-              transform.setOrigin( tf::Vector3(tvec.at<double>(0)/100.0, tvec.at<double>(1)/100.0, tvec.at<double>(2)/100.0) );
-              transform.setRotation( rMat );
-              br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "ftag" ) );
-
-              std::ostringstream oss;
-              oss << frameNo;
-              out << YAML::BeginMap;
-//              out << YAML::Key << ros::Time::now().nsec;
-              out << YAML::Key << oss.str();
-                  out << YAML::Value;
-              	  out << YAML::BeginMap;
-              	  out << YAML::Key << "Frame No.";
-              	  out << YAML::Value << frameNo;
-              	  out << YAML::Key << "Position";
-              	  out << YAML::Value
-              			  << YAML::BeginSeq
-              			  	  << marker.pose.position.x << marker.pose.position.y << marker.pose.position.z
-              			  << YAML::EndSeq;
-              	  out << YAML::Key << "Orientation";
-              	  out << YAML::Value
-              			  << YAML::BeginSeq
-              			  	  << marker.pose.orientation.x << marker.pose.orientation.y
-              			  	  << marker.pose.orientation.z << marker.pose.orientation.w
-              			  << YAML::EndSeq ;
-              	  out << YAML::EndMap;
-              out << YAML::EndMap;
-              recording = true;
-
+              std::cout << "=====> RECOGNIZED TAG: " << tag.ID << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
+              //std::cout << "psk = ..." << std::endl << cv::format(tag.PSK, "matlab") << std::endl << std::endl;
             } else {
               cv::imshow("quad_1", tagImg);
               cv::imshow("quad_1_trimmed", croppedTagImg);
@@ -491,13 +317,6 @@ public:
               std::cout << "vpsk = ..." << std::endl << cv::format(tag.vertPhases, "matlab") << std::endl << std::endl;
             }
           }
-        }
-
-        if (recording == true)
-        {
-        	cv::Mat resizedImg = quadsImg.clone();
-        	cv::resize(quadsImg,resizedImg,cv::Size(300,200));
-        	outVideo.write(resizedImg);
         }
 
   #ifdef SAVE_IMAGES_FROM
@@ -532,11 +351,6 @@ public:
         c = waitKey(waitKeyDelay);
         if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
           alive = false;
-        	//out << YAML::EndSeq;
-        	//std::ofstream fout("trajectory.yaml");
-        	//fout << out.c_str();
-        	//std::cout << "Here's the output YAML:\n" << out.c_str();
-//        	fout << emitter.c_str();
         }
       }
     } catch (const cv::Exception& err) {
@@ -573,7 +387,7 @@ protected:
 
 
 int main(int argc, char** argv) {
-  ros::init(argc, argv, "cam_testbench");
+  ros::init(argc, argv, "freq_testbench");
 
   try {
     FTag2Testbench testbench;

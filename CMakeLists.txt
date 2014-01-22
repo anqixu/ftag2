@@ -104,12 +104,14 @@ target_link_libraries(cam_testbench
 )
 add_dependencies(cam_testbench ${PROJECT_NAME}_gencfg)
 
-#add_executable(pnpsolve src/pnpsolve.cpp)
-#target_link_libraries(pnpsolve
-#  ${FTAG2_LIB_NAME}
-#  ${OpenCV_LIBRARIES}
-#  ${catkin_LIBRARIES}
-#)
+add_executable(freq_testbench src/freq_testbench.cpp)
+target_link_libraries(freq_testbench
+  ${FTAG2_LIB_NAME}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg)
+
 
 #############
 ## Install ##
