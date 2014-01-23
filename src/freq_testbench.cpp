@@ -278,9 +278,7 @@ public:
             cv::Mat croppedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
             croppedTagImg = cropFTag2Border(croppedTagImg);
 
-            FTag2Marker6S5F3B tag;
-            croppedTagImg.copyTo(tag.img);
-            FTag2Decoder::extractPayloadFromTag(&tag);
+            FTag2Marker6S5F3B tag(croppedTagImg);
 
             /*
             // Plot spatial signal
@@ -299,13 +297,13 @@ public:
             gp::plot(spec, 2, "Phase Spectrum");
             */
 
-            if (tag.isSuccessful) {
+            if (tag.hasSignature) {
               cv::Mat tagImgRot, croppedTagImgRot;
               BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
               BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
               cv::imshow("quad_1", tagImgRot);
               cv::imshow("quad_1_trimmed", croppedTagImgRot);
-              std::cout << "=====> RECOGNIZED TAG: " << tag.ID << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
+              std::cout << "=====> RECOGNIZED TAG: " << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
               //std::cout << "psk = ..." << std::endl << cv::format(tag.PSK, "matlab") << std::endl << std::endl;
             } else {
               cv::imshow("quad_1", tagImg);

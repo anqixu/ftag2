@@ -23,10 +23,9 @@ struct FTag2Marker {
 
   std::vector<cv::Mat> rays;
 
-  bool isSuccessful;
+  bool hasSignature;
   int imgRotDir; // counter-clockwise degrees
 
-  long long ID;
   std::string IDstring;
 
   // TEMP VARS
@@ -41,11 +40,15 @@ struct FTag2Marker {
   cv::Mat vertMags;
   cv::Mat horzPhases;
   cv::Mat vertPhases;
-  cv::Mat PSK;
+
+  cv::Mat mags;
+  cv::Mat phases;
+  cv::Mat bitChunks;
 
   FTag2Marker() : position_x(0), position_y(0), position_z(0),
       orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
-      isSuccessful(false), imgRotDir(0), ID(-1), IDstring("") {};
+      hasSignature(false), imgRotDir(0), IDstring("") {};
+  FTag2Marker(cv::Mat tag); // Extracts and analyzes rays
   virtual ~FTag2Marker() {};
 
   virtual void decodePayload() {};
@@ -54,6 +57,7 @@ struct FTag2Marker {
 
 struct FTag2Marker6S5F3B : FTag2Marker {
   constexpr static long long SIG_KEY = 0b00010101;
+  constexpr static long long SIG_KEY_FLIPPED = 0b00101010;
   constexpr static long long CRC12_KEY = 0x08F8;
 
   // TEMP VARS
@@ -61,14 +65,23 @@ struct FTag2Marker6S5F3B : FTag2Marker {
 
   cv::Mat XORExpected;
   cv::Mat XORDecoded;
-  std::vector<long long> payloadBits;
+  cv::Mat payloadBitChunks;
+
+  unsigned char payload[7];
 
   long long CRC12;
 
-  FTag2Marker6S5F3B() : FTag2Marker(), signature(0), payloadBits(6), CRC12(0) {
+  FTag2Marker6S5F3B() : FTag2Marker(), signature(0), CRC12(0) {
     XORExpected = cv::Mat::zeros(6, 3, CV_8UC1);
     XORDecoded = cv::Mat::zeros(6, 3, CV_8UC1);
-  }
+    payloadBitChunks = cv::Mat::zeros(6, 3, CV_8UC1);
+  };
+  FTag2Marker6S5F3B(cv::Mat tag) : FTag2Marker(tag),
+      signature(0), CRC12(0) {
+    XORExpected = cv::Mat::zeros(6, 3, CV_8UC1);
+    XORDecoded = cv::Mat::zeros(6, 3, CV_8UC1);
+    decodePayload();
+  };
   virtual ~FTag2Marker6S5F3B() {};
 
   virtual void decodePayload();
@@ -77,17 +90,19 @@ struct FTag2Marker6S5F3B : FTag2Marker {
 
 struct FTag2Marker6S2F3B : FTag2Marker {
   constexpr static long long SIG_KEY = 0b00010101;
+  constexpr static long long SIG_KEY_FLIPPED = 0b00101010;
   constexpr static long long CRC8_KEY = 0x0EA;
 
   // TEMP VARS
   long long signature;
 
-  std::vector<long long> payloadBits;
-
   long long CRC8;
 
-  FTag2Marker6S2F3B() : FTag2Marker(), signature(0), payloadBits(6), CRC8(0) {
-  }
+  FTag2Marker6S2F3B() : FTag2Marker(), signature(0), CRC8(0) {
+  };
+  FTag2Marker6S2F3B(cv::Mat tag) : FTag2Marker(tag), signature(0), CRC8(0) {
+    decodePayload();
+  };
   virtual ~FTag2Marker6S2F3B() {};
 
   virtual void decodePayload();
