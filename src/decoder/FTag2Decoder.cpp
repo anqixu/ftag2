@@ -74,9 +74,9 @@ long long FTag2Decoder::_extractSigBits(const cv::Mat& phases, bool flipped, uns
   double currPhase;
   long long currBitChunk;
 
-  const double PSKRange = (360.0/pskSize);
-  const double PSKHalfRange = PSKRange/2;
   const int pskMaxCount = pow(2, pskSize);
+  const double PSKRange = (360.0/pskMaxCount);
+  const double PSKHalfRange = PSKRange/2;
   const long long sigBitMask = (0b01 << (pskSize - 1));
 
   if (flipped) {
@@ -165,8 +165,8 @@ unsigned char FTag2Decoder::adjustPSK(double phaseDeg, unsigned int pskSize) {
   // TODO: 0 validate this fn
   unsigned char result;
 
-  const double PSKRange = (360.0/pskSize);
-  const double PSKHalfRange = PSKRange/2;
+  const int pskMaxCount = pow(2, pskSize);
+  const double PSKRange = (360.0/pskMaxCount);
   const unsigned char maxPSKCount = pow(2, pskSize);
 
   double pskApprox = vc_math::wrapAngle(phaseDeg, 360.0)/PSKRange;

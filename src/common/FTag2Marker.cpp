@@ -3,10 +3,13 @@
 #include "decoder/FTag2Decoder.hpp"
 
 
+using namespace std;
+
+
 FTag2Marker::FTag2Marker(cv::Mat tag) :
     position_x(0), position_y(0), position_z(0),
     orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
-    hasSignature(false), imgRotDir(0), IDstring("") {
+    hasSignature(false), imgRotDir(0), payloadStr("") {
   FTag2Decoder::analyzeRays(tag, this);
 };
 
@@ -39,24 +42,27 @@ void FTag2Marker6S5F3B::decodePayload() {
     hasSignature = false;
     return;
   }
+  hasSignature = true;
 
   // Convert all phases to PSK-ed bit chunks
   bitChunks = cv::Mat(6, 5, CV_8UC1);
-  const double PSKRange = (360.0/3);
+  const double PSKRange = (360.0/8);
   const double PSKHalfRange = PSKRange/2;
   double* phasesPtr = (double*) phases.data;
   unsigned char* bitChunksPtr = (unsigned char*) bitChunks.data;
   for (i = 0; i < phases.rows * phases.cols; i++) {
-    *bitChunksPtr = std::floor(vc_math::wrapAngle(*phasesPtr + PSKHalfRange, 360.0)/PSKRange);
+    *bitChunksPtr = (unsigned char) std::floor(vc_math::wrapAngle(*phasesPtr + PSKHalfRange, 360.0)/PSKRange);
+    phasesPtr++;
+    bitChunksPtr++;
   }
 
   // Extract CRC-12 from F=1
   unsigned char currBitChunk;
-  CRC12 = 0;
+  CRC12Expected = 0;
   for (i = 0; i < 6; i++) {
-    CRC12 <<= 2;
+    CRC12Expected <<= 2;
     currBitChunk = bitChunks.at<unsigned char>(i, 0);
-    CRC12 += (currBitChunk & 0b011);
+    CRC12Expected += (currBitChunk & 0b011);
   }
 
   // Extract encoded XOR checksums from F=2
@@ -76,7 +82,7 @@ void FTag2Marker6S5F3B::decodePayload() {
       adjustedBitChunk = FTag2Decoder::adjustPSK(phases.at<double>(i, 2), 3);
       payloadBitChunks.at<unsigned char>(i, 0) = FTag2Decoder::gray2bin(adjustedBitChunk);
     } else {
-      payloadBitChunks.at<unsigned char>(i, 0) = FTag2Decoder::gray2bin(currBitChunk);
+      payloadBitChunks.at<unsigned char>(i, 0) = currBitChunk;
     }
 
     currBitChunk = FTag2Decoder::gray2bin(bitChunks.at<unsigned char>(i, 3));
@@ -85,7 +91,7 @@ void FTag2Marker6S5F3B::decodePayload() {
       adjustedBitChunk = FTag2Decoder::adjustPSK(phases.at<double>(i, 3), 3);
       payloadBitChunks.at<unsigned char>(i, 1) = FTag2Decoder::gray2bin(adjustedBitChunk);
     } else {
-      payloadBitChunks.at<unsigned char>(i, 1) = FTag2Decoder::gray2bin(currBitChunk);
+      payloadBitChunks.at<unsigned char>(i, 1) = currBitChunk;
     }
 
     currBitChunk = FTag2Decoder::gray2bin(bitChunks.at<unsigned char>(i, 4));
@@ -94,17 +100,62 @@ void FTag2Marker6S5F3B::decodePayload() {
       adjustedBitChunk = FTag2Decoder::adjustPSK(phases.at<double>(i, 4), 3);
       payloadBitChunks.at<unsigned char>(i, 2) = FTag2Decoder::gray2bin(adjustedBitChunk);
     } else {
-      payloadBitChunks.at<unsigned char>(i, 2) = FTag2Decoder::gray2bin(currBitChunk);
+      payloadBitChunks.at<unsigned char>(i, 2) = currBitChunk;
     }
   }
 
-  // Stitch together payload bits
-  memset(payload, 0, 7);
-  // TODO: 0 stitch together payloadBitChunks into char[]
+  // Concatenate bit chunks together into entire payload
+  unsigned char* payloadBitChunksPtr = (unsigned char*) payloadBitChunks.data;
+  unsigned int payloadIdx = 54;
+  for (i = 0; i < payloadBitChunks.rows * payloadBitChunks.cols; i++) {
+    payloadIdx--;
+    payload[payloadIdx] = ((*payloadBitChunksPtr & 4) == 4);
+    payloadIdx--;
+    payload[payloadIdx] = ((*payloadBitChunksPtr & 2) == 2);
+    payloadIdx--;
+    payload[payloadIdx] = ((*payloadBitChunksPtr & 1) == 1);
+    payloadBitChunksPtr++;
+  }
 
-  // TODO: 0 validate CRC
+  // Compute and validate CRC-12
+  unsigned long long payloadLL = payload.to_ullong();
+  unsigned char payloadBytes[7] = {
+      (unsigned char) ((payloadLL >> 48) & 0x0FF),
+      (unsigned char) ((payloadLL >> 40) & 0x0FF),
+      (unsigned char) ((payloadLL >> 32) & 0x0FF),
+      (unsigned char) ((payloadLL >> 24) & 0x0FF),
+      (unsigned char) ((payloadLL >> 16) & 0x0FF),
+      (unsigned char) ((payloadLL >> 8) & 0x0FF),
+      (unsigned char) ((payloadLL) & 0x0FF)
+  };
+  CRCEngine.reset();
+  CRCEngine = std::for_each(payloadBytes, payloadBytes + 7, CRCEngine);
+  CRC12Decoded = CRCEngine();
 
-  // TODO: 0 eventually, we should check for the validity of magnitude spectrum
+  if (CRC12Expected == CRC12Decoded) {
+    payloadStr = payload.to_string();
+  } else {
+    payloadStr = "";
+  }
+
+  /*
+  cout << "XORExpected = ..." << endl << cv::format(XORExpected, "matlab") << endl << endl;
+  cout << "XORDecoded = ..." << endl << cv::format(XORDecoded, "matlab") << endl << endl;
+  cout << "payloadBitChunks = ..." << endl << cv::format(payloadBitChunks, "matlab") << endl << endl;
+  cout << "payload: " << payload << endl;
+  cout << "payloadBytes: " << std::hex <<
+      "0b" << (unsigned short) payloadBytes[0] << "   " <<
+      "0b" << (unsigned short) payloadBytes[1] << "   " <<
+      "0b" << (unsigned short) payloadBytes[2] << "   " <<
+      "0b" << (unsigned short) payloadBytes[3] << "   " <<
+      "0b" << (unsigned short) payloadBytes[4] << "   " <<
+      "0b" << (unsigned short) payloadBytes[5] << "   " <<
+      "0b" << (unsigned short) payloadBytes[6] << std::dec << endl;
+  cout << "CEC12Expected: " << std::hex << CRC12Expected << std::dec << endl;
+  cout << "CEC12Decoded : " << std::hex << CRC12Decoded  << std::dec << endl;
+  */
+
+  // TODO: 2 eventually, we should check for the validity of magnitude spectrum
 };
 
 

@@ -298,21 +298,27 @@ public:
             */
 
             if (tag.hasSignature) {
-              cv::Mat tagImgRot, croppedTagImgRot;
-              BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
-              BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
-              cv::imshow("quad_1", tagImgRot);
-              cv::imshow("quad_1_trimmed", croppedTagImgRot);
-              std::cout << "=====> RECOGNIZED TAG: " << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
-              //std::cout << "psk = ..." << std::endl << cv::format(tag.PSK, "matlab") << std::endl << std::endl;
-            } else {
-              cv::imshow("quad_1", tagImg);
-              cv::imshow("quad_1_trimmed", croppedTagImg);
+              if (tag.payloadStr.length() > 0) {
+                cv::Mat tagImgRot, croppedTagImgRot;
+                BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
+                BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
+                cv::imshow("quad_1", tagImgRot);
+                cv::imshow("quad_1_trimmed", croppedTagImgRot);
+                std::cout << "=====> RECOGNIZED TAG: " << tag.payload.to_ullong() << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
+              } else {
+                cv::imshow("quad_1", tagImg);
+                cv::imshow("quad_1_trimmed", croppedTagImg);
+
+                std::cout << "!!!!!! FAILED TO RECOGNIZE TAG" << endl;
+
+                /*
               std::cout << std::endl << "==========" << std::endl;
               std::cout << "hmags = ..." << std::endl << cv::format(tag.horzMags, "matlab") << std::endl << std::endl;
               std::cout << "vmags = ..." << std::endl << cv::format(tag.vertMags, "matlab") << std::endl << std::endl;
               std::cout << "hpsk = ..." << std::endl << cv::format(tag.horzPhases, "matlab") << std::endl << std::endl;
               std::cout << "vpsk = ..." << std::endl << cv::format(tag.vertPhases, "matlab") << std::endl << std::endl;
+                 */
+              }
             }
           }
         }
