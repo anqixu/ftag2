@@ -10,7 +10,7 @@
 
 
 struct FTag2Marker {
-  constexpr static unsigned int MAX_NUM_FREQS = 10;
+  constexpr static unsigned int MAX_NUM_FREQS = 5;
 
   cv::Mat img;
 

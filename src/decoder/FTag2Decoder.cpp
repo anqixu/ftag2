@@ -2,32 +2,37 @@
 #include "detector/FTag2Detector.hpp"
 
 
-// TODO: 1 DEPRECATED -- REMOVE UPON COMMIT
-bool pskEqual(const cv::Mat& tagPSK, const std::vector<unsigned int>& sigPSK,
-    unsigned int pskSize, bool flipped) {
-  assert(tagPSK.rows == int(sigPSK.size()));
+void FTag2Decoder::analyzeRays(const cv::Mat& img, FTag2Marker* tag) {
+  assert(img.channels() == 1);
 
-  bool match = true;
-  unsigned int i;
-  unsigned int currSigPSK;
-  if (flipped) {
-    for (i = 0; i < sigPSK.size(); i++) {
-      currSigPSK = (pskSize - (unsigned int) tagPSK.at<double>(sigPSK.size() - 1 - i, 0)) % pskSize;
-      if (currSigPSK != sigPSK[i]) {
-        match = false;
-        break;
-      }
-    }
-  } else {
-    for (i = 0; i < sigPSK.size(); i++) {
-      currSigPSK = (unsigned int) tagPSK.at<double>(i, 0);
-      if (currSigPSK != sigPSK[i]) {
-        match = false;
-        break;
-      }
-    }
-  }
-  return match;
+  img.copyTo(tag->img);
+
+  // Extract rays
+  tag->horzRays = extractHorzRays(tag->img);
+  tag->vertRays = extractVertRays(tag->img);
+
+  // Compute magnitude and phase spectra for both horizontal and vertical rays
+  cv::Mat flippedRays;
+  cv::Mat fft;
+  cv::vector<cv::Mat> fftChannels(2);
+
+  cv::dft(tag->horzRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, tag->horzRays.rows);
+  cv::split(fft, fftChannels);
+  cv::magnitude(fftChannels[0], fftChannels[1], tag->horzMagSpec);
+  cv::phase(fftChannels[0], fftChannels[1], tag->horzPhaseSpec, true);
+
+  cv::flip(tag->vertRays, flippedRays, 1);
+  cv::dft(flippedRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, flippedRays.rows);
+  cv::split(fft, fftChannels);
+  cv::magnitude(fftChannels[0], fftChannels[1], tag->vertMagSpec);
+  cv::phase(fftChannels[0], fftChannels[1], tag->vertPhaseSpec, true);
+
+  // Extract spectra responses at relevant frequencies
+  int colMax = std::min(int(1+FTag2Marker::MAX_NUM_FREQS), tag->horzMagSpec.cols/2);
+  tag->horzMags = tag->horzMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
+  tag->vertMags = tag->vertMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
+  tag->horzPhases = tag->horzPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
+  tag->vertPhases = tag->vertPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
 };
 
 
@@ -106,38 +111,6 @@ long long FTag2Decoder::_extractSigBits(const cv::Mat& phases, bool flipped, uns
   }
 
   return signature;
-};
-
-
-void FTag2Decoder::analyzeRays(const cv::Mat& img, FTag2Marker* tag) {
-  assert(img.channels() == 1);
-
-  img.copyTo(tag->img);
-
-  // Extract rays
-  tag->horzRays = extractHorzRays(tag->img);
-  tag->vertRays = extractVertRays(tag->img);
-
-  // Compute magnitude and phase spectra for both horizontal and vertical rays
-  cv::Mat flippedRays;
-  cv::Mat fft;
-  cv::vector<cv::Mat> fftChannels(2);
-  cv::flip(tag->horzRays, flippedRays, 1);
-  cv::dft(flippedRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, flippedRays.rows);
-  cv::split(fft, fftChannels);
-  cv::magnitude(fftChannels[0], fftChannels[1], tag->horzMagSpec);
-  cv::phase(fftChannels[0], fftChannels[1], tag->horzPhaseSpec, true);
-  cv::dft(tag->vertRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, tag->vertRays.rows);
-  cv::split(fft, fftChannels);
-  cv::magnitude(fftChannels[0], fftChannels[1], tag->vertMagSpec);
-  cv::phase(fftChannels[0], fftChannels[1], tag->vertPhaseSpec, true);
-
-  // Extract spectra responses at relevant frequencies
-  int colMax = std::min(int(1+FTag2Marker::MAX_NUM_FREQS), tag->horzMagSpec.cols/2);
-  tag->horzMags = tag->horzMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-  tag->vertMags = tag->vertMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-  tag->horzPhases = tag->horzPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-  tag->vertPhases = tag->vertPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
 };
 
 
