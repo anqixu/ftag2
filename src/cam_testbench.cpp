@@ -146,6 +146,11 @@ public:
     bool tracking;
     ParticleFilter PF;
     std::vector <FTag2Marker> detections;
+    int currentNumberOfParticles;
+    double current_position_std;
+    double current_orientation_std;
+    double current_position_noise_std;
+    double current_orientation_noise_std;
 
     FTag2Testbench() :
       local_nh("~"),
@@ -541,15 +546,20 @@ public:
               detections[0].position_x = tvec.at<double>(0)/100.0;
               detections[0].position_y = tvec.at<double>(1)/100.0;
               detections[0].position_z = tvec.at<double>(2)/100.0;
-              detections[0].orientation_x = rMat.getX();;
-              detections[0].orientation_y = rMat.getY();;
-              detections[0].orientation_z = rMat.getZ();;
-              detections[0].orientation_w = rMat.getW();;
+              detections[0].orientation_x = rMat.getX();
+              detections[0].orientation_y = rMat.getY();
+              detections[0].orientation_z = rMat.getZ();
+              detections[0].orientation_w = rMat.getW();
               if ( tracking == false )
               {
               	  tracking = true;
               	  PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std  );
               	  cv::waitKey();
+              	  currentNumberOfParticles = params.numberOfParticles;
+              	  current_position_std = params.position_std;
+              	  current_orientation_std = params.orientation_std;
+              	  current_position_noise_std = params.position_noise_std;
+              	  current_orientation_noise_std = params.orientation_noise_std;
               }
             } else {
               cv::imshow("quad_1", tagImg);
@@ -570,6 +580,20 @@ public:
         	outVideo.write(resizedImg);
         }
 
+        if ( tracking == true && ( currentNumberOfParticles != params.numberOfParticles || current_position_std != params.position_std ||
+      		  current_orientation_std != params.orientation_std || current_position_noise_std != params.position_noise_std ||
+      		  current_orientation_noise_std != params.orientation_noise_std ) )
+        {
+        	cout << "PARAMETERS CHANGED!!!" << endl;
+        	PF.setParameters(params.numberOfParticles, 10, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std);
+        	currentNumberOfParticles = params.numberOfParticles;
+        	current_position_std = params.position_std;
+        	current_orientation_std = params.orientation_std;
+        	current_position_noise_std = params.position_noise_std;
+        	current_orientation_noise_std = params.orientation_noise_std;
+        	cv::waitKey();
+        }
+
         if (tracking == true)
         {
         	PF.motionUpdate();
@@ -578,7 +602,7 @@ public:
         	PF.computeMeanPose();
         	PF.resample();
 //        	if (frameNo%50 == 0)
-//       		PF.displayParticles();
+       		PF.displayParticles();
 //        	cv::waitKey();
         }
   #ifdef SAVE_IMAGES_FROM

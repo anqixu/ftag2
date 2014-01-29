@@ -50,6 +50,7 @@ public:
 	FTag2Marker getPose(){return pose;}
 	double getLogWeight(){return log_weight;}
 	void setLogWeight(double log_weight){this->log_weight = log_weight;}
+	void setParameters(double position_std, double orientation_std, double position_noise_std, double orientation_noise_std);
 };
 
 #endif /* OBJECTHYPOTHESIS_H_ */

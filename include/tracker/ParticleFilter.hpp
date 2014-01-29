@@ -36,6 +36,7 @@ private:
 public:
 	ParticleFilter(){ number_of_particles = 100; disable_resampling = false; };
 	ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker> detections, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std);
+	void setParameters(int numP, double tagSize, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std);
 	virtual ~ParticleFilter();
 	void motionUpdate();
 	void normalizeWeights();

@@ -72,6 +72,13 @@ ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, double position_std, doub
 	}
 }
 
+void ObjectHypothesis::setParameters(double position_std, double orientation_std, double position_noise_std, double orientation_noise_std){
+	this->orientation_std = orientation_std;
+	this->position_std = position_std;
+	this->position_noise_std = position_noise_std;
+	this->orientation_noise_std = orientation_noise_std;
+}
+
 ObjectHypothesis::~ObjectHypothesis() {
 	// TODO Auto-generated destructor stub
 }
