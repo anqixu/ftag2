@@ -43,6 +43,7 @@ generate_messages(
 
 generate_dynamic_reconfigure_options(
   cfg/CamTestbench.cfg
+  cfg/FreqTestbench.cfg
   )
 
 

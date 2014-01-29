@@ -11,7 +11,7 @@
 
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
-#include <ftag2/CamTestbenchConfig.h>
+#include <ftag2/FreqTestbenchConfig.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
@@ -33,7 +33,7 @@ using namespace cv;
 using namespace vc_math;
 
 
-typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
+typedef dynamic_reconfigure::Server<ftag2::FreqTestbenchConfig> ReconfigureServer;
 
 
 bool compareArea(const Quad& first, const Quad& second) {
@@ -178,7 +178,7 @@ public:
   };
 
 
-  void configCallback(ftag2::CamTestbenchConfig& config, uint32_t level) {
+  void configCallback(ftag2::FreqTestbenchConfig& config, uint32_t level) {
     if (!alive) return;
     params = config;
   };
@@ -249,6 +249,17 @@ public:
             params.quadMinEndptDist);
         quads.sort(compareArea);
         quadP.toc();
+
+
+        if (quads.empty()) {
+          ROS_WARN_STREAM("NO QUADS IN FRAME");
+        }
+        if (false) {
+          cout << "Quads: " << quads.size() << endl;
+          for (const Quad& q: quads) {
+            cout << "- " << q.area << endl;
+          }
+        }
 
         bool foundTag = false;
         if (!quads.empty()) {
@@ -427,7 +438,7 @@ protected:
   cv::VideoCapture cam;
   cv::Mat sourceImg, sourceImgRot, grayImg, overlaidImg;
 
-  ftag2::CamTestbenchConfig params;
+  ftag2::FreqTestbenchConfig params;
 
   bool alive;
 
