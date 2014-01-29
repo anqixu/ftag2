@@ -16,6 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   tf
 )
 
+find_package(OMPL)
+
 find_package(Boost REQUIRED COMPONENTS date_time-mt system-mt thread-mt serialization-mt program_options-mt)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
 
@@ -100,6 +102,7 @@ target_link_libraries(cam_testbench
   ${FTAG2_LIB_NAME}
   ${OpenCV_LIBRARIES}
   ${catkin_LIBRARIES}
+  ${OMPL_LIBRARIES}
   yaml-cpp
 )
 add_dependencies(cam_testbench ${PROJECT_NAME}_gencfg)

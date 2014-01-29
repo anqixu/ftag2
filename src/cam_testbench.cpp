@@ -26,6 +26,11 @@
 #include <fstream>
 #include "yaml-cpp/yaml.h"
 
+#include <ompl/base/spaces/SO3StateSpace.h>
+#include <ompl/base/State.h>
+#include <ompl/base/ScopedState.h>
+
+
 //#define SAVE_IMAGES_FROM sourceImgRot
 //#define ENABLE_PROFILER
 
@@ -34,6 +39,7 @@ using namespace std;
 using namespace std::chrono;
 using namespace cv;
 using namespace vc_math;
+using namespace ompl::base;
 
 
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
@@ -137,6 +143,9 @@ public:
     int frameNo;
     VideoWriter outVideo;
     bool recording;
+    bool tracking;
+    ParticleFilter PF;
+    std::vector <FTag2Marker> detections;
 
     FTag2Testbench() :
       local_nh("~"),
@@ -228,6 +237,45 @@ public:
 
     outVideo.open ( "/home/dacocp/Dropbox/catkin_ws/outputVideo.avi", CV_FOURCC('D','I','V','X'), 21, cv::Size ( 300,200), true );
     recording = false;
+    tracking = false;
+    detections = std::vector<FTag2Marker>();
+
+    ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
+    ompl::base::ScopedState<ompl::base::SO3StateSpace> stateM(space);
+    ompl::base::ScopedState<ompl::base::SO3StateSpace> stateN(space);
+    ompl::base::ScopedState<> backup = stateM;
+    ompl::base::State *abstractState = space->allocState();
+    std::cout << "1: " << stateM << std::endl;
+    std::cout << stateN << std::endl;
+    std::cout << abstractState << std::endl;
+
+    stateM = abstractState;
+    std::cout << "2: " << stateM << std::endl;
+    std::cout << stateN << std::endl;
+    std::cout << abstractState << std::endl;
+
+    stateM->as<ompl::base::SO3StateSpace::StateType>()->x = 1.0;
+    stateM->as<ompl::base::SO3StateSpace::StateType>()->y = 0.0;
+    stateM->as<ompl::base::SO3StateSpace::StateType>()->z = 1.0;
+    stateM->as<ompl::base::SO3StateSpace::StateType>()->w = 0.0;
+    stateN.random();
+
+    std::cout << "3: " << stateM << std::endl;
+    std::cout << stateN << std::endl;
+    std::cout << abstractState << std::endl;
+
+    ompl::base::SO3StateSampler SO3ss(space->as<ompl::base::SO3StateSpace>());
+
+    SO3ss.sampleGaussian(stateN->as<ompl::base::SO3StateSpace::StateType>(), stateM->as<ompl::base::SO3StateSpace::StateType>(), 0.0001);
+
+    std::cout << "4: " << stateM << std::endl;
+    std::cout << stateN << std::endl;
+    std::cout << abstractState << std::endl;
+
+//    stateN = abstractState;
+    std::cout << "5: " << stateM << std::endl;
+    std::cout << stateN << std::endl;
+    std::cout << abstractState << std::endl;
 
     alive = true;
 
@@ -240,10 +288,10 @@ public:
     free(dstFilename);
     dstFilename = NULL;
     out << YAML::EndSeq;
-    std::ofstream fout("/home/dacocp/Dropbox/catkin_ws/trajectory.yaml");
-    std::cout << "Here's the output YAML:\n" << out.c_str();
-    fout << out.c_str();
-    fout.close();
+//    std::ofstream fout("/home/dacocp/Dropbox/catkin_ws/trajectory.yaml");
+//    std::cout << "Here's the output YAML:\n" << out.c_str();
+//    fout << out.c_str();
+//    fout.close();
     outVideo.release();
     //spinThread.join(); // No need to double-call, since FTag2Testbench::join() is calling it
   };
@@ -392,7 +440,7 @@ public:
             */
 
             frameNo++;
-
+            detections = std::vector<FTag2Marker>();
             if (tag.hasSignature) {
               cv::Mat tagImgRot, croppedTagImgRot;
               BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
@@ -477,8 +525,21 @@ public:
               			  << YAML::EndSeq ;
               	  out << YAML::EndMap;
               out << YAML::EndMap;
-              recording = true;
-
+//              recording = true;
+              detections = std::vector<FTag2Marker>(1);
+              detections[0].pose_x = tvec.at<double>(0)/100.0;
+              detections[0].pose_y = tvec.at<double>(1)/100.0;
+              detections[0].pose_z = tvec.at<double>(2)/100.0;
+              detections[0].orientation_x = rMat.getX();;
+              detections[0].orientation_y = rMat.getY();;
+              detections[0].orientation_z = rMat.getZ();;
+              detections[0].orientation_w = rMat.getW();;
+              if ( tracking == false )
+              {
+              	  tracking = true;
+              	  PF = ParticleFilter(150, 10, detections);
+              	  cv::waitKey();
+              }
             } else {
               cv::imshow("quad_1", tagImg);
               cv::imshow("quad_1_trimmed", croppedTagImg);
@@ -498,6 +559,17 @@ public:
         	outVideo.write(resizedImg);
         }
 
+        if (tracking == true)
+        {
+        	PF.motionUpdate();
+        	PF.measurementUpdate(detections);
+//        	PF.normalizeWeights();
+        	PF.computeMeanPose();
+        	PF.resample();
+//        	if (frameNo%10 == 0)
+//        	PF.displayParticles();
+//        	cv::waitKey();
+        }
   #ifdef SAVE_IMAGES_FROM
         if (saveImgDir.size() > 0) {
           sprintf(dstFilename, "%s/img%05d.jpg", saveImgDir.c_str(), dstID++);

@@ -7,9 +7,65 @@
 
 #include "tracker/ObjectHypothesis.hpp"
 
+double phi(double x)
+{
+    // constants
+    double a1 =  0.254829592;
+    double a2 = -0.284496736;
+    double a3 =  1.421413741;
+    double a4 = -1.453152027;
+    double a5 =  1.061405429;
+    double p  =  0.3275911;
+
+    // Save the sign of x
+    int sign = 1;
+    if (x < 0)
+        sign = -1;
+    x = fabs(x)/sqrt(2.0);
+
+    // A&S formula 7.1.26
+    double t = 1.0/(1.0 + p*x);
+    double y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t*exp(-x*x);
+
+    return 0.5*(1.0 + sign*y);
+}
+
 ObjectHypothesis::ObjectHypothesis() {
 	// TODO Auto-generated constructor stub
-	corners = std::vector<cv::Vec2i>(4);
+//	corners = std::vector<cv::Vec2i>(4);
+}
+
+ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, bool addNoise ) {
+	this->pose = pose;
+	if ( addNoise == true )
+	{
+		ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
+		ompl::base::ScopedState<ompl::base::SO3StateSpace> stateMean(space);
+		ompl::base::ScopedState<ompl::base::SO3StateSpace> stateNew(space);
+
+		stateMean->as<ompl::base::SO3StateSpace::StateType>()->x = marker.orientation_x;
+		stateMean->as<ompl::base::SO3StateSpace::StateType>()->y = marker.orientation_y;
+		stateMean->as<ompl::base::SO3StateSpace::StateType>()->z = marker.orientation_z;
+		stateMean->as<ompl::base::SO3StateSpace::StateType>()->w = marker.orientation_w;
+
+		ompl::base::SO3StateSampler SO3ss(space->as<ompl::base::SO3StateSpace>());
+
+		SO3ss.sampleGaussian(stateNew->as<ompl::base::SO3StateSpace::StateType>(),
+				stateMean->as<ompl::base::SO3StateSpace::StateType>(), sigma_init_rot);
+
+		pose.orientation_x = stateNew->as<ompl::base::SO3StateSpace::StateType>()->x;
+		pose.orientation_y = stateNew->as<ompl::base::SO3StateSpace::StateType>()->y;
+		pose.orientation_z = stateNew->as<ompl::base::SO3StateSpace::StateType>()->z;
+		pose.orientation_w = stateNew->as<ompl::base::SO3StateSpace::StateType>()->w;
+
+		unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+		std::default_random_engine generator(seed);
+		std::normal_distribution<double> distribution_pos(0,sigma_init_pos);
+
+		pose.pose_x = marker.pose_x + distribution_pos(generator);
+		pose.pose_y = marker.pose_y + distribution_pos(generator);
+		pose.pose_z = marker.pose_z + distribution_pos(generator);
+	}
 }
 
 ObjectHypothesis::~ObjectHypothesis() {
@@ -17,22 +73,36 @@ ObjectHypothesis::~ObjectHypothesis() {
 }
 
 void ObjectHypothesis::motionUpdate() {
+
+    ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
+    ompl::base::ScopedState<ompl::base::SO3StateSpace> stateMean(space);
+    ompl::base::ScopedState<ompl::base::SO3StateSpace> stateNew(space);
+
+    stateMean->as<ompl::base::SO3StateSpace::StateType>()->x = pose.orientation_x;
+	stateMean->as<ompl::base::SO3StateSpace::StateType>()->y = pose.orientation_y;
+    stateMean->as<ompl::base::SO3StateSpace::StateType>()->z = pose.orientation_z;
+    stateMean->as<ompl::base::SO3StateSpace::StateType>()->w = pose.orientation_w;
+
+    ompl::base::SO3StateSampler SO3ss(space->as<ompl::base::SO3StateSpace>());
+
+    SO3ss.sampleGaussian(stateNew->as<ompl::base::SO3StateSpace::StateType>(),
+    		stateMean->as<ompl::base::SO3StateSpace::StateType>(), sigma_rot);
+
+    pose.orientation_x = stateNew->as<ompl::base::SO3StateSpace::StateType>()->x;
+    pose.orientation_y = stateNew->as<ompl::base::SO3StateSpace::StateType>()->y;
+    pose.orientation_z = stateNew->as<ompl::base::SO3StateSpace::StateType>()->z;
+    pose.orientation_w = stateNew->as<ompl::base::SO3StateSpace::StateType>()->w;
+
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 	std::default_random_engine generator(seed);
 	std::normal_distribution<double> distribution_pos(0,sigma_pos);
-	std::normal_distribution<double> distribution_scale(0,sigma_scale);
 
-	for ( unsigned int i = 0; i<4 ; i++ )
-	{
-		corners[i][0] += distribution_pos(generator);
-		corners[i][1] += distribution_pos(generator);
-	}
-//	centroid[0] += distribution_pos(generator);
-//	centroid[1] += distribution_pos(generator);
-//	size[0] += distribution_scale(generator);
-//	size[1] += distribution_scale(generator);
+	pose.pose_x += distribution_pos(generator);
+	pose.pose_y += distribution_pos(generator);
+	pose.pose_z += distribution_pos(generator);
 }
 
+/*
 ObjectHypothesis::ObjectHypothesis(int SX, int SY){
 	corners = std::vector<cv::Vec2i>(4);
 	cout << "CREATING HYPOTHESIS" << endl;
@@ -117,22 +187,51 @@ ObjectHypothesis::ObjectHypothesis(int SX, int SY){
 		corners[3][1] = SY;
 	else
 		corners[3][1] = py3;
-/*		corners[0][0] = (px0>=0 && px0<SX) ? px0 : 0;
-	corners[0][1] = (py0>=0 && py0<SY) ? py0 : 0;
-	corners[1][0] = (px1>=0 && px1<SX) ? px1 : 0;
-	corners[1][1] = (py1>=0 && py1<SY) ? py1 : 0;
-	corners[2][0] = (px2>=0 && px2<SX) ? px2 : 0;
-	corners[2][1] = (py2>=0 && py2<SY) ? py2 : 0;
-	corners[3][0] = (px3>=0 && px3<SX) ? px3 : 0;
-	corners[3][1] = (py3>=0 && py3<SY) ? py3 : 0;
-*/
-			//http://stackoverflow.com/questions/2259476/rotating-a-point-about-another-point-2d
+		//http://stackoverflow.com/questions/2259476/rotating-a-point-about-another-point-2d
 	cout << "Corners: " << ": { (" << corners[0][0] << ", " << corners[0][1] << "), (" << corners[1][0] << ", "
 							<< corners[1][1] << "), (" << corners[2][0] << ", " << corners[2][1] << "), (" << corners[3][0] << ", "
 							<< corners[3][1] << ") }" << endl;
 }
+*/
 
-double ObjectHypothesis::measurementUpdate(std::vector<ObjectHypothesis> detections) {
 
-	return 0.0;
+double ObjectHypothesis::measurementUpdate(std::vector<FTag2Marker> detections) {
+
+	if ( detections.size() == 0 )
+		return weight;
+
+	double maxP = 0.0;
+	int max_prob_index = 0;
+
+	ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
+	ompl::base::ScopedState<ompl::base::SO3StateSpace> stateParticle(space);
+	ompl::base::ScopedState<ompl::base::SO3StateSpace> stateDetection(space);
+	stateParticle->as<ompl::base::SO3StateSpace::StateType>()->x = pose.orientation_x;
+	stateParticle->as<ompl::base::SO3StateSpace::StateType>()->y = pose.orientation_y;
+	stateParticle->as<ompl::base::SO3StateSpace::StateType>()->z = pose.orientation_z;
+	stateParticle->as<ompl::base::SO3StateSpace::StateType>()->w = pose.orientation_w;
+	for ( unsigned int i = 0; i < detections.size(); i++)
+	{
+		stateDetection->as<ompl::base::SO3StateSpace::StateType>()->x = detections[i].orientation_x;
+		stateDetection->as<ompl::base::SO3StateSpace::StateType>()->y = detections[i].orientation_y;
+		stateDetection->as<ompl::base::SO3StateSpace::StateType>()->z = detections[i].orientation_z;
+		stateDetection->as<ompl::base::SO3StateSpace::StateType>()->w = detections[i].orientation_w;
+
+		double rotation_dist = space->as<ompl::base::SO3StateSpace>()->distance(stateDetection->as<ompl::base::SO3StateSpace::StateType>(),stateParticle->as<ompl::base::SO3StateSpace::StateType>());
+		//double rotation_prob = normal_pdf(rotation_dist, 0, sigma_prob_dist_rot);
+		double rotation_prob = 2*phi( (-1.0*rotation_dist) / sigma_prob_dist_rot );
+
+		double position_dist = sqrt( (pose.pose_x - detections[i].pose_x)*(pose.pose_x - detections[i].pose_x) + (pose.pose_y - detections[i].pose_y)*(pose.pose_y - detections[i].pose_y) + (pose.pose_z - detections[i].pose_z)*(pose.pose_z - detections[i].pose_z));
+//		double position_prob = normal_pdf(position_dist, 0, sigma_prob_dist_pos);
+		double position_prob = 2*phi( (-1.0*position_dist) / sigma_prob_dist_pos );
+
+		double prob = position_prob*rotation_prob;
+		if ( prob > maxP )
+		{
+			max_prob_index = i;
+			maxP = prob;
+		}
+	}
+	weight = maxP;
+	return weight;
 }
