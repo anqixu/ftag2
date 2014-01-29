@@ -390,19 +390,17 @@ cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth, bool over
   std::vector<cv::Point2f> rectifiedCorners;
   if (oversample) {
     shortestEdgeWidth += 2;
-    rectifiedCorners.push_back(cv::Point2f(1, 1));
     rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth-1, 1));
     rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth-1, shortestEdgeWidth-1));
     rectifiedCorners.push_back(cv::Point2f(1, shortestEdgeWidth-1));
+    rectifiedCorners.push_back(cv::Point2f(1, 1));
   } else {
-    rectifiedCorners.push_back(cv::Point2f(0, 0));
     rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth, 0));
     rectifiedCorners.push_back(cv::Point2f(shortestEdgeWidth, shortestEdgeWidth));
     rectifiedCorners.push_back(cv::Point2f(0, shortestEdgeWidth));
+    rectifiedCorners.push_back(cv::Point2f(0, 0));
   }
   cv::Mat T = cv::getPerspectiveTransform(quad.corners, rectifiedCorners);
-  std::cout << "Q. corners: " << quad.corners << " Rect. corners" << rectifiedCorners << std::endl;
-  //cv::waitKey();
   cv::warpPerspective(img, quadImg, T, cv::Size(shortestEdgeWidth, shortestEdgeWidth),
       cv::INTER_LINEAR);
 

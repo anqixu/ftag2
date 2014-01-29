@@ -1,0 +1,24 @@
+<launch>
+  <!-- node pkg="ftag2" type="cam_testbench" name="freq_testbench" output="screen" launch-prefix="gdb -ex run - -args" -->
+  <node pkg="ftag2" type="freq_testbench" name="freq_testbench" output="screen">
+    <param name="source" type="str" value="" />
+
+    <param name="waitkey_delay" value="30" />
+    <param name="save_img_dir" value="/localdata" />
+    
+    <!-- The following are recommended parameter values line detector using connected components -->
+    <param name="sobelThreshHigh" value="100" />
+    <param name="sobelThreshLow" value="30" />
+    <param name="sobelBlurWidth" value="3" />
+    <param name="houghEdgelThetaMargin" value="20.0" />
+    <param name="houghMinAccumValue" value="50.0" /> <!-- minimum number of edgels within each connected component -->
+    <param name="houghMinSegmentLength" value="15.0" />
+    
+    <param name="houghMaxSegmentGap" value="7.0" />
+    
+    <param name="maxQuadsToScan" value="10" />
+    
+    <param name="target_tag_phases" value="270.00, 315.00, 180.00, 180.00, 180.00, 45.00, 225.00, 180.00, 315.00, 180.00, 180.00, 90.00, 315.00, 135.00, 315.00, 135.00, 225.00, 135.00, 315.00, 135.00, 270.00, 45.00, 0.00, 0.00, 45.00, 0.00, 0.00, 0.00, 0.00, 0.00" />
+    <param name="target_tag_phases" value="" />
+  </node>
+</launch>

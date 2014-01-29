@@ -60,7 +60,7 @@ inline std::pair<double, double> randn() {
 };
 
 /**
- * Computes angular (and general modulo-'range') magnitude
+ * Computes angular (and general modulo-'range') magnitude, signed
  */
 inline double angularMag(
     double a,

@@ -167,6 +167,11 @@ public:
     params.quadMinEndptDist = 4.0;
     params.quadMaxStripAvgDiff = 15.0;
     params.imRotateDeg = 0;
+    params.numberOfParticles = 50;
+    params.position_std = 0.5;
+    params.orientation_std = 0.5;
+    params.position_noise_std = 0.5;
+    params.orientation_noise_std = 0.4;
 
     #define GET_PARAM(v) \
       local_nh.param(std::string(#v), params.v, params.v)
@@ -181,6 +186,11 @@ public:
     GET_PARAM(quadMinEndptDist);
     GET_PARAM(quadMaxStripAvgDiff);
     GET_PARAM(imRotateDeg);
+    GET_PARAM(numberOfParticles);
+    GET_PARAM(position_std);
+    GET_PARAM(orientation_std);
+    GET_PARAM(position_noise_std);
+    GET_PARAM(orientation_noise_std);
     #undef GET_PARAM
     dynCfgSyncReq = true;
     local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
@@ -420,7 +430,7 @@ public:
             cv::Mat croppedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
             croppedTagImg = cropFTag2Border(croppedTagImg);
 
-            FTag2 tag = FTag2Decoder::decodeTag(croppedTagImg);
+            FTag2Marker6S5F3B tag(croppedTagImg);
 
             /*
             // Plot spatial signal
@@ -440,13 +450,14 @@ public:
             */
 
             frameNo++;
+
             detections = std::vector<FTag2Marker>();
             if (tag.hasSignature) {
               cv::Mat tagImgRot, croppedTagImgRot;
               BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
               BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
 
-              std::cout << "=====> RECOGNIZED TAG: " << tag.ID << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
+              std::cout << "=====> RECOGNIZED TAG: " << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
               //std::cout << "psk = ..." << std::endl << cv::format(tag.PSK, "matlab") << std::endl << std::endl;
               cv::imshow("quad_1", tagImgRot);
               cv::imshow("quad_1_trimmed", croppedTagImgRot);
@@ -527,9 +538,9 @@ public:
               out << YAML::EndMap;
 //              recording = true;
               detections = std::vector<FTag2Marker>(1);
-              detections[0].pose_x = tvec.at<double>(0)/100.0;
-              detections[0].pose_y = tvec.at<double>(1)/100.0;
-              detections[0].pose_z = tvec.at<double>(2)/100.0;
+              detections[0].position_x = tvec.at<double>(0)/100.0;
+              detections[0].position_y = tvec.at<double>(1)/100.0;
+              detections[0].position_z = tvec.at<double>(2)/100.0;
               detections[0].orientation_x = rMat.getX();;
               detections[0].orientation_y = rMat.getY();;
               detections[0].orientation_z = rMat.getZ();;
@@ -537,7 +548,7 @@ public:
               if ( tracking == false )
               {
               	  tracking = true;
-              	  PF = ParticleFilter(150, 10, detections);
+              	  PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std  );
               	  cv::waitKey();
               }
             } else {
@@ -563,11 +574,11 @@ public:
         {
         	PF.motionUpdate();
         	PF.measurementUpdate(detections);
-//        	PF.normalizeWeights();
+        	PF.normalizeWeights();
         	PF.computeMeanPose();
         	PF.resample();
-//        	if (frameNo%10 == 0)
-//        	PF.displayParticles();
+//        	if (frameNo%50 == 0)
+//       		PF.displayParticles();
 //        	cv::waitKey();
         }
   #ifdef SAVE_IMAGES_FROM

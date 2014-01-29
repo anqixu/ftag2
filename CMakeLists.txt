@@ -11,12 +11,13 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
   image_transport
   std_msgs
+  cv_bridge
   geometry_msgs
   sensor_msgs
   tf
 )
 
-find_package(OMPL)
+find_package(OMPL REQUIRED)
 
 find_package(Boost REQUIRED COMPONENTS date_time-mt system-mt thread-mt serialization-mt program_options-mt)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
@@ -25,11 +26,10 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
 ## Declare ROS messages and services ##
 #######################################
 
-## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-# )
+add_message_files(
+  DIRECTORY msg
+  FILES FreqTBMarkerInfo.msg FreqTBPhaseStats.msg
+)
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -38,13 +38,14 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   geometry_msgs#   sensor_msgs#   std_msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  geometry_msgs sensor_msgs std_msgs
+)
 
 generate_dynamic_reconfigure_options(
   cfg/CamTestbench.cfg
+  cfg/FreqTestbench.cfg
   )
 
 
@@ -60,7 +61,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${FTAG2_LIB_NAME}
-  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport std_msgs geometry_msgs sensor_msgs tf
+  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf
 #  DEPENDS system_lib
 )
 
@@ -97,22 +98,29 @@ add_library(${FTAG2_LIB_NAME}
   ${TRACKER_SOURCES}
 )
 
+target_link_libraries( ${FTAG2_LIB_NAME}
+  ${OMPL_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+
 add_executable(cam_testbench src/cam_testbench.cpp)
 target_link_libraries(cam_testbench
   ${FTAG2_LIB_NAME}
   ${OpenCV_LIBRARIES}
   ${catkin_LIBRARIES}
-  ${OMPL_LIBRARIES}
   yaml-cpp
 )
 add_dependencies(cam_testbench ${PROJECT_NAME}_gencfg)
 
-#add_executable(pnpsolve src/pnpsolve.cpp)
-#target_link_libraries(pnpsolve
-#  ${FTAG2_LIB_NAME}
-#  ${OpenCV_LIBRARIES}
-#  ${catkin_LIBRARIES}
-#)
+add_executable(freq_testbench src/freq_testbench.cpp)
+target_link_libraries(freq_testbench
+  ${FTAG2_LIB_NAME}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_cpp)
+
 
 #############
 ## Install ##

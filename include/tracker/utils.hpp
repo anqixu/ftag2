@@ -10,5 +10,5 @@
 #include <cmath>
 
 double normal_pdf(double x, double m, double s);
-
+double log_normal_pdf(double x, double m, double s);
 #endif /* UTILS_H_ */

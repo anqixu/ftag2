@@ -35,8 +35,12 @@ ObjectHypothesis::ObjectHypothesis() {
 //	corners = std::vector<cv::Vec2i>(4);
 }
 
-ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, bool addNoise ) {
+ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std, bool addNoise ) {
 	this->pose = pose;
+	this->orientation_std = orientation_std;
+	this->position_std = position_std;
+	this->position_noise_std = position_noise_std;
+	this->orientation_noise_std = orientation_noise_std;
 	if ( addNoise == true )
 	{
 		ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
@@ -62,9 +66,9 @@ ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, bool addNoise ) {
 		std::default_random_engine generator(seed);
 		std::normal_distribution<double> distribution_pos(0,sigma_init_pos);
 
-		pose.pose_x = marker.pose_x + distribution_pos(generator);
-		pose.pose_y = marker.pose_y + distribution_pos(generator);
-		pose.pose_z = marker.pose_z + distribution_pos(generator);
+		pose.position_x = marker.position_x + distribution_pos(generator);
+		pose.position_y = marker.position_y + distribution_pos(generator);
+		pose.position_z = marker.position_z + distribution_pos(generator);
 	}
 }
 
@@ -86,7 +90,7 @@ void ObjectHypothesis::motionUpdate() {
     ompl::base::SO3StateSampler SO3ss(space->as<ompl::base::SO3StateSpace>());
 
     SO3ss.sampleGaussian(stateNew->as<ompl::base::SO3StateSpace::StateType>(),
-    		stateMean->as<ompl::base::SO3StateSpace::StateType>(), sigma_rot);
+    		stateMean->as<ompl::base::SO3StateSpace::StateType>(), orientation_noise_std);
 
     pose.orientation_x = stateNew->as<ompl::base::SO3StateSpace::StateType>()->x;
     pose.orientation_y = stateNew->as<ompl::base::SO3StateSpace::StateType>()->y;
@@ -95,11 +99,11 @@ void ObjectHypothesis::motionUpdate() {
 
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 	std::default_random_engine generator(seed);
-	std::normal_distribution<double> distribution_pos(0,sigma_pos);
+	std::normal_distribution<double> distribution_pos(0, position_noise_std);
 
-	pose.pose_x += distribution_pos(generator);
-	pose.pose_y += distribution_pos(generator);
-	pose.pose_z += distribution_pos(generator);
+	pose.position_x += distribution_pos(generator);
+	pose.position_y += distribution_pos(generator);
+	pose.position_z += distribution_pos(generator);
 }
 
 /*
@@ -198,10 +202,10 @@ ObjectHypothesis::ObjectHypothesis(int SX, int SY){
 double ObjectHypothesis::measurementUpdate(std::vector<FTag2Marker> detections) {
 
 	if ( detections.size() == 0 )
-		return weight;
+		return log_weight;
 
-	double maxP = 0.0;
-	int max_prob_index = 0;
+	double maxP = -std::numeric_limits<double>::infinity();
+	int max_log_prob_index = 0;
 
 	ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
 	ompl::base::ScopedState<ompl::base::SO3StateSpace> stateParticle(space);
@@ -218,20 +222,20 @@ double ObjectHypothesis::measurementUpdate(std::vector<FTag2Marker> detections) 
 		stateDetection->as<ompl::base::SO3StateSpace::StateType>()->w = detections[i].orientation_w;
 
 		double rotation_dist = space->as<ompl::base::SO3StateSpace>()->distance(stateDetection->as<ompl::base::SO3StateSpace::StateType>(),stateParticle->as<ompl::base::SO3StateSpace::StateType>());
-		//double rotation_prob = normal_pdf(rotation_dist, 0, sigma_prob_dist_rot);
-		double rotation_prob = 2*phi( (-1.0*rotation_dist) / sigma_prob_dist_rot );
+		double rotation_log_prob = log_normal_pdf(rotation_dist, 0, orientation_std);
+		//double rotation_prob = 2*phi( (-1.0*rotation_dist) / rotation_std );
 
-		double position_dist = sqrt( (pose.pose_x - detections[i].pose_x)*(pose.pose_x - detections[i].pose_x) + (pose.pose_y - detections[i].pose_y)*(pose.pose_y - detections[i].pose_y) + (pose.pose_z - detections[i].pose_z)*(pose.pose_z - detections[i].pose_z));
-//		double position_prob = normal_pdf(position_dist, 0, sigma_prob_dist_pos);
-		double position_prob = 2*phi( (-1.0*position_dist) / sigma_prob_dist_pos );
+		double position_dist = sqrt( (pose.position_x - detections[i].position_x)*(pose.position_x - detections[i].position_x) + (pose.position_y - detections[i].position_y)*(pose.position_y - detections[i].position_y) + (pose.position_z - detections[i].position_z)*(pose.position_z - detections[i].position_z));
+		double position_log_prob = log_normal_pdf(position_dist, 0, position_std);
+		//double position_prob = 2*phi( (-1.0*position_dist) / position_std );
 
-		double prob = position_prob*rotation_prob;
-		if ( prob > maxP )
+		double log_prob = position_log_prob+rotation_log_prob;
+		if ( log_prob > maxP )
 		{
-			max_prob_index = i;
-			maxP = prob;
+			max_log_prob_index = i;
+			maxP = log_prob;
 		}
 	}
-	weight = maxP;
-	return weight;
+	log_weight = maxP;
+	return log_weight;
 }

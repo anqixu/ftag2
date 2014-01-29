@@ -27,15 +27,15 @@ private:
 	unsigned int number_of_particles;
 	std::vector< ObjectHypothesis > particles;
 	std::vector<double> weights;
-	double max_weight;
-	double sum_of_weights;
+	double log_max_weight;
+	double log_sum_of_weights;
 	static double sampling_percent;
 	double tagSize;
 	bool disable_resampling;
 
 public:
 	ParticleFilter(){ number_of_particles = 100; disable_resampling = false; };
-	ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker> detections);
+	ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker> detections, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std);
 	virtual ~ParticleFilter();
 	void motionUpdate();
 	void normalizeWeights();

@@ -13,7 +13,7 @@ ParticleFilter::~ParticleFilter() {
 	// TODO Auto-generated destructor stub
 }
 
-ParticleFilter::ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker> detections){
+ParticleFilter::ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker> detections, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std){
 
 	this->tagSize = tagSize;
 	number_of_particles = numP;
@@ -30,13 +30,13 @@ ParticleFilter::ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker
 	{
 		int k = i%numDetections;
 		weights[i] = 1.0/number_of_particles;
-		particles[i] = ObjectHypothesis(detections.at(k),true);
-		cout <<  "Pose_x: " << detections[k].pose_x << endl;
-		cout <<  "Pose_y: " << detections[k].pose_y << endl;
-		cout <<  "Pose_z: " << detections[k].pose_z << endl;
-		cout <<  "Part Pose_x: " << particles[i].getPose().pose_x << endl;
-		cout <<  "Part Pose_y: " << particles[i].getPose().pose_y << endl;
-		cout <<  "Part Pose_z: " << particles[i].getPose().pose_z << endl;
+		particles[i] = ObjectHypothesis(detections.at(k),position_std, orientation_std, position_noise_std, orientation_noise_std, true);
+		cout <<  "Pose_x: " << detections[k].position_x << endl;
+		cout <<  "Pose_y: " << detections[k].position_y << endl;
+		cout <<  "Pose_z: " << detections[k].position_z << endl;
+		cout <<  "Part Pose_x: " << particles[i].getPose().position_x << endl;
+		cout <<  "Part Pose_y: " << particles[i].getPose().position_y << endl;
+		cout <<  "Part Pose_z: " << particles[i].getPose().position_z << endl;
 	}
 	cout << "Cloud created" << endl;
 
@@ -56,14 +56,8 @@ void ParticleFilter::measurementUpdate(std::vector<FTag2Marker> detections) {
 	}
 	disable_resampling = false;
 
-	max_weight = 0.0;
-	sum_of_weights = 0.0;
-	for( unsigned int i=0; i < number_of_particles; i++ )
-	{
-		sum_of_weights += particles[i].measurementUpdate(detections);
-		if ( max_weight < particles[i].getWeight() )
-			max_weight = particles[i].getWeight();
-		//cout << "P" << i << ": " << particles[i].getWeight() << endl;
+	for (ObjectHypothesis& particle: particles) {
+		particle.measurementUpdate(detections);
 	}
 }
 
@@ -73,11 +67,11 @@ void ParticleFilter::displayParticles(){
 		tf::Quaternion rMat(particles[i].getPose().orientation_x,particles[i].getPose().orientation_y,particles[i].getPose().orientation_z,particles[i].getPose().orientation_w);
 		static tf::TransformBroadcaster br;
 		tf::Transform transform;
-		transform.setOrigin( tf::Vector3( particles[i].getPose().pose_x, particles[i].getPose().pose_y, particles[i].getPose().pose_z ) );
+		transform.setOrigin( tf::Vector3( particles[i].getPose().position_x, particles[i].getPose().position_y, particles[i].getPose().position_z ) );
 		transform.setRotation( rMat );
-		std::string frameName = "Particle_";
-		frameName += i;
-		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName ) );
+		std::ostringstream frameName;
+		frameName << "Particle_" << i;
+		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
 //		std::vector<cv::Vec2i> corners = particles[i].getCorners();
 
 //		cout << "Corners of " << i << ": { (" << corners[0][0] << ", " << corners[0][1] << "), (" << corners[1][0] << ", "
@@ -96,15 +90,25 @@ void ParticleFilter::displayParticles(){
 }
 
 void ParticleFilter::normalizeWeights(){
-	double sum = 0.0;
-	for ( unsigned int i=0; i<number_of_particles; i++ )
-		sum += particles[i].getWeight();
-	for ( unsigned int i=0; i<number_of_particles; i++ )
+	log_max_weight = -std::numeric_limits<double>::infinity();
+	for( ObjectHypothesis& particle: particles )
 	{
-		particles[i].setWeight(particles[i].getWeight()/sum);
-		max_weight = max_weight/sum;
-		//cout << "Normalized P" << i << ": " << particles[i].getWeight() << endl;
+		if ( log_max_weight < particle.getLogWeight() )
+			log_max_weight = particle.getLogWeight();
 	}
+
+	for( ObjectHypothesis& particle: particles )
+	{
+		particle.setLogWeight(particle.getLogWeight() - log_max_weight);
+		log_sum_of_weights += exp(particle.getLogWeight());
+	}
+	log_sum_of_weights = log(log_sum_of_weights);
+
+	for( ObjectHypothesis& particle: particles )
+	{
+		particle.setLogWeight(particle.getLogWeight() - log_sum_of_weights);
+	}
+	log_max_weight = - log_sum_of_weights;
 }
 
 void ParticleFilter::resample(){
@@ -117,7 +121,7 @@ void ParticleFilter::resample(){
 	cummulative_weights[0] = 0.0;
 	for ( unsigned int i=0; i<number_of_particles; i++ )
 	{
-		weights[i] = particles[i].getWeight();
+		weights[i] = exp(particles[i].getLogWeight());
 		cummulative_weights[i+1] = cummulative_weights[i] + weights[i];
 	}
 
@@ -125,7 +129,7 @@ void ParticleFilter::resample(){
 	std::mt19937 gen(rd());
 	std::uniform_int_distribution<> discreteUnif(0, number_of_particles-1);
 
-	std::uniform_real_distribution<double> continuousUnif(0,2*max_weight);
+	std::uniform_real_distribution<double> continuousUnif(0,2*exp(log_max_weight));
 
 	unsigned int index = discreteUnif(gen);
 	double beta = 0.0;
@@ -147,31 +151,33 @@ void ParticleFilter::resample(){
 
 FTag2Marker ParticleFilter::computeMeanPose(){
 
-	//cout << "Mean: P" << 0 << ": " << particles[0].getWeight() << endl;
-	//cout << "Norm. Mean: P" << 0 << ": " << particles[0].getWeight()/sum_of_weights << endl;
+	//cout << "Mean: P" << 0 << ": " << particles[0].getLogWeight() << endl;
+	//cout << "Norm. Mean: P" << 0 << ": " << particles[0].getLogWeight()/sum_of_weights << endl;
 	FTag2Marker tracked_pose;
-	tracked_pose.pose_x = particles[0].getPose().pose_x * particles[0].getWeight()/sum_of_weights;
-	tracked_pose.pose_y = particles[0].getPose().pose_y * particles[0].getWeight()/sum_of_weights;;
-	tracked_pose.pose_z = particles[0].getPose().pose_z * particles[0].getWeight()/sum_of_weights;;
-	tracked_pose.orientation_x = particles[0].getPose().orientation_x * particles[0].getWeight()/sum_of_weights;;
-	tracked_pose.orientation_y = particles[0].getPose().orientation_y * particles[0].getWeight()/sum_of_weights;;
-	tracked_pose.orientation_z = particles[0].getPose().orientation_z * particles[0].getWeight()/sum_of_weights;;
-	tracked_pose.orientation_w = particles[0].getPose().orientation_w * particles[0].getWeight()/sum_of_weights;;
+	double current_weight = exp(particles[0].getLogWeight());
+	tracked_pose.position_x = particles[0].getPose().position_x * current_weight;
+	tracked_pose.position_y = particles[0].getPose().position_y * current_weight;
+	tracked_pose.position_z = particles[0].getPose().position_z * current_weight;
+	tracked_pose.orientation_x = particles[0].getPose().orientation_x * current_weight;
+	tracked_pose.orientation_y = particles[0].getPose().orientation_y * current_weight;
+	tracked_pose.orientation_z = particles[0].getPose().orientation_z * current_weight;
+	tracked_pose.orientation_w = particles[0].getPose().orientation_w * current_weight;
 	for ( unsigned int i=1; i<number_of_particles; i++ )
 	{
-		//cout << "Mean: Normalized P" << i << ": " << particles[i].getWeight() << endl;
-		tracked_pose.pose_x += particles[i].getPose().pose_x * particles[i].getWeight()/sum_of_weights;;
-		tracked_pose.pose_y += particles[i].getPose().pose_y * particles[i].getWeight()/sum_of_weights;;
-		tracked_pose.pose_z += particles[i].getPose().pose_z * particles[i].getWeight()/sum_of_weights;;
-		tracked_pose.orientation_x += particles[i].getPose().orientation_x * particles[i].getWeight()/sum_of_weights;;
-		tracked_pose.orientation_y += particles[i].getPose().orientation_y * particles[i].getWeight()/sum_of_weights;;
-		tracked_pose.orientation_z += particles[i].getPose().orientation_z * particles[i].getWeight()/sum_of_weights;;
-		tracked_pose.orientation_w += particles[i].getPose().orientation_w * particles[i].getWeight()/sum_of_weights;;
+		current_weight = exp(particles[i].getLogWeight());
+		//cout << "Mean: Normalized P" << i << ": " << particles[i].getLogWeight() << endl;
+		tracked_pose.position_x += particles[i].getPose().position_x * current_weight;
+		tracked_pose.position_y += particles[i].getPose().position_y * current_weight;
+		tracked_pose.position_z += particles[i].getPose().position_z * current_weight;
+		tracked_pose.orientation_x += particles[i].getPose().orientation_x * current_weight;
+		tracked_pose.orientation_y += particles[i].getPose().orientation_y * current_weight;
+		tracked_pose.orientation_z += particles[i].getPose().orientation_z * current_weight;
+		tracked_pose.orientation_w += particles[i].getPose().orientation_w * current_weight;
 	}
 	tf::Quaternion rMat(tracked_pose.orientation_x,tracked_pose.orientation_y,tracked_pose.orientation_z,tracked_pose.orientation_w);
 	static tf::TransformBroadcaster br;
 	tf::Transform transform;
-	transform.setOrigin( tf::Vector3( tracked_pose.pose_x, tracked_pose.pose_y, tracked_pose.pose_z ) );
+	transform.setOrigin( tf::Vector3( tracked_pose.position_x, tracked_pose.position_y, tracked_pose.position_z ) );
 	transform.setRotation( rMat );
 	br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "track" ) );
 
