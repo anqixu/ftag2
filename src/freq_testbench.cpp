@@ -25,7 +25,6 @@
 
 //#define SAVE_IMAGES_FROM sourceImgRot
 //#define ENABLE_PROFILER
-#define PRINT_TAG_INFO
 
 
 using namespace std;
@@ -312,7 +311,6 @@ public:
                     currPhaseErrorsPtr++;
                   }
 
-                  // TODO: 000 MAKE SURE TO DOUBLE-CHECK THIS MATH!!!
                   cv::Mat currPhaseErrorsSum, currPhaseErrorsMax;
                   cv::Mat currPhaseErrorsSqrd, currPhaseErrorsSqrdSum;
                   cv::Mat phaseErrorsAvg, phaseErrorsAvgSqrd, phaseErrorsVar, phaseErrorsStd;
@@ -336,22 +334,20 @@ public:
                   phaseStatsMsg.phase_errors_max = std::vector<double>(phaseErrorsMaxPtr, phaseErrorsMaxPtr + phaseErrorsMax.cols * phaseErrorsMax.rows);
 
                   phaseStatsPub.publish(phaseStatsMsg);
-                }
-
-#ifdef PRINT_TAG_INFO
-                if (tag.hasValidXORs && tag.hasValidCRC) {
-                  cout << "=> RECOG  : ";
-                } else if (tag.hasValidXORs) {
-                  cout << "x> BAD CRC: ";
                 } else {
-                  cout << "x> BAD XOR: ";
+                  if (tag.hasValidXORs && tag.hasValidCRC) {
+                    cout << "=> RECOG  : ";
+                  } else if (tag.hasValidXORs) {
+                    cout << "x> BAD CRC: ";
+                  } else {
+                    cout << "x> BAD XOR: ";
+                  }
+                  cout << tag.payloadOct << "; XOR: " << tag.xorBin << "; Rot=" << tag.imgRotDir << "'";
+                  if (tag.hasValidXORs && tag.hasValidCRC) {
+                    cout << "\tID: " << tag.payload.to_ullong();
+                  }
+                  cout << endl;
                 }
-                cout << tag.payloadOct << "; XOR: " << tag.xorBin << "; Rot=" << tag.imgRotDir << "'";
-                if (tag.hasValidXORs && tag.hasValidCRC) {
-                  cout << "\tID: " << tag.payload.to_ullong();
-                }
-                cout << endl;
-#endif
 
                 foundTag = true;
                 break; // stop scanning for more quads
@@ -398,6 +394,13 @@ public:
         c = waitKey(waitKeyDelay);
         if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
           alive = false;
+        } else if ((c & 0x0FF) == 'r' || (c & 0x0FF) == 'R') {
+          if (!targetTagPhasesStr.empty()) {
+            phaseStatsMsg.num_samples = 0;
+            phaseErrorsSum.setTo(cv::Scalar(0));
+            phaseErrorsSqrdSum.setTo(cv::Scalar(0));
+            phaseErrorsMax.setTo(cv::Scalar(0));
+          }
         }
       }
     } catch (const cv::Exception& err) {
