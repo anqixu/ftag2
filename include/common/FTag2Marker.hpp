@@ -23,14 +23,23 @@ struct FTag2Marker {
   double orientation_z;
   double orientation_w;
 
-  std::vector<cv::Mat> rays;
+  std::vector<cv::Mat> rays; // TODO: 1 do we need to store these?
 
   bool hasSignature;
+  bool hasValidXORs;
   int imgRotDir; // counter-clockwise degrees
 
-  std::string payloadStr;
+  std::string payloadOct;
+  std::string payloadBin;
+  std::string xorBin; // == same data as XORExpected
+
+  cv::Mat XORExpected;
+  cv::Mat XORDecoded;
+  cv::Mat payloadChunks;
 
   // TEMP VARS
+  unsigned long long signature;
+
   cv::Mat horzRays;
   cv::Mat vertRays;
   cv::Mat horzMagSpec;
@@ -49,7 +58,9 @@ struct FTag2Marker {
 
   FTag2Marker() : position_x(0), position_y(0), position_z(0),
       orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
-      hasSignature(false), imgRotDir(0), payloadStr("") {};
+      hasSignature(false), hasValidXORs(false),
+      imgRotDir(0), payloadOct(""), payloadBin(""), xorBin(""), signature(0) {
+  };
   FTag2Marker(cv::Mat tag); // Extracts and analyzes rays
   virtual ~FTag2Marker() {};
 
@@ -62,32 +73,32 @@ struct FTag2Marker6S5F3B : FTag2Marker {
   constexpr static unsigned long long SIG_KEY_FLIPPED = 0b00010101;
   constexpr static unsigned long long CRC12_KEY = 0x08F8;
 
+  boost::crc_optimal<12, CRC12_KEY, 0, 0, false, false> CRCEngine;
+
+  bool hasValidCRC;
+
   // TEMP VARS
-  unsigned long long signature;
-
-  cv::Mat XORExpected;
-  cv::Mat XORDecoded;
-  cv::Mat payloadBitChunks;
-
   std::bitset<54> payload;
 
   unsigned long long CRC12Expected;
   unsigned long long CRC12Decoded;
-  boost::crc_optimal<12, CRC12_KEY, 0, 0, false, false> CRCEngine;
 
-  FTag2Marker6S5F3B() : FTag2Marker(), signature(0), CRC12Expected(0), CRC12Decoded(0) {
-    XORExpected = cv::Mat::zeros(6, 3, CV_8UC1);
-    XORDecoded = cv::Mat::zeros(6, 3, CV_8UC1);
-    payloadBitChunks = cv::Mat::zeros(6, 3, CV_8UC1);
+  FTag2Marker6S5F3B() : FTag2Marker(),
+      hasValidCRC(false), CRC12Expected(0), CRC12Decoded(0) {
+    initMatrices();
   };
   FTag2Marker6S5F3B(cv::Mat tag) : FTag2Marker(tag),
-      signature(0), CRC12Expected(0), CRC12Decoded(0) {
-    XORExpected = cv::Mat::zeros(6, 3, CV_8UC1);
-    XORDecoded = cv::Mat::zeros(6, 3, CV_8UC1);
-    payloadBitChunks = cv::Mat::zeros(6, 3, CV_8UC1);
+      hasValidCRC(false), CRC12Expected(0), CRC12Decoded(0) {
+    initMatrices();
     decodePayload();
   };
   virtual ~FTag2Marker6S5F3B() {};
+
+  virtual void initMatrices() {
+    XORExpected = cv::Mat::zeros(6, 3, CV_8UC1);
+    XORDecoded = cv::Mat::zeros(6, 3, CV_8UC1);
+    payloadChunks = cv::Mat::ones(6, 3, CV_8SC1) * -1;
+  };
 
   virtual void decodePayload();
 };

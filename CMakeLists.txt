@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
   image_transport
   std_msgs
+  cv_bridge
   geometry_msgs
   sensor_msgs
   tf
@@ -23,11 +24,10 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
 ## Declare ROS messages and services ##
 #######################################
 
-## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-# )
+add_message_files(
+  DIRECTORY msg
+  FILES FreqTBMarkerInfo.msg FreqTBPhaseStats.msg
+)
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -36,10 +36,10 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   geometry_msgs#   sensor_msgs#   std_msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  geometry_msgs sensor_msgs std_msgs
+)
 
 generate_dynamic_reconfigure_options(
   cfg/CamTestbench.cfg
@@ -58,7 +58,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${FTAG2_LIB_NAME}
-  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport std_msgs geometry_msgs sensor_msgs tf
+  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf
 #  DEPENDS system_lib
 )
 
@@ -110,7 +110,7 @@ target_link_libraries(freq_testbench
   ${OpenCV_LIBRARIES}
   ${catkin_LIBRARIES}
 )
-add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg)
+add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_cpp)
 
 
 #############

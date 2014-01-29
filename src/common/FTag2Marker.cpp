@@ -9,7 +9,8 @@ using namespace std;
 FTag2Marker::FTag2Marker(cv::Mat tag) :
     position_x(0), position_y(0), position_z(0),
     orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
-    hasSignature(false), imgRotDir(0), payloadStr("") {
+    hasSignature(false), hasValidXORs(false),
+    imgRotDir(0), payloadOct(""), payloadBin(""), xorBin(""), signature(0) {
   FTag2Decoder::analyzeRays(tag, this);
 };
 
@@ -66,76 +67,113 @@ void FTag2Marker6S5F3B::decodePayload() {
   }
 
   // Extract encoded XOR checksums from F=2
+  std::ostringstream xorBinSS;
+  bool bitOn;
   for (i = 0; i < 6; i++) {
+    if (i > 0) {
+      xorBinSS << "|";
+    }
+
     currBitChunk = bitChunks.at<unsigned char>(i, 1);
-    XORExpected.at<unsigned char>(i, 0) = ((currBitChunk & 0b0100) == 0b0100);
-    XORExpected.at<unsigned char>(i, 1) = ((currBitChunk & 0b010) == 0b010);
-    XORExpected.at<unsigned char>(i, 2) = ((currBitChunk & 0b01) == 0b01);
+    bitOn = ((currBitChunk & 4) == 4);
+    XORExpected.at<unsigned char>(i, 0) = bitOn;
+    xorBinSS << bitOn;
+    bitOn = ((currBitChunk & 2) == 2);
+    XORExpected.at<unsigned char>(i, 1) = bitOn;
+    xorBinSS << bitOn;
+    bitOn = ((currBitChunk & 1) == 1);
+    XORExpected.at<unsigned char>(i, 2) = bitOn;
+    xorBinSS << bitOn;
   }
+  xorBin = xorBinSS.str();
 
   // Validate/correct per-slice payloads from F={3, 4, 5} against their XOR checksums
-  unsigned char adjustedBitChunk;
+  bool xorFail = false;
   for (i = 0; i < 6; i++) {
     currBitChunk = FTag2Decoder::gray2bin(bitChunks.at<unsigned char>(i, 2));
     XORDecoded.at<unsigned char>(i, 0) = FTag2Decoder::computeXORChecksum(currBitChunk, 3);
-    if (XORDecoded.at<unsigned char>(i, 0) != XORExpected.at<unsigned char>(i, 0)) {
-      adjustedBitChunk = FTag2Decoder::adjustPSK(phases.at<double>(i, 2), 3);
-      payloadBitChunks.at<unsigned char>(i, 0) = FTag2Decoder::gray2bin(adjustedBitChunk);
+    if (XORDecoded.at<unsigned char>(i, 0) == XORExpected.at<unsigned char>(i, 0)) {
+      payloadChunks.at<char>(i, 0) = currBitChunk;
     } else {
-      payloadBitChunks.at<unsigned char>(i, 0) = currBitChunk;
+      xorFail = true;
     }
 
     currBitChunk = FTag2Decoder::gray2bin(bitChunks.at<unsigned char>(i, 3));
     XORDecoded.at<unsigned char>(i, 1) = FTag2Decoder::computeXORChecksum(currBitChunk, 3);
-    if (XORDecoded.at<unsigned char>(i, 1) != XORExpected.at<unsigned char>(i, 1)) {
-      adjustedBitChunk = FTag2Decoder::adjustPSK(phases.at<double>(i, 3), 3);
-      payloadBitChunks.at<unsigned char>(i, 1) = FTag2Decoder::gray2bin(adjustedBitChunk);
+    if (XORDecoded.at<unsigned char>(i, 1) == XORExpected.at<unsigned char>(i, 1)) {
+      payloadChunks.at<char>(i, 1) = currBitChunk;
     } else {
-      payloadBitChunks.at<unsigned char>(i, 1) = currBitChunk;
+      xorFail = true;
     }
 
     currBitChunk = FTag2Decoder::gray2bin(bitChunks.at<unsigned char>(i, 4));
     XORDecoded.at<unsigned char>(i, 2) = FTag2Decoder::computeXORChecksum(currBitChunk, 3);
-    if (XORDecoded.at<unsigned char>(i, 2) != XORExpected.at<unsigned char>(i, 2)) {
-      adjustedBitChunk = FTag2Decoder::adjustPSK(phases.at<double>(i, 4), 3);
-      payloadBitChunks.at<unsigned char>(i, 2) = FTag2Decoder::gray2bin(adjustedBitChunk);
+    if (XORDecoded.at<unsigned char>(i, 2) == XORExpected.at<unsigned char>(i, 2)) {
+      payloadChunks.at<char>(i, 2) = currBitChunk;
     } else {
-      payloadBitChunks.at<unsigned char>(i, 2) = currBitChunk;
+      xorFail = true;
     }
   }
+  hasValidXORs = !xorFail;
 
-  // Concatenate bit chunks together into entire payload
-  unsigned char* payloadBitChunksPtr = (unsigned char*) payloadBitChunks.data;
+  // Concatenate bit chunks together into entire payload,
+  // and form (potentially partial) octal and binary payload strings
+  char* payloadChunksPtr = (char*) payloadChunks.data;
   unsigned int payloadIdx = 54;
-  for (i = 0; i < payloadBitChunks.rows * payloadBitChunks.cols; i++) {
-    payloadIdx--;
-    payload[payloadIdx] = ((*payloadBitChunksPtr & 4) == 4);
-    payloadIdx--;
-    payload[payloadIdx] = ((*payloadBitChunksPtr & 2) == 2);
-    payloadIdx--;
-    payload[payloadIdx] = ((*payloadBitChunksPtr & 1) == 1);
-    payloadBitChunksPtr++;
+  std::ostringstream payloadBinSS;
+  std::ostringstream payloadOctSS;
+  for (i = 0; i < payloadChunks.rows * payloadChunks.cols; i++) {
+    if (i > 0 && (i % payloadChunks.cols) == 0) {
+      payloadOctSS << "|";
+      payloadBinSS << "|";
+    }
+
+    if (*payloadChunksPtr < 0) {
+      payloadOctSS << "?";
+      payloadBinSS << "???";
+
+      payloadIdx -= 3;
+    } else {
+      payloadOctSS << (short) *payloadChunksPtr;
+
+      payloadIdx--;
+      bitOn = ((*payloadChunksPtr & 4) == 4);
+      payload[payloadIdx] = bitOn;
+      payloadBinSS << bitOn;
+      payloadIdx--;
+      bitOn = ((*payloadChunksPtr & 2) == 2);
+      payload[payloadIdx] = bitOn;
+      payloadBinSS << bitOn;
+      payloadIdx--;
+      bitOn = ((*payloadChunksPtr & 1) == 1);
+      payload[payloadIdx] = bitOn;
+      payloadBinSS << bitOn;
+    }
+
+    payloadChunksPtr++;
   }
+  payloadOct = payloadOctSS.str();
+  payloadBin = payloadBinSS.str();
 
-  // Compute and validate CRC-12
-  unsigned long long payloadLL = payload.to_ullong();
-  unsigned char payloadBytes[7] = {
-      (unsigned char) ((payloadLL >> 48) & 0x0FF),
-      (unsigned char) ((payloadLL >> 40) & 0x0FF),
-      (unsigned char) ((payloadLL >> 32) & 0x0FF),
-      (unsigned char) ((payloadLL >> 24) & 0x0FF),
-      (unsigned char) ((payloadLL >> 16) & 0x0FF),
-      (unsigned char) ((payloadLL >> 8) & 0x0FF),
-      (unsigned char) ((payloadLL) & 0x0FF)
-  };
-  CRCEngine.reset();
-  CRCEngine = std::for_each(payloadBytes, payloadBytes + 7, CRCEngine);
-  CRC12Decoded = CRCEngine();
+  // Compute CRC on entire payload
+  if (hasValidXORs) {
 
-  if (CRC12Expected == CRC12Decoded) {
-    payloadStr = payload.to_string();
-  } else {
-    payloadStr = "";
+    // Compute and validate CRC-12
+    unsigned long long payloadLL = payload.to_ullong();
+    unsigned char payloadBytes[7] = {
+        (unsigned char) ((payloadLL >> 48) & 0x0FF),
+        (unsigned char) ((payloadLL >> 40) & 0x0FF),
+        (unsigned char) ((payloadLL >> 32) & 0x0FF),
+        (unsigned char) ((payloadLL >> 24) & 0x0FF),
+        (unsigned char) ((payloadLL >> 16) & 0x0FF),
+        (unsigned char) ((payloadLL >> 8) & 0x0FF),
+        (unsigned char) ((payloadLL) & 0x0FF)
+    };
+    CRCEngine.reset();
+    CRCEngine = std::for_each(payloadBytes, payloadBytes + 7, CRCEngine);
+    CRC12Decoded = CRCEngine();
+
+    hasValidCRC = (CRC12Expected == CRC12Decoded);
   }
 
   /*

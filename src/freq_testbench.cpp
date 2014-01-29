@@ -12,6 +12,11 @@
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
 #include <ftag2/CamTestbenchConfig.h>
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+#include <ftag2/FreqTBMarkerInfo.h>
+#include <ftag2/FreqTBPhaseStats.h>
 
 #include "common/Profiler.hpp"
 #include "common/VectorAndCircularMath.hpp"
@@ -20,6 +25,7 @@
 
 //#define SAVE_IMAGES_FROM sourceImgRot
 //#define ENABLE_PROFILER
+#define PRINT_TAG_INFO
 
 
 using namespace std;
@@ -31,43 +37,25 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
-// DEBUG fn
-cv::Mat genSquareImg(double deg) {
-  int width = 300;
-  int height = 200;
-  cv::Mat testImg = cv::Mat::zeros(height, width, CV_8UC1);
-  cv::Point p0(width/2, height/2);
-  cv::Point p1, p2;
-  cv::Point poly[1][4];
-  const cv::Point* polyPtr[1] = {poly[0]};
-  poly[0][2] = cv::Point(0, height);
-  poly[0][3] = cv::Point(0, 0);
-  int numPtsInPoly[] = {4};
+bool compareArea(const Quad& first, const Quad& second) {
+  return first.area > second.area;
+};
 
-  if (false) { // Draw edge
-    p1 = cv::Point(double(width + tan(deg*degree)*height)/2.0, 0);
-    p2 = p0 - (p1 - p0);
-    poly[0][0] = p1;
-    poly[0][1] = p2;
-    //cv::line(testImg, p1, p2, cv::Scalar(255), width, CV_AA);
-    cv::fillPoly(testImg, polyPtr, numPtsInPoly, 1, Scalar(255), 8);
+
+cv::Mat str2mat(const std::string& s, unsigned int rows) {
+  std::string input = s;
+  auto it = std::remove_if(std::begin(input), std::end(input),
+      [](char c) { return (c == ',' || c == ';' || c == ':'); });
+  input.erase(it, std::end(input));
+
+  cv::Mat mat(0, 0, CV_64FC1);
+  std::istringstream iss(input);
+  double currNum;
+  while (!iss.eof()) {
+    iss >> currNum;
+    mat.push_back(currNum);
   }
-
-  if (true) { // Draw square
-    int bw = width/6;
-    int bh = height/6;
-    int hw = width/2;
-    int hh = height/2;
-    poly[0][0] = cv::Point(hw-bw, hh-bh);
-    poly[0][1] = cv::Point(hw-bw, hh+bh);
-    poly[0][2] = cv::Point(hw+bw, hh+bh);
-    poly[0][3] = cv::Point(hw+bw, hh-bh);
-    cv::fillPoly(testImg, polyPtr, numPtsInPoly, 1, Scalar(255), 8);
-    cv::Mat R = cv::getRotationMatrix2D(cv::Point(hw, hh), deg, 1.0);
-    cv::warpAffine(testImg, testImg, R, testImg.size());
-  }
-
-  return testImg;
+  return mat.reshape(1, rows);
 };
 
 
@@ -75,12 +63,14 @@ class FTag2Testbench {
 public:
   FTag2Testbench() :
       local_nh("~"),
+      it(local_nh),
       dynCfgSyncReq(false),
       alive(false),
       dstID(0),
       dstFilename((char*) calloc(1000, sizeof(char))),
       latestProfTime(ros::Time::now()),
-      waitKeyDelay(30) {
+      waitKeyDelay(30),
+      frameID(0) {
     // Low-value params tuned for marginal acceptable results on synthetic images
     params.sobelThreshHigh = 100;
     params.sobelThreshLow = 30;
@@ -107,10 +97,32 @@ public:
     GET_PARAM(quadMinEndptDist);
     GET_PARAM(quadMaxStripAvgDiff);
     GET_PARAM(imRotateDeg);
+    GET_PARAM(maxQuadsToScan);
     #undef GET_PARAM
     dynCfgSyncReq = true;
     local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
     local_nh.param("save_img_dir", saveImgDir, saveImgDir);
+
+    // Process ground truth tag phases
+    local_nh.param("target_tag_phases", targetTagPhasesStr, targetTagPhasesStr);
+    if (targetTagPhasesStr.size() > 0) {
+      targetTagPhases = str2mat(targetTagPhasesStr, 6);
+      currPhaseErrors = cv::Mat::zeros(6, targetTagPhases.cols, CV_64FC1);
+      phaseErrorsSum = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
+      phaseErrorsSqrdSum = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
+      phaseErrorsMax = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
+
+      phaseStatsMsg.frameID = -1;
+      double* targetTagPhasesPtr = (double*) targetTagPhases.data;
+      phaseStatsMsg.target_tag_phases =
+          std::vector<double>(targetTagPhasesPtr,
+          targetTagPhasesPtr + targetTagPhases.cols * targetTagPhases.rows);
+      phaseStatsMsg.num_samples = 0;
+
+      ROS_INFO_STREAM("TARGET TAG PHASES:" << endl << cv::format(targetTagPhases, "matlab"));
+    } else {
+      ROS_INFO_STREAM("NO TARGET TAG PHASES PARSED");
+    }
 
     std::string source = "";
     local_nh.param("source", source, source);
@@ -131,6 +143,12 @@ public:
     // Setup dynamic reconfigure server
     dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
     dynCfgServer->setCallback(bind(&FTag2Testbench::configCallback, this, _1, _2));
+
+    // Setup ROS stuff
+    imagePub = it.advertise("frame_img", 1);
+    tagPub = it.advertise("marker_img", 1);
+    markerInfoPub = local_nh.advertise<ftag2::FreqTBMarkerInfo>("marker_info", 1);
+    phaseStatsPub = local_nh.advertise<ftag2::FreqTBPhaseStats>("phase_stats", 1);
 
     //namedWindow("source", CV_GUI_EXPANDED);
     //namedWindow("debug", CV_GUI_EXPANDED);
@@ -193,56 +211,28 @@ public:
         // Fetch image
         if (cam.isOpened()) {
           cam >> sourceImg;
+          frameID++;
         }
 
         // Rotate image and convert to grayscale
-        sourceCenter = cv::Point2d(sourceImg.cols/2.0, sourceImg.rows/2.0);
-        rotMat = cv::getRotationMatrix2D(sourceCenter, params.imRotateDeg, 1.0);
-        cv::warpAffine(sourceImg, sourceImgRot, rotMat, sourceImg.size());
-        cv::cvtColor(sourceImgRot, grayImg, CV_RGB2GRAY);
-
-        // Extract line segments
-        /*
-        // OpenCV probabilistic Hough Transform implementation
-        // WARNING: often misses obvious segments in image; not exactly sure which params are responsible
-        int threshold = 50, linbinratio = 100, angbinratio = 100;
-        cv::Mat edgeImg, linesImg;
-        std::vector<cv::Vec4i> lines;
-
-        // Detect lines
-        cv::blur(grayImg, edgelImg, cv::Size(params.sobelBlurWidth, params.sobelBlurWidth));
-        cv::Canny(edgelImg, edgelImg, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
-        cv::HoughLinesP(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold, 10*1.5, 10*1.5/3);
-
-        overlaidImg = sourceImg.clone();
-        for (unsigned int i = 0; i < lines.size(); i++) {
-          cv::line(overlaidImg, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2, 8);
+        if (params.imRotateDeg != 0) {
+          sourceCenter = cv::Point2d(sourceImg.cols/2.0, sourceImg.rows/2.0);
+          rotMat = cv::getRotationMatrix2D(sourceCenter, params.imRotateDeg, 1.0);
+          cv::warpAffine(sourceImg, sourceImgRot, rotMat, sourceImg.size());
+          cv::cvtColor(sourceImgRot, grayImg, CV_RGB2GRAY);
+        } else {
+          sourceImgRot = sourceImg;
+          cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
         }
-        imshow("segments", overlaidImg);
-        */
 
-        /*
-        // Our improved Standard Hough Transform implementation
-        // WARNING: since the Hough space unevenly samples lines with different angles at larger radii from
-        //          the offset point, this implementation often obvious clear segments in image; also it is quite slow
-        double rho_res = params.houghRhoRes;
-        double theta_res = params.houghThetaRes*degree;
-        std::list<cv::Vec4i> lineSegments = detectLineSegmentsHough(grayImg,
-            params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
-            rho_res, theta_res,
-            params.houghEdgelThetaMargin*degree,
-            params.houghBlurRhoWidth*rho_res, params.houghBlurThetaWidth*theta_res,
-            params.houghNMSRhoWidth*rho_res, params.houghNMSThetaWidth*theta_res,
-            params.houghMinAccumValue,
-            params.houghMaxDistToLine,
-            params.houghMinSegmentLength, params.houghMaxSegmentGap);
+        // Publish frame image
+        cv_bridge::CvImage cvSourceImgRot(std_msgs::Header(),
+            sensor_msgs::image_encodings::BGR8, sourceImgRot);
+        cvSourceImgRot.header.frame_id = boost::lexical_cast<std::string>(frameID);
+        imagePub.publish(cvSourceImgRot.toImageMsg());
 
-        overlaidImg = sourceImgRot.clone();
-        drawLineSegments(overlaidImg, lineSegments);
-        imshow("segments", overlaidImg);
-        */
-
-        // Optimized segment detector using angle-bounded connected edgel components
+        // Extract line segments using optimized segment detector using
+        // angle-bounded connected edgel components
         lineSegP.tic();
         std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
             params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
@@ -258,70 +248,122 @@ public:
         std::list<Quad> quads = detectQuads(segments,
             params.quadMinAngleIntercept*degree,
             params.quadMinEndptDist);
+        quads.sort(compareArea);
         quadP.toc();
-        cv::Mat quadsImg = sourceImgRot.clone();
-        //drawLineSegments(quadsImg, segments);
-        drawQuads(quadsImg, quads);
-        cv::imshow("quads", quadsImg);
 
+        bool foundTag = false;
         if (!quads.empty()) {
-          std::list<Quad>::iterator quadIt, largestQuadIt;
-          double largestQuadArea = -1;
-          for (quadIt = quads.begin(); quadIt != quads.end(); quadIt++) {
-            if (quadIt->area > largestQuadArea) {
-              largestQuadArea = quadIt->area;
-              largestQuadIt = quadIt;
-            }
-          }
-          cv::Mat tagImg = extractQuadImg(sourceImgRot, *largestQuadIt, params.quadMinWidth);
-          if (!tagImg.empty()) {
-            cv::Mat croppedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
-            croppedTagImg = cropFTag2Border(croppedTagImg);
+          std::list<Quad>::iterator currQuad = quads.begin();
+          for (int quadI = 0; quadI < std::min(params.maxQuadsToScan, (int) quads.size()); quadI++, currQuad++) {
+            cv::Mat tagImg = extractQuadImg(sourceImgRot, *currQuad, params.quadMinWidth);
+            if (!tagImg.empty()) {
+              cv::Mat croppedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
+              croppedTagImg = cropFTag2Border(croppedTagImg);
 
-            FTag2Marker6S5F3B tag(croppedTagImg);
+              decoderP.tic();
+              FTag2Marker6S5F3B tag(croppedTagImg);
+              decoderP.toc();
 
-            /*
-            // Plot spatial signal
-            std::vector<double> pts;
-            for (int i = 0; i < tag.horzRays.cols; i++) { pts.push_back(tag.horzRays.at<double>(0, i)); }
-            gp::bar(pts, 0, "First Ray");
-
-            // Plot magnitude spectrum
-            std::vector<cv::Point2d> spec;
-            for (int i = 1; i < std::min(magSpec.cols, 9); i++) { spec.push_back(cv::Point2d(i, magSpec.at<double>(0, i))); }
-            gp::plot(spec, 1, "Magnitude Spectrum");
-
-            // Plot phase spectrum
-            spec.clear();
-            for (int i = 1; i < std::min(phaseSpec.cols, 9); i++) { spec.push_back(cv::Point2d(i, vc_math::wrapAngle(phaseSpec.at<double>(0, i), 360.0))); }
-            gp::plot(spec, 2, "Phase Spectrum");
-            */
-
-            if (tag.hasSignature) {
-              if (tag.payloadStr.length() > 0) {
-                cv::Mat tagImgRot, croppedTagImgRot;
-                BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
-                BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
-                cv::imshow("quad_1", tagImgRot);
-                cv::imshow("quad_1_trimmed", croppedTagImgRot);
-                std::cout << "=====> RECOGNIZED TAG: " << tag.payload.to_ullong() << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
-              } else {
+              if (tag.hasSignature) {
+                // Show quad and tag images
+                cv::Mat quadsImg = sourceImgRot.clone();
+                drawQuad(quadsImg, *currQuad);
+                cv::imshow("quads", quadsImg);
                 cv::imshow("quad_1", tagImg);
-                cv::imshow("quad_1_trimmed", croppedTagImg);
 
-                std::cout << "!!!!!! FAILED TO RECOGNIZE TAG" << endl;
+                // Show and publish cropped tag image
+                cv::Mat croppedTagImgRot;
+                BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
+                cv::imshow("quad_1_trimmed", croppedTagImgRot);
+                cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
+                    sensor_msgs::image_encodings::MONO8, croppedTagImgRot);
+                cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(frameID);
+                tagPub.publish(cvCroppedTagImgRot.toImageMsg());
 
-                /*
-              std::cout << std::endl << "==========" << std::endl;
-              std::cout << "hmags = ..." << std::endl << cv::format(tag.horzMags, "matlab") << std::endl << std::endl;
-              std::cout << "vmags = ..." << std::endl << cv::format(tag.vertMags, "matlab") << std::endl << std::endl;
-              std::cout << "hpsk = ..." << std::endl << cv::format(tag.horzPhases, "matlab") << std::endl << std::endl;
-              std::cout << "vpsk = ..." << std::endl << cv::format(tag.vertPhases, "matlab") << std::endl << std::endl;
-                 */
+                // Publish detected tag info
+                ftag2::FreqTBMarkerInfo markerInfoMsg;
+                markerInfoMsg.frameID = frameID;
+                const double* magsPtr = (double*) tag.mags.data;
+                markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.mags.rows * tag.mags.cols);
+                const double* phasesPtr = (double*) tag.phases.data;
+                markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.phases.rows * tag.phases.cols);
+                markerInfoMsg.hasSignature = tag.hasSignature;
+                markerInfoMsg.hasValidXORs = tag.hasValidXORs;
+                markerInfoMsg.hasValidCRC = tag.hasValidCRC;
+                markerInfoMsg.payloadOct = tag.payloadOct;
+                markerInfoMsg.xorBin = tag.xorBin;
+                markerInfoMsg.signature = tag.signature;
+                markerInfoMsg.CRC12Expected = tag.CRC12Expected;
+                markerInfoMsg.CRC12Decoded = tag.CRC12Decoded;
+                markerInfoPub.publish(markerInfoMsg);
+
+                // Compute and publish phase error stats
+                if (!targetTagPhasesStr.empty()) {
+                  phaseStatsMsg.frameID = frameID;
+                  phaseStatsMsg.num_samples += 1;
+
+                  double* targetTagPhasesPtr = (double*) targetTagPhases.data;
+                  double* currTagPhasesPtr = (double*) tag.phases.data;
+                  double* currPhaseErrorsPtr = (double*) currPhaseErrors.data;
+                  for (int i = 0; i < targetTagPhases.rows * targetTagPhases.cols; i++) {
+                    *currPhaseErrorsPtr = vc_math::angularDist(*currTagPhasesPtr, *targetTagPhasesPtr, 360.0);
+                    targetTagPhasesPtr++;
+                    currTagPhasesPtr++;
+                    currPhaseErrorsPtr++;
+                  }
+
+                  // TODO: 000 MAKE SURE TO DOUBLE-CHECK THIS MATH!!!
+                  cv::Mat currPhaseErrorsSum, currPhaseErrorsMax;
+                  cv::Mat currPhaseErrorsSqrd, currPhaseErrorsSqrdSum;
+                  cv::Mat phaseErrorsAvg, phaseErrorsAvgSqrd, phaseErrorsVar, phaseErrorsStd;
+                  cv::reduce(currPhaseErrors, currPhaseErrorsSum, 0, CV_REDUCE_SUM);
+                  cv::reduce(currPhaseErrors, currPhaseErrorsMax, 0, CV_REDUCE_MAX);
+                  cv::pow(currPhaseErrors, 2, currPhaseErrorsSqrd);
+                  cv::reduce(currPhaseErrorsSqrd, currPhaseErrorsSqrdSum, 0, CV_REDUCE_SUM);
+                  phaseErrorsSum = phaseErrorsSum + currPhaseErrorsSum;
+                  phaseErrorsMax = cv::max(phaseErrorsMax, currPhaseErrorsMax);
+                  phaseErrorsSqrdSum = phaseErrorsSqrdSum + currPhaseErrorsSqrdSum;
+                  phaseErrorsAvg = phaseErrorsSum / (phaseStatsMsg.num_samples * 6);
+                  cv::pow(phaseErrorsAvg, 2, phaseErrorsAvgSqrd);
+                  phaseErrorsVar = phaseErrorsSqrdSum / (phaseStatsMsg.num_samples * 6) - phaseErrorsAvgSqrd;
+                  cv::sqrt(phaseErrorsVar, phaseErrorsStd);
+
+                  double* phaseErrorsAvgPtr = (double*) phaseErrorsAvg.data;
+                  double* phaseErrorsStdPtr = (double*) phaseErrorsStd.data;
+                  double* phaseErrorsMaxPtr = (double*) phaseErrorsMax.data;
+                  phaseStatsMsg.phase_errors_avg = std::vector<double>(phaseErrorsAvgPtr, phaseErrorsAvgPtr + phaseErrorsAvg.cols * phaseErrorsAvg.rows);
+                  phaseStatsMsg.phase_errors_std = std::vector<double>(phaseErrorsStdPtr, phaseErrorsStdPtr + phaseErrorsStd.cols * phaseErrorsStd.rows);
+                  phaseStatsMsg.phase_errors_max = std::vector<double>(phaseErrorsMaxPtr, phaseErrorsMaxPtr + phaseErrorsMax.cols * phaseErrorsMax.rows);
+
+                  phaseStatsPub.publish(phaseStatsMsg);
+                }
+
+#ifdef PRINT_TAG_INFO
+                if (tag.hasValidXORs && tag.hasValidCRC) {
+                  cout << "=> RECOG  : ";
+                } else if (tag.hasValidXORs) {
+                  cout << "x> BAD CRC: ";
+                } else {
+                  cout << "x> BAD XOR: ";
+                }
+                cout << tag.payloadOct << "; XOR: " << tag.xorBin << "; Rot=" << tag.imgRotDir << "'";
+                if (tag.hasValidXORs && tag.hasValidCRC) {
+                  cout << "\tID: " << tag.payload.to_ullong();
+                }
+                cout << endl;
+#endif
+
+                foundTag = true;
+                break; // stop scanning for more quads
               }
             }
           }
         }
+        if (!foundTag) {
+          cv::imshow("quads", sourceImgRot);
+        }
+
+
 
   #ifdef SAVE_IMAGES_FROM
         if (saveImgDir.size() > 0) {
@@ -342,6 +384,7 @@ public:
 
           cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
           cout << "detectQuads: " << quadP.getStatsString() << endl;
+          cout << "decodeTag: " << decoderP.getStatsString() << endl;
 
           cout << "Pipeline Duration: " << durationProf.getStatsString() << endl;
           cout << "Pipeline Rate: " << rateProf.getStatsString() << endl;
@@ -367,6 +410,12 @@ protected:
   std::thread spinThread;
 
   ros::NodeHandle local_nh;
+  image_transport::ImageTransport it;
+
+  image_transport::Publisher imagePub;
+  image_transport::Publisher tagPub;
+  ros::Publisher markerInfoPub;
+  ros::Publisher phaseStatsPub;
 
   ReconfigureServer* dynCfgServer;
   boost::recursive_mutex dynCfgMutex;
@@ -382,11 +431,21 @@ protected:
   int dstID;
   char* dstFilename;
 
-  Profiler lineSegP, quadP, durationProf, rateProf;
+  Profiler lineSegP, quadP, decoderP, durationProf, rateProf;
   ros::Time latestProfTime;
 
   int waitKeyDelay;
   std::string saveImgDir;
+
+  std::string targetTagPhasesStr;
+  cv::Mat targetTagPhases;
+
+  int frameID;
+  cv::Mat currPhaseErrors;
+  cv::Mat phaseErrorsSum;
+  cv::Mat phaseErrorsSqrdSum;
+  cv::Mat phaseErrorsMax;
+  ftag2::FreqTBPhaseStats phaseStatsMsg;
 };
 
 

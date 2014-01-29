@@ -15,5 +15,9 @@
     <param name="houghMinSegmentLength" value="15.0" />
     
     <param name="houghMaxSegmentGap" value="7.0" />
+    
+    <param name="maxQuadsToScan" value="10" />
+    
+    <param name="target_tag_phases" value="270.00, 315.00, 180.00, 180.00, 180.00, 45.00, 225.00, 180.00, 315.00, 180.00, 180.00, 90.00, 315.00, 135.00, 315.00, 135.00, 225.00, 135.00, 315.00, 135.00, 270.00, 45.00, 0.00, 0.00, 45.00, 0.00, 0.00, 0.00, 0.00, 0.00" />
   </node>
 </launch>
