@@ -35,22 +35,17 @@ class ObjectHypothesis {
 private:
 	FTag2Marker pose;
 	double log_weight;
-	double position_std;
-	double orientation_std;
-	double position_noise_std;
-	double orientation_noise_std;
 
 public:
 	ObjectHypothesis();
 //	ObjectHypothesis(float x, float y, float sx, float sy){centroid[0]=x,centroid[1]=y,size[0]=sx,size[1]=sy;};
-	ObjectHypothesis(FTag2Marker pose, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std, bool addNoise = true);
+	ObjectHypothesis(FTag2Marker pose, bool addNoise = true);
 	virtual ~ObjectHypothesis();
-	void motionUpdate();
-	double measurementUpdate(std::vector<FTag2Marker> detections);
+	void motionUpdate(double position_noise_std, double orientation_nois_std);
+	double measurementUpdate(std::vector<FTag2Marker> detections, double position_std, double orientation_std);
 	FTag2Marker getPose(){return pose;}
 	double getLogWeight(){return log_weight;}
 	void setLogWeight(double log_weight){this->log_weight = log_weight;}
-	void setParameters(double position_std, double orientation_std, double position_noise_std, double orientation_noise_std);
 };
 
 #endif /* OBJECTHYPOTHESIS_H_ */

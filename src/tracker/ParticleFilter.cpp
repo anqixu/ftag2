@@ -30,7 +30,7 @@ ParticleFilter::ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker
 	{
 		int k = i%numDetections;
 		weights[i] = 1.0/number_of_particles;
-		particles[i] = ObjectHypothesis(detections.at(k),position_std, orientation_std, position_noise_std, orientation_noise_std, true);
+		particles[i] = ObjectHypothesis(detections.at(k), true);
 		cout <<  "Pose_x: " << detections[k].position_x << endl;
 		cout <<  "Pose_y: " << detections[k].position_y << endl;
 		cout <<  "Pose_z: " << detections[k].position_z << endl;
@@ -43,18 +43,23 @@ ParticleFilter::ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker
 	disable_resampling = false;
 }
 
-void ParticleFilter::setParameters(int numP, double tagSize, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std){
-	this->tagSize = tagSize;
+void ParticleFilter::setParameters(int numP, double tagSize_, double position_std_, double orientation_std_, double position_noise_std_, double orientation_noise_std_){
+	tagSize = tagSize_;
 	number_of_particles = numP;
-	for( ObjectHypothesis& particle: particles )
-	{
-		particle.setParameters(position_std, orientation_std, position_noise_std, orientation_noise_std);
-	}
+	position_std = position_std_;
+	orientation_std = orientation_std_;
+	position_noise_std = position_noise_std_;
+	orientation_noise_std = orientation_noise_std_;
+	cout << "Params: " << endl << "Num. paritlces: " << number_of_particles << endl;
+	cout << "Position STD: " << position_std << endl;
+	cout << "Orientation STD: " << orientation_std << endl;
+	cout << "Position noise STD: " << position_noise_std << endl;
+	cout << "Orientation noise STD: " << orientation_noise_std << endl;
 }
 
 void ParticleFilter::motionUpdate() {
 	for( unsigned int i=0; i < number_of_particles; i++ )
-		particles[i].motionUpdate();
+		particles[i].motionUpdate(position_noise_std,orientation_noise_std);
 }
 
 void ParticleFilter::measurementUpdate(std::vector<FTag2Marker> detections) {
@@ -66,7 +71,7 @@ void ParticleFilter::measurementUpdate(std::vector<FTag2Marker> detections) {
 	disable_resampling = false;
 
 	for (ObjectHypothesis& particle: particles) {
-		particle.measurementUpdate(detections);
+		particle.measurementUpdate(detections,position_std,orientation_std);
 	}
 }
 
@@ -161,8 +166,8 @@ void ParticleFilter::resample(){
 FTag2Marker ParticleFilter::computeMeanPose(){
 	FTag2Marker tracked_pose;
 	double current_weight = exp(particles[0].getLogWeight());
-	cout << "Mean log W: " << 0 << ": " << particles[0].getLogWeight() << endl;
-	cout << "Mean W: " << 0 << ": " << current_weight << endl;
+//	cout << "Mean log W: " << 0 << ": " << particles[0].getLogWeight() << endl;
+//	cout << "Mean W: " << 0 << ": " << current_weight << endl;
 	tracked_pose.position_x = particles[0].getPose().position_x * current_weight;
 	tracked_pose.position_y = particles[0].getPose().position_y * current_weight;
 	tracked_pose.position_z = particles[0].getPose().position_z * current_weight;
@@ -173,8 +178,8 @@ FTag2Marker ParticleFilter::computeMeanPose(){
 	for ( unsigned int i=1; i<number_of_particles; i++ )
 	{
 		current_weight = exp(particles[i].getLogWeight());
-		cout << "Mean log W: " << i << ": " << particles[i].getLogWeight() << endl;
-		cout << "Mean W: " << i << ": " << current_weight << endl;
+//		cout << "Mean log W: " << i << ": " << particles[i].getLogWeight() << endl;
+//		cout << "Mean W: " << i << ": " << current_weight << endl;
 		tracked_pose.position_x += particles[i].getPose().position_x * current_weight;
 		tracked_pose.position_y += particles[i].getPose().position_y * current_weight;
 		tracked_pose.position_z += particles[i].getPose().position_z * current_weight;
