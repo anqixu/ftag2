@@ -44,6 +44,10 @@ using namespace ompl::base;
 
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
+bool compareArea(const Quad& first, const Quad& second) {
+  return first.area > second.area;
+};
+
 std::vector<cv::Point2f> Generate2DPoints( Quad quad )
 {
 	std::vector<cv::Point2f> points;
@@ -182,6 +186,7 @@ public:
     dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
     dynCfgServer->setCallback(bind(&FTag2Testbench::configCallback, this, _1, _2));
 
+    // Parse rosparams
     #define GET_PARAM(v) \
       local_nh.param(std::string(#v), params.v, params.v)
     GET_PARAM(sobelThreshHigh);
@@ -195,12 +200,12 @@ public:
     GET_PARAM(quadMinEndptDist);
     GET_PARAM(quadMaxStripAvgDiff);
     GET_PARAM(imRotateDeg);
+    GET_PARAM(maxQuadsToScan);
     GET_PARAM(numberOfParticles);
     GET_PARAM(position_std);
     GET_PARAM(orientation_std);
     GET_PARAM(position_noise_std);
     GET_PARAM(orientation_noise_std);
-
     #undef GET_PARAM
     dynCfgSyncReq = true;
     local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
@@ -343,7 +348,7 @@ public:
           if (dynCfgMutex.try_lock()) { // Make sure that dynamic reconfigure server or config callback is not active
             dynCfgMutex.unlock();
             dynCfgServer->updateConfig(params);
-            ROS_INFO_STREAM("Updated params");
+            ROS_DEBUG_STREAM("Updated params");
             dynCfgSyncReq = false;
           }
         }
@@ -354,53 +359,19 @@ public:
         }
 
         // Rotate image and convert to grayscale
-        sourceCenter = cv::Point2d(sourceImg.cols/2.0, sourceImg.rows/2.0);
-        rotMat = cv::getRotationMatrix2D(sourceCenter, params.imRotateDeg, 1.0);
-        cv::warpAffine(sourceImg, sourceImgRot, rotMat, sourceImg.size());
-        cv::cvtColor(sourceImgRot, grayImg, CV_RGB2GRAY);
-
-        // Extract line segments
-        /*
-        // OpenCV probabilistic Hough Transform implementation
-        // WARNING: often misses obvious segments in image; not exactly sure which params are responsible
-        int threshold = 50, linbinratio = 100, angbinratio = 100;
-        cv::Mat edgeImg, linesImg;
-        std::vector<cv::Vec4i> lines;
-
-        // Detect lines
-        cv::blur(grayImg, edgelImg, cv::Size(params.sobelBlurWidth, params.sobelBlurWidth));
-        cv::Canny(edgelImg, edgelImg, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
-        cv::HoughLinesP(edgelImg, lines, max(linbinratio/10.0, 1.0), max(angbinratio/100.0*CV_PI/180, 1/100.0*CV_PI/180), threshold, 10*1.5, 10*1.5/3);
-
-        overlaidImg = sourceImg.clone();error
-        for (unsigned int i = 0; i < lines.size(); i++) {
-          cv::line(overlaidImg, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2, 8);
+        if (params.imRotateDeg != 0) {
+          sourceCenter = cv::Point2d(sourceImg.cols/2.0, sourceImg.rows/2.0);
+          rotMat = cv::getRotationMatrix2D(sourceCenter, params.imRotateDeg, 1.0);
+          cv::warpAffine(sourceImg, sourceImgRot, rotMat, sourceImg.size());
+          cv::cvtColor(sourceImgRot, grayImg, CV_RGB2GRAY);
+        } else {
+          sourceImgRot = sourceImg;
+          cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
         }
-        imshow("segments", overlaidImg);
-        */
 
-        /*
-        // Our improved Standard Hough Transform implementation
-        // WARNING: since the Hough space unevenly samples lines with different angles at larger radii from
-        //          the offset point, this implementation often obvious clear segments in image; also it is quite slow
-        double rho_res = params.houghRhoRes;
-        double theta_res = params.houghThetaRes*degree;
-        std::list<cv::Vec4i> lineSegments = detectLineSegmentsHough(grayImg,
-            params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
-            rho_res, theta_res,
-            params.houghEdgelThetaMargin*degree,
-            params.houghBlurRhoWidth*rho_res, params.houghBlurThetaWidth*theta_res,
-            params.houghNMSRhoWidth*rho_res, params.houghNMSThetaWidth*theta_res,
-            params.houghMinAccumValue,
-            params.houghMaxDistToLine,
-            params.houghMinSegmentLength, params.houghMaxSegmentGap);
 
-        overlaidImg = sourceImgRot.clone();
-        drawLineSegments(overlaidImg, lineSegments);
-        imshow("segments", overlaidImg);
-        */
-
-        // Optimized segment detector using angle-bounded connected edgel components
+        // Extract line segments using optimized segment detector using
+        // angle-bounded connected edgel components
         lineSegP.tic();
         std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
             params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
@@ -416,163 +387,143 @@ public:
         std::list<Quad> quads = detectQuads(segments,
             params.quadMinAngleIntercept*degree,
             params.quadMinEndptDist);
+        quads.sort(compareArea);
         quadP.toc();
+
         cv::Mat quadsImg = sourceImgRot.clone();
-        //drawLineSegments(quadsImg, segments);
-        drawQuads(quadsImg, quads);
-        cv::imshow("quads", quadsImg);
-
-
+        bool foundTag = false;
         if (!quads.empty()) {
-          std::list<Quad>::iterator quadIt, largestQuadIt;
-          double largestQuadArea = -1;
-          for (quadIt = quads.begin(); quadIt != quads.end(); quadIt++) {
-            if (quadIt->area > largestQuadArea) {
-              largestQuadArea = quadIt->area;
-              largestQuadIt = quadIt;
+          std::list<Quad>::iterator currQuad = quads.begin();
+          for (int quadI = 0; quadI < std::min(params.maxQuadsToScan, (int) quads.size()); quadI++, currQuad++) {
+            cv::Mat tagImg = extractQuadImg(sourceImgRot, *currQuad, params.quadMinWidth);
+            if (!tagImg.empty()) {
+              cv::Mat croppedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
+              croppedTagImg = cropFTag2Border(croppedTagImg);
+              if (croppedTagImg.rows < params.quadMinWidth || croppedTagImg.cols < params.quadMinWidth) {
+                continue;
+              }
+
+              decoderP.tic();
+              FTag2Marker6S5F3B tag(croppedTagImg);
+              decoderP.toc();
+
+              frameNo++;
+
+              detections = std::vector<FTag2Marker>();
+              if (tag.hasSignature) {
+                cv::Mat tagImgRot, croppedTagImgRot;
+                BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
+                BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
+
+                std::cout << "=====> RECOGNIZED TAG: " << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
+                //std::cout << "psk = ..." << std::endl << cv::format(tag.PSK, "matlab") << std::endl << std::endl;
+                cv::imshow("quad_1", tagImgRot);
+                cv::imshow("quad_1_trimmed", croppedTagImgRot);
+
+                std::vector<cv::Point3f> objectPoints = Generate3DPoints();
+                std::vector<cv::Point2f> imagePoints = quads.front().corners;
+
+                for (int k = 0; k<tag.imgRotDir/90; k++)
+                {
+                  cv::Point2f temp = imagePoints[0];
+                  imagePoints.erase(imagePoints.begin());
+                  imagePoints.push_back(temp);
+                }
+
+                drawQuad(quadsImg, *currQuad);
+                for(unsigned int k = 0; k < quads.front().corners.size(); ++k)
+                {
+                if(k==0)
+                  cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(0, 0, 255), 3, 8, 0);
+                else if (k==1)
+                  cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(0, 255, 0), 3, 8, 0);
+                else if (k==2)
+                  cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(255, 0, 0), 3, 8, 0);
+                else
+                  cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(255, 255, 255), 3, 8, 0);
+                }
+                cv::imshow("quads", quadsImg);
+
+                cv::Mat rvec(3,1,cv::DataType<double>::type);
+                cv::Mat tvec(3,1,cv::DataType<double>::type);
+
+                cv::solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec);
+
+                std::cout << "rvec: (" << rvec.at<double>(0,0) << ", " << rvec.at<double>(1,0) << ", " << rvec.at<double>(2,0) << ")" << std::endl;
+                std::cout << "tvec: (" << tvec.at<double>(0,0) << ", " << tvec.at<double>(1,0) << ", " << tvec.at<double>(2,0) << ")" << std::endl;
+
+                marker.header.stamp = ros::Time::now();
+
+                marker.pose.position.x = tvec.at<double>(0)/100.0;
+                marker.pose.position.y = tvec.at<double>(1)/100.0;
+                marker.pose.position.z = tvec.at<double>(2)/100.0;
+                tf::Quaternion rMat;
+                rMat.setRPY(rvec.at<double>(0,0), rvec.at<double>(1,0),rvec.at<double>(2,0));
+                marker.pose.orientation.x = rMat.getX();
+                marker.pose.orientation.y = rMat.getY();
+                marker.pose.orientation.z = rMat.getZ();
+                marker.pose.orientation.w = rMat.getW();
+
+                // Publish the marker
+                marker_pub.publish(marker);
+
+                static tf::TransformBroadcaster br;
+                tf::Transform transform;
+                transform.setOrigin( tf::Vector3(tvec.at<double>(0)/100.0, tvec.at<double>(1)/100.0, tvec.at<double>(2)/100.0) );
+                transform.setRotation( rMat );
+                br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "ftag" ) );
+
+                std::ostringstream oss;
+                oss << frameNo;
+                out << YAML::BeginMap;
+  //              out << YAML::Key << ros::Time::now().nsec;
+                out << YAML::Key << oss.str();
+                    out << YAML::Value;
+                    out << YAML::BeginMap;
+                    out << YAML::Key << "Frame No.";
+                    out << YAML::Value << frameNo;
+                    out << YAML::Key << "Position";
+                    out << YAML::Value
+                        << YAML::BeginSeq
+                            << marker.pose.position.x << marker.pose.position.y << marker.pose.position.z
+                        << YAML::EndSeq;
+                    out << YAML::Key << "Orientation";
+                    out << YAML::Value
+                        << YAML::BeginSeq
+                            << marker.pose.orientation.x << marker.pose.orientation.y
+                            << marker.pose.orientation.z << marker.pose.orientation.w
+                        << YAML::EndSeq ;
+                    out << YAML::EndMap;
+                out << YAML::EndMap;
+  //              recording = true;
+                detections = std::vector<FTag2Marker>(1);
+                detections[0].position_x = tvec.at<double>(0)/100.0;
+                detections[0].position_y = tvec.at<double>(1)/100.0;
+                detections[0].position_z = tvec.at<double>(2)/100.0;
+                detections[0].orientation_x = rMat.getX();
+                detections[0].orientation_y = rMat.getY();
+                detections[0].orientation_z = rMat.getZ();
+                detections[0].orientation_w = rMat.getW();
+                if ( tracking == false )
+                {
+                    tracking = true;
+                    PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std  );
+                    cv::waitKey();
+                    currentNumberOfParticles = params.numberOfParticles;
+                    current_position_std = params.position_std;
+                    current_orientation_std = params.orientation_std;
+                    current_position_noise_std = params.position_noise_std;
+                    current_orientation_noise_std = params.orientation_noise_std;
+                }
+
+                foundTag = true;
+                break; // stop scanning for more quads
+              }
             }
           }
-          cv::Mat tagImg = extractQuadImg(sourceImgRot, *largestQuadIt, params.quadMinWidth);
-          if (!tagImg.empty()) {
-            cv::Mat croppedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
-            croppedTagImg = cropFTag2Border(croppedTagImg);
-
-            FTag2Marker6S5F3B tag(croppedTagImg);
-
-            /*
-            // Plot spatial signal
-            std::vector<double> pts;
-            for (int i = 0; i < tag.horzRays.cols; i++) { pts.push_back(tag.horzRays.at<double>(0, i)); }
-            gp::bar(pts, 0, "First Ray");
-
-            // Plot magnitude spectrum
-            std::vector<cv::Point2d> spec;
-            for (int i = 1; i < std::min(magSpec.cols, 9); i++) { spec.push_back(cv::Point2d(i, magSpec.at<double>(0, i))); }
-            gp::plot(spec, 1, "Magnitude Spectrum");
-
-            // Plot phase spectrum
-            spec.clear();
-            for (int i = 1; i < std::min(phaseSpec.cols, 9); i++) { spec.push_back(cv::Point2d(i, vc_math::wrapAngle(phaseSpec.at<double>(0, i), 360.0))); }
-            gp::plot(spec, 2, "Phase Spectrum");
-            */
-
-            frameNo++;
-
-            detections = std::vector<FTag2Marker>();
-            if (tag.hasSignature) {
-              cv::Mat tagImgRot, croppedTagImgRot;
-              BaseCV::rotate90(tagImg, tagImgRot, tag.imgRotDir/90);
-              BaseCV::rotate90(croppedTagImg, croppedTagImgRot, tag.imgRotDir/90);
-
-              std::cout << "=====> RECOGNIZED TAG: " << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
-              //std::cout << "psk = ..." << std::endl << cv::format(tag.PSK, "matlab") << std::endl << std::endl;
-              cv::imshow("quad_1", tagImgRot);
-              cv::imshow("quad_1_trimmed", croppedTagImgRot);
-
-              std::vector<cv::Point3f> objectPoints = Generate3DPoints();
-              std::vector<cv::Point2f> imagePoints = quads.front().corners;
-
-              for (int k = 0; k<tag.imgRotDir/90; k++)
-              {
-              	cv::Point2f temp = imagePoints[0];
-                imagePoints.erase(imagePoints.begin());
-                imagePoints.push_back(temp);
-              }
-
-              for(unsigned int k = 0; k < quads.front().corners.size(); ++k)
-              {
-            	if(k==0)
-            		cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(0, 0, 255), 3, 8, 0);
-            	else if (k==1)
-            		cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(0, 255, 0), 3, 8, 0);
-            	else if (k==2)
-            		cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(255, 0, 0), 3, 8, 0);
-            	else
-            		cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(255, 255, 255), 3, 8, 0);
-              }
-              cv::imshow("quads", quadsImg);
-
-              cv::Mat rvec(3,1,cv::DataType<double>::type);
-              cv::Mat tvec(3,1,cv::DataType<double>::type);
-
-              cv::solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec);
-
-              std::cout << "rvec: (" << rvec.at<double>(0,0) << ", " << rvec.at<double>(1,0) << ", " << rvec.at<double>(2,0) << ")" << std::endl;
-              std::cout << "tvec: (" << tvec.at<double>(0,0) << ", " << tvec.at<double>(1,0) << ", " << tvec.at<double>(2,0) << ")" << std::endl;
-
-              marker.header.stamp = ros::Time::now();
-
-              marker.pose.position.x = tvec.at<double>(0)/100.0;
-              marker.pose.position.y = tvec.at<double>(1)/100.0;
-              marker.pose.position.z = tvec.at<double>(2)/100.0;
-              tf::Quaternion rMat;
-              rMat.setRPY(rvec.at<double>(0,0), rvec.at<double>(1,0),rvec.at<double>(2,0));
-              marker.pose.orientation.x = rMat.getX();
-              marker.pose.orientation.y = rMat.getY();
-              marker.pose.orientation.z = rMat.getZ();
-              marker.pose.orientation.w = rMat.getW();
-
-              // Publish the marker
-              marker_pub.publish(marker);
-
-              static tf::TransformBroadcaster br;
-              tf::Transform transform;
-              transform.setOrigin( tf::Vector3(tvec.at<double>(0)/100.0, tvec.at<double>(1)/100.0, tvec.at<double>(2)/100.0) );
-              transform.setRotation( rMat );
-              br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "ftag" ) );
-
-              std::ostringstream oss;
-              oss << frameNo;
-              out << YAML::BeginMap;
-//              out << YAML::Key << ros::Time::now().nsec;
-              out << YAML::Key << oss.str();
-                  out << YAML::Value;
-              	  out << YAML::BeginMap;
-              	  out << YAML::Key << "Frame No.";
-              	  out << YAML::Value << frameNo;
-              	  out << YAML::Key << "Position";
-              	  out << YAML::Value
-              			  << YAML::BeginSeq
-              			  	  << marker.pose.position.x << marker.pose.position.y << marker.pose.position.z
-              			  << YAML::EndSeq;
-              	  out << YAML::Key << "Orientation";
-              	  out << YAML::Value
-              			  << YAML::BeginSeq
-              			  	  << marker.pose.orientation.x << marker.pose.orientation.y
-              			  	  << marker.pose.orientation.z << marker.pose.orientation.w
-              			  << YAML::EndSeq ;
-              	  out << YAML::EndMap;
-              out << YAML::EndMap;
-//              recording = true;
-              detections = std::vector<FTag2Marker>(1);
-              detections[0].position_x = tvec.at<double>(0)/100.0;
-              detections[0].position_y = tvec.at<double>(1)/100.0;
-              detections[0].position_z = tvec.at<double>(2)/100.0;
-              detections[0].orientation_x = rMat.getX();
-              detections[0].orientation_y = rMat.getY();
-              detections[0].orientation_z = rMat.getZ();
-              detections[0].orientation_w = rMat.getW();
-              if ( tracking == false )
-              {
-              	  tracking = true;
-              	  PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std  );
-              	  cv::waitKey();
-              	  currentNumberOfParticles = params.numberOfParticles;
-              	  current_position_std = params.position_std;
-              	  current_orientation_std = params.orientation_std;
-              	  current_position_noise_std = params.position_noise_std;
-              	  current_orientation_noise_std = params.orientation_noise_std;
-              }
-            } else {
-              cv::imshow("quad_1", tagImg);
-              cv::imshow("quad_1_trimmed", croppedTagImg);
-              std::cout << std::endl << "==========" << std::endl;
-              std::cout << "hmags = ..." << std::endl << cv::format(tag.horzMags, "matlab") << std::endl << std::endl;
-              std::cout << "vmags = ..." << std::endl << cv::format(tag.vertMags, "matlab") << std::endl << std::endl;
-              std::cout << "hpsk = ..." << std::endl << cv::format(tag.horzPhases, "matlab") << std::endl << std::endl;
-              std::cout << "vpsk = ..." << std::endl << cv::format(tag.vertPhases, "matlab") << std::endl << std::endl;
-            }
-          }
+        }
+        if (!foundTag) {
+          cv::imshow("quads", sourceImgRot);
         }
 
         if (recording == true)
@@ -623,6 +574,7 @@ public:
 
           cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
           cout << "detectQuads: " << quadP.getStatsString() << endl;
+          cout << "decodeTag: " << decoderP.getStatsString() << endl;
 
           cout << "Pipeline Duration: " << durationProf.getStatsString() << endl;
           cout << "Pipeline Rate: " << rateProf.getStatsString() << endl;
@@ -644,7 +596,9 @@ public:
         }
       }
     } catch (const cv::Exception& err) {
-      std::cerr << "CV Exception: " << err.what() << std::endl;
+      ROS_ERROR_STREAM("Spin thread halted due to CV Exception: " << err.what());
+    } catch (const std::string& err) {
+      ROS_ERROR_STREAM("Spin thread halted due to code error: " << err);
     }
   };
 
@@ -668,7 +622,7 @@ protected:
   int dstID;
   char* dstFilename;
 
-  Profiler lineSegP, quadP, durationProf, rateProf;
+  Profiler lineSegP, quadP, decoderP, durationProf, rateProf;
   ros::Time latestProfTime;
 
   int waitKeyDelay;
