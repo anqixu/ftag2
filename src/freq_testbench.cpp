@@ -77,30 +77,11 @@ public:
     params.lineAngleMargin = 20.0; // *degree
     params.lineMinEdgelsCC = 50;
     params.lineMinEdgelsSeg = 15;
-    params.quadMinWidth = 10.0;
+    params.quadMinWidth = 15.0;
     params.quadMinAngleIntercept = 30.0;
     params.quadMinEndptDist = 4.0;
     params.quadMaxStripAvgDiff = 15.0;
     params.imRotateDeg = 0;
-
-    #define GET_PARAM(v) \
-      local_nh.param(std::string(#v), params.v, params.v)
-    GET_PARAM(sobelThreshHigh);
-    GET_PARAM(sobelThreshLow);
-    GET_PARAM(sobelBlurWidth);
-    GET_PARAM(lineAngleMargin);
-    GET_PARAM(lineMinEdgelsCC);
-    GET_PARAM(lineMinEdgelsSeg);
-    GET_PARAM(quadMinWidth);
-    GET_PARAM(quadMinAngleIntercept);
-    GET_PARAM(quadMinEndptDist);
-    GET_PARAM(quadMaxStripAvgDiff);
-    GET_PARAM(imRotateDeg);
-    GET_PARAM(maxQuadsToScan);
-    #undef GET_PARAM
-    dynCfgSyncReq = true;
-    local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
-    local_nh.param("save_img_dir", saveImgDir, saveImgDir);
 
     // Process ground truth tag phases
     local_nh.param("target_tag_phases", targetTagPhasesStr, targetTagPhasesStr);
@@ -110,6 +91,10 @@ public:
       phaseErrorsSum = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
       phaseErrorsSqrdSum = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
       phaseErrorsMax = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
+      currMagNorm = cv::Mat::zeros(6, targetTagPhases.cols, CV_64FC1);
+      magNormSum = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
+      magNormSqrdSum = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
+      magNormMax = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
 
       phaseStatsMsg.frameID = -1;
       double* targetTagPhasesPtr = (double*) targetTagPhases.data;
@@ -142,6 +127,26 @@ public:
     // Setup dynamic reconfigure server
     dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
     dynCfgServer->setCallback(bind(&FTag2Testbench::configCallback, this, _1, _2));
+
+    // Parse rosparams
+    #define GET_PARAM(v) \
+      local_nh.param(std::string(#v), params.v, params.v)
+    GET_PARAM(sobelThreshHigh);
+    GET_PARAM(sobelThreshLow);
+    GET_PARAM(sobelBlurWidth);
+    GET_PARAM(lineAngleMargin);
+    GET_PARAM(lineMinEdgelsCC);
+    GET_PARAM(lineMinEdgelsSeg);
+    GET_PARAM(quadMinWidth);
+    GET_PARAM(quadMinAngleIntercept);
+    GET_PARAM(quadMinEndptDist);
+    GET_PARAM(quadMaxStripAvgDiff);
+    GET_PARAM(imRotateDeg);
+    GET_PARAM(maxQuadsToScan);
+    #undef GET_PARAM
+    dynCfgSyncReq = true;
+    local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
+    local_nh.param("save_img_dir", saveImgDir, saveImgDir);
 
     // Setup ROS stuff
     imagePub = it.advertise("frame_img", 1);
@@ -202,7 +207,7 @@ public:
           if (dynCfgMutex.try_lock()) { // Make sure that dynamic reconfigure server or config callback is not active
             dynCfgMutex.unlock();
             dynCfgServer->updateConfig(params);
-            ROS_INFO_STREAM("Updated params");
+            ROS_DEBUG_STREAM("Updated params");
             dynCfgSyncReq = false;
           }
         }
@@ -251,6 +256,8 @@ public:
         quadP.toc();
 
 
+        // TODO: 0 remove after debugging flickering bug
+        /*
         if (quads.empty()) {
           ROS_WARN_STREAM("NO QUADS IN FRAME");
         }
@@ -260,6 +267,7 @@ public:
             cout << "- " << q.area << endl;
           }
         }
+        */
 
         bool foundTag = false;
         if (!quads.empty()) {
@@ -269,6 +277,9 @@ public:
             if (!tagImg.empty()) {
               cv::Mat croppedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
               croppedTagImg = cropFTag2Border(croppedTagImg);
+              if (croppedTagImg.rows < params.quadMinWidth || croppedTagImg.cols < params.quadMinWidth) {
+                continue;
+              }
 
               decoderP.tic();
               FTag2Marker6S5F3B tag(croppedTagImg);
@@ -307,11 +318,12 @@ public:
                 markerInfoMsg.CRC12Decoded = tag.CRC12Decoded;
                 markerInfoPub.publish(markerInfoMsg);
 
-                // Compute and publish phase error stats
+                // Compute and publish stats
                 if (!targetTagPhasesStr.empty()) {
                   phaseStatsMsg.frameID = frameID;
                   phaseStatsMsg.num_samples += 1;
 
+                  // Compute phase stats
                   double* targetTagPhasesPtr = (double*) targetTagPhases.data;
                   double* currTagPhasesPtr = (double*) tag.phases.data;
                   double* currPhaseErrorsPtr = (double*) currPhaseErrors.data;
@@ -337,12 +349,48 @@ public:
                   phaseErrorsVar = phaseErrorsSqrdSum / (phaseStatsMsg.num_samples * 6) - phaseErrorsAvgSqrd;
                   cv::sqrt(phaseErrorsVar, phaseErrorsStd);
 
+                  // Compute mags stats
+                  double mag_norm_divisor = 0;
+                  tag.mags.copyTo(currMagNorm);
+                  double* currMagNormPtr = (double*) currMagNorm.data;
+                  for (int r = 0; r < currMagNorm.rows; r++) {
+                    mag_norm_divisor = *currMagNormPtr;
+                    *currMagNormPtr = 1.0;
+                    currMagNormPtr++;
+                    for (int c = 1; c < currMagNorm.cols; c++) {
+                      *currMagNormPtr /= mag_norm_divisor;
+                      currMagNormPtr++;
+                    }
+                  }
+
+                  cv::Mat currMagNormSum, currMagNormMax;
+                  cv::Mat currMagNormSqrd, currMagNormSqrdSum;
+                  cv::Mat magNormAvg, magNormAvgSqrd, magNormVar, magNormStd;
+                  cv::reduce(currMagNorm, currMagNormSum, 0, CV_REDUCE_SUM);
+                  cv::reduce(currMagNorm, currMagNormMax, 0, CV_REDUCE_MAX);
+                  cv::pow(currMagNorm, 2, currMagNormSqrd);
+                  cv::reduce(currMagNormSqrd, currMagNormSqrdSum, 0, CV_REDUCE_SUM);
+                  magNormSum = magNormSum + currMagNormSum;
+                  magNormMax = cv::max(magNormMax, currMagNormMax);
+                  magNormSqrdSum = magNormSqrdSum + currMagNormSqrdSum;
+                  magNormAvg = magNormSum / (phaseStatsMsg.num_samples * 6);
+                  cv::pow(magNormAvg, 2, magNormAvgSqrd);
+                  magNormVar = magNormSqrdSum / (phaseStatsMsg.num_samples * 6) - magNormAvgSqrd;
+                  cv::sqrt(magNormVar, magNormStd);
+
+                  // Publish stats
                   double* phaseErrorsAvgPtr = (double*) phaseErrorsAvg.data;
                   double* phaseErrorsStdPtr = (double*) phaseErrorsStd.data;
                   double* phaseErrorsMaxPtr = (double*) phaseErrorsMax.data;
+                  double* magNormAvgPtr = (double*) magNormAvg.data;
+                  double* magNormStdPtr = (double*) magNormStd.data;
+                  double* magNormMaxPtr = (double*) magNormMax.data;
                   phaseStatsMsg.phase_errors_avg = std::vector<double>(phaseErrorsAvgPtr, phaseErrorsAvgPtr + phaseErrorsAvg.cols * phaseErrorsAvg.rows);
                   phaseStatsMsg.phase_errors_std = std::vector<double>(phaseErrorsStdPtr, phaseErrorsStdPtr + phaseErrorsStd.cols * phaseErrorsStd.rows);
                   phaseStatsMsg.phase_errors_max = std::vector<double>(phaseErrorsMaxPtr, phaseErrorsMaxPtr + phaseErrorsMax.cols * phaseErrorsMax.rows);
+                  phaseStatsMsg.mag_spectra_avg = std::vector<double>(magNormAvgPtr, magNormAvgPtr + magNormAvg.cols * magNormAvg.rows);
+                  phaseStatsMsg.mag_spectra_std = std::vector<double>(magNormStdPtr, magNormStdPtr + magNormStd.cols * magNormStd.rows);
+                  phaseStatsMsg.mag_spectra_max = std::vector<double>(magNormMaxPtr, magNormMaxPtr + magNormMax.cols * magNormMax.rows);
 
                   phaseStatsPub.publish(phaseStatsMsg);
                 } else {
@@ -411,11 +459,16 @@ public:
             phaseErrorsSum.setTo(cv::Scalar(0));
             phaseErrorsSqrdSum.setTo(cv::Scalar(0));
             phaseErrorsMax.setTo(cv::Scalar(0));
+            magNormSum.setTo(cv::Scalar(0));
+            magNormSqrdSum.setTo(cv::Scalar(0));
+            magNormMax.setTo(cv::Scalar(0));
           }
         }
       }
     } catch (const cv::Exception& err) {
-      std::cerr << "CV Exception: " << err.what() << std::endl;
+      ROS_ERROR_STREAM("Spin thread halted due to CV Exception: " << err.what());
+    } catch (const std::string& err) {
+      ROS_ERROR_STREAM("Spin thread halted due to code error: " << err);
     }
   };
 
@@ -459,6 +512,10 @@ protected:
   cv::Mat phaseErrorsSum;
   cv::Mat phaseErrorsSqrdSum;
   cv::Mat phaseErrorsMax;
+  cv::Mat currMagNorm;
+  cv::Mat magNormSum;
+  cv::Mat magNormSqrdSum;
+  cv::Mat magNormMax;
   ftag2::FreqTBPhaseStats phaseStatsMsg;
 };
 

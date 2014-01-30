@@ -18,11 +18,14 @@ FTag2Marker::FTag2Marker(cv::Mat tag) :
 void FTag2Marker6S5F3B::decodePayload() {
   int i;
 
-  assert(!horzPhases.empty() && !vertPhases.empty());
   hasSignature = false;
 
   // Extract and validate phase signature, and determine orientation
-  int colMax = std::min(5, horzMagSpec.cols/2);
+  if (horzMags.cols < 5 || vertMags.cols < 5) {
+    throw std::string("Insufficient number of frequencies in tag spectra");
+  }
+  const int colMax = 5;
+
   if ((signature = FTag2Decoder::_extractSigBits(horzPhases, false, 3)) == SIG_KEY) {
     imgRotDir = 0;
     mags = horzMags(cv::Range::all(), cv::Range(0, colMax)).clone();

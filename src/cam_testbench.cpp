@@ -153,7 +153,7 @@ public:
     params.lineAngleMargin = 20.0; // *degree
     params.lineMinEdgelsCC = 50;
     params.lineMinEdgelsSeg = 15;
-    params.quadMinWidth = 10.0;
+    params.quadMinWidth = 15.0;
     params.quadMinAngleIntercept = 30.0;
     params.quadMinEndptDist = 4.0;
     params.quadMaxStripAvgDiff = 15.0;
