@@ -172,11 +172,15 @@ public:
     params.quadMinEndptDist = 4.0;
     params.quadMaxStripAvgDiff = 15.0;
     params.imRotateDeg = 0;
-    params.numberOfParticles = 50;
-    params.position_std = 0.5;
-    params.orientation_std = 0.5;
-    params.position_noise_std = 0.5;
-    params.orientation_noise_std = 0.4;
+    params.numberOfParticles = 5;
+    params.position_std = 0.05;
+    params.orientation_std = 0.05;
+    params.position_noise_std = 0.05;
+    params.orientation_noise_std = 0.2;
+
+    // Setup dynamic reconfigure server
+    dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
+    dynCfgServer->setCallback(bind(&FTag2Testbench::configCallback, this, _1, _2));
 
     #define GET_PARAM(v) \
       local_nh.param(std::string(#v), params.v, params.v)
@@ -196,6 +200,7 @@ public:
     GET_PARAM(orientation_std);
     GET_PARAM(position_noise_std);
     GET_PARAM(orientation_noise_std);
+
     #undef GET_PARAM
     dynCfgSyncReq = true;
     local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
@@ -217,9 +222,6 @@ public:
       }
     }
 
-    // Setup dynamic reconfigure server
-    dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
-    dynCfgServer->setCallback(bind(&FTag2Testbench::configCallback, this, _1, _2));
 
     //namedWindow("source", CV_GUI_EXPANDED);
     //namedWindow("debug", CV_GUI_EXPANDED);
@@ -580,9 +582,7 @@ public:
         	outVideo.write(resizedImg);
         }
 
-        if ( tracking == true && ( currentNumberOfParticles != params.numberOfParticles || current_position_std != params.position_std ||
-      		  current_orientation_std != params.orientation_std || current_position_noise_std != params.position_noise_std ||
-      		  current_orientation_noise_std != params.orientation_noise_std ) )
+        if ( tracking == true )
         {
         	cout << "PARAMETERS CHANGED!!!" << endl;
         	PF.setParameters(params.numberOfParticles, 10, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std);
@@ -591,7 +591,6 @@ public:
         	current_orientation_std = params.orientation_std;
         	current_position_noise_std = params.position_noise_std;
         	current_orientation_noise_std = params.orientation_noise_std;
-        	cv::waitKey();
         }
 
         if (tracking == true)

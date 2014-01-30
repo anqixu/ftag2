@@ -35,12 +35,8 @@ ObjectHypothesis::ObjectHypothesis() {
 //	corners = std::vector<cv::Vec2i>(4);
 }
 
-ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std, bool addNoise ) {
+ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, bool addNoise ) {
 	this->pose = pose;
-	this->orientation_std = orientation_std;
-	this->position_std = position_std;
-	this->position_noise_std = position_noise_std;
-	this->orientation_noise_std = orientation_noise_std;
 	if ( addNoise == true )
 	{
 		ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
@@ -72,18 +68,11 @@ ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, double position_std, doub
 	}
 }
 
-void ObjectHypothesis::setParameters(double position_std, double orientation_std, double position_noise_std, double orientation_noise_std){
-	this->orientation_std = orientation_std;
-	this->position_std = position_std;
-	this->position_noise_std = position_noise_std;
-	this->orientation_noise_std = orientation_noise_std;
-}
-
 ObjectHypothesis::~ObjectHypothesis() {
 	// TODO Auto-generated destructor stub
 }
 
-void ObjectHypothesis::motionUpdate() {
+void ObjectHypothesis::motionUpdate(double position_noise_std, double orientation_noise_std) {
 
     ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
     ompl::base::ScopedState<ompl::base::SO3StateSpace> stateMean(space);
@@ -206,7 +195,7 @@ ObjectHypothesis::ObjectHypothesis(int SX, int SY){
 */
 
 
-double ObjectHypothesis::measurementUpdate(std::vector<FTag2Marker> detections) {
+double ObjectHypothesis::measurementUpdate(std::vector<FTag2Marker> detections, double position_std, double orientation_std) {
 
 	if ( detections.size() == 0 )
 		return log_weight;

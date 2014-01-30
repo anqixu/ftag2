@@ -32,6 +32,10 @@ private:
 	static double sampling_percent;
 	double tagSize;
 	bool disable_resampling;
+	double position_std;
+	double orientation_std;
+	double position_noise_std;
+	double orientation_noise_std;
 
 public:
 	ParticleFilter(){ number_of_particles = 100; disable_resampling = false; };
