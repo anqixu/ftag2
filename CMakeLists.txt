@@ -17,6 +17,8 @@ find_package(catkin REQUIRED COMPONENTS
   tf
 )
 
+find_package(OMPL REQUIRED)
+
 find_package(Boost REQUIRED COMPONENTS date_time-mt system-mt thread-mt serialization-mt program_options-mt)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
 
@@ -94,6 +96,12 @@ add_library(${FTAG2_LIB_NAME}
   ${DECODER_SOURCES}
   ${ENCODER_SOURCES}
   ${TRACKER_SOURCES}
+)
+
+target_link_libraries( ${FTAG2_LIB_NAME}
+  ${OMPL_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
 )
 
 add_executable(cam_testbench src/cam_testbench.cpp)

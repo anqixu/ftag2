@@ -9,6 +9,12 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+#include <ros/ros.h>
+#include "tf/LinearMath/Transform.h"
+#include <geometry_msgs/PoseStamped.h>
+#include <tf/transform_broadcaster.h>
+
+
 #ifndef PARTICLEFILTER_H_
 #define PARTICLEFILTER_H_
 
@@ -21,18 +27,23 @@ private:
 	unsigned int number_of_particles;
 	std::vector< ObjectHypothesis > particles;
 	std::vector<double> weights;
-	static float sampling_percent;
-	int SX;
-	int SY;
+	double log_max_weight;
+	double log_sum_of_weights;
+	static double sampling_percent;
+	double tagSize;
+	bool disable_resampling;
 
 public:
-	ParticleFilter(){ number_of_particles = 100; };
-	ParticleFilter(int numP, int SX, int SY);
+	ParticleFilter(){ number_of_particles = 100; disable_resampling = false; };
+	ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker> detections, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std);
+	void setParameters(int numP, double tagSize, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std);
 	virtual ~ParticleFilter();
 	void motionUpdate();
+	void normalizeWeights();
 	void resample();
-	void measurementUpdate(std::vector<ObjectHypothesis> detections);
-	void drawParticles(cv::Mat img);
+	void measurementUpdate(std::vector<FTag2Marker> detections);
+	void displayParticles();
+	FTag2Marker computeMeanPose();
 };
 
 #endif /* PARTICLEFILTER_H_ */

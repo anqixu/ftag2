@@ -20,5 +20,10 @@
     <param name="houghMinSegmentLength" value="15.0" />
     
     <param name="houghMaxSegmentGap" value="7.0" />
+    <param name="numberOfParticles" value="5" />
+    <param name="position_std" value="1.0" />
+    <param name="orientation_std" value="1.0" />
+    <param name="position_noise_std" value="0.1" />
+    <param name="orientation_noise_std" value="0.1" />
   </node>
 </launch>
