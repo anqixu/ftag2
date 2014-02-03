@@ -30,6 +30,10 @@
 #include <ompl/base/State.h>
 #include <ompl/base/ScopedState.h>
 
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+#include <image_geometry/pinhole_camera_model.h>
 
 //#define SAVE_IMAGES_FROM sourceImgRot
 //#define ENABLE_PROFILER
@@ -41,11 +45,33 @@ using namespace cv;
 using namespace vc_math;
 using namespace ompl::base;
 
-
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 bool compareArea(const Quad& first, const Quad& second) {
   return first.area > second.area;
+};
+
+void imageCallback(const sensor_msgs::ImageConstPtr& original_image)
+{
+    //Convert from the ROS image message to a CvImage suitable for working with OpenCV for processing
+    cv_bridge::CvImagePtr cv_ptr;
+    try
+    {
+        //Always copy, returning a mutable CvImage
+        //OpenCV expects color images to use BGR channel order.
+        cv_ptr = cv_bridge::toCvCopy(original_image, sensor_msgs::image_encodings::BGR8);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        //if there is an error during conversion, display it
+        ROS_ERROR("tutorialROSOpenCV::main.cpp::cv_bridge exception: %s", e.what());
+        return;
+    }
+
+    //Display the image using OpenCV
+    cv::imshow("WINDOW", cv_ptr->image);
+    //Add some delay in miliseconds. The function only works if there is at least one HighGUI window created and the window is active. If there are several HighGUI windows, any of them can be active.
+    cv::waitKey(3);
 };
 
 std::vector<cv::Point2f> Generate2DPoints( Quad quad )
@@ -176,10 +202,10 @@ public:
     params.quadMinEndptDist = 4.0;
     params.quadMaxStripAvgDiff = 15.0;
     params.imRotateDeg = 0;
-    params.numberOfParticles = 5;
-    params.position_std = 0.05;
-    params.orientation_std = 0.05;
-    params.position_noise_std = 0.05;
+    params.numberOfParticles = 50;
+    params.position_std = 0.5;
+    params.orientation_std = 0.5;
+    params.position_noise_std = 0.3;
     params.orientation_noise_std = 0.2;
 
     // Setup dynamic reconfigure server
@@ -227,7 +253,6 @@ public:
       }
     }
 
-
     //namedWindow("source", CV_GUI_EXPANDED);
     //namedWindow("debug", CV_GUI_EXPANDED);
     namedWindow("edgels", CV_GUI_EXPANDED);
@@ -237,12 +262,8 @@ public:
     namedWindow("quad_1", CV_GUI_EXPANDED);
     namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
     namedWindow("quads", CV_GUI_EXPANDED);
-/*
-    std::string camMatrixFname = "";
-    local_nh.param("camMatrix", camMatrixFname, camMatrixFname);
-    std::string distCoefFname = "";
-    local_nh.param("distCoef", distCoefFname, distCoefFname);
-*/
+
+
     intrinsic = (CvMat*)cvLoad("/home/dacocp/Dropbox/catkin_ws/Intrinsics.xml");
     distortion = (CvMat*)cvLoad("/home/dacocp/Dropbox/catkin_ws/Distortion.xml");
     distCoeffs = distortion;
@@ -261,43 +282,6 @@ public:
     recording = false;
     tracking = false;
     detections = std::vector<FTag2Marker>();
-
-    ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
-    ompl::base::ScopedState<ompl::base::SO3StateSpace> stateM(space);
-    ompl::base::ScopedState<ompl::base::SO3StateSpace> stateN(space);
-    ompl::base::ScopedState<> backup = stateM;
-    ompl::base::State *abstractState = space->allocState();
-    std::cout << "1: " << stateM << std::endl;
-    std::cout << stateN << std::endl;
-    std::cout << abstractState << std::endl;
-
-    stateM = abstractState;
-    std::cout << "2: " << stateM << std::endl;
-    std::cout << stateN << std::endl;
-    std::cout << abstractState << std::endl;
-
-    stateM->as<ompl::base::SO3StateSpace::StateType>()->x = 1.0;
-    stateM->as<ompl::base::SO3StateSpace::StateType>()->y = 0.0;
-    stateM->as<ompl::base::SO3StateSpace::StateType>()->z = 1.0;
-    stateM->as<ompl::base::SO3StateSpace::StateType>()->w = 0.0;
-    stateN.random();
-
-    std::cout << "3: " << stateM << std::endl;
-    std::cout << stateN << std::endl;
-    std::cout << abstractState << std::endl;
-
-    ompl::base::SO3StateSampler SO3ss(space->as<ompl::base::SO3StateSpace>());
-
-    SO3ss.sampleGaussian(stateN->as<ompl::base::SO3StateSpace::StateType>(), stateM->as<ompl::base::SO3StateSpace::StateType>(), 0.0001);
-
-    std::cout << "4: " << stateM << std::endl;
-    std::cout << stateN << std::endl;
-    std::cout << abstractState << std::endl;
-
-//    stateN = abstractState;
-    std::cout << "5: " << stateM << std::endl;
-    std::cout << stateN << std::endl;
-    std::cout << abstractState << std::endl;
 
     alive = true;
 
@@ -552,7 +536,7 @@ public:
         	PF.computeMeanPose();
         	PF.resample();
 //        	if (frameNo%50 == 0)
-       		PF.displayParticles();
+//       		PF.displayParticles();
 //        	cv::waitKey();
         }
   #ifdef SAVE_IMAGES_FROM
@@ -601,7 +585,6 @@ public:
       ROS_ERROR_STREAM("Spin thread halted due to code error: " << err);
     }
   };
-
 
 protected:
   std::thread spinThread;

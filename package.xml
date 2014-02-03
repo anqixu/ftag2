@@ -26,6 +26,9 @@
   <build_depend>geometry_msgs</build_depend>
   <build_depend>sensor_msgs</build_depend>
   <build_depend>tf</build_depend>
+  <build_depend>image_geometry</build_depend>
+  <build_depend>camera_subscriber</build_depend>
+  <build_depend>LinearMath</build_depend>
   
   <run_depend>roscpp</run_depend>
   <run_depend>rospy</run_depend>
@@ -37,7 +40,10 @@
   <run_depend>geometry_msgs</run_depend>
   <run_depend>sensor_msgs</run_depend>
   <run_depend>tf</run_depend>
-
+  <run_depend>image_geometry</run_depend>
+  <run_depend>camera_subscriber</run_depend>
+  <run_depend>LinearMath</run_depend>
+  
   <!-- The export tag contains other, unspecified, tags -->
   <export>
     <!-- You can specify that this package is a metapackage here: -->

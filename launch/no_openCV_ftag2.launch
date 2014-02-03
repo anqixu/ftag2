@@ -1,6 +1,6 @@
 <launch>
-  <!-- node pkg="ftag2" type="cam_testbench" name="cam_testbench" output="screen" launch-prefix="gdb -ex run - -args" -->
-  <node pkg="ftag2" type="cam_testbench" name="cam_testbench" output="screen">
+  <!-- node pkg="ftag2" type="ros_cam_testbench" name="ros_cam_testbench" output="screen" launch-prefix="gdb -ex run - -args" -->
+  <node pkg="ftag2" type="ros_cam_testbench" name="ros_cam_testbench" output="screen">
     <param name="source" type="str" value="/home/thalassa/anqixu/Desktop/test2.png" />
     <param name="source" type="str" value="/home/thalassa/anqixu/Desktop/source.png" />
     <param name="source" type="str" value="/localdata/anqixu/AQUA_TAG_BAGS/contrast.jpg" />

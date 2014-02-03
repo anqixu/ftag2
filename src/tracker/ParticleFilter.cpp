@@ -75,59 +75,62 @@ void ParticleFilter::measurementUpdate(std::vector<FTag2Marker> detections) {
 	}
 }
 
-void ParticleFilter::displayParticles(){
-	for ( unsigned int i=0; i<number_of_particles; i++ )
-	{
-		tf::Quaternion rMat(particles[i].getPose().orientation_x,particles[i].getPose().orientation_y,particles[i].getPose().orientation_z,particles[i].getPose().orientation_w);
-		static tf::TransformBroadcaster br;
-		tf::Transform transform;
-		transform.setOrigin( tf::Vector3( particles[i].getPose().position_x, particles[i].getPose().position_y, particles[i].getPose().position_z ) );
-		transform.setRotation( rMat );
-		std::ostringstream frameName;
-		frameName << "Particle_" << i;
-		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
-//		std::vector<cv::Vec2i> corners = particles[i].getCorners();
-
-//		cout << "Corners of " << i << ": { (" << corners[0][0] << ", " << corners[0][1] << "), (" << corners[1][0] << ", "
-//								<< corners[1][1] << "), (" << corners[2][0] << ", " << corners[2][1] << "), (" << corners[3][0] << ", "
-//								<< corners[3][1] << ") }" << endl;
-
-//		cv::line( img, cv::Point((int)corners[0][0], (int)corners[0][1]), cv::Point((int)corners[1][0], (int)corners[1][1]), cv::Scalar(255,0,0), 1, 8 );
-//		cv::line( img, cv::Point((int)corners[1][0], (int)corners[1][1]), cv::Point((int)corners[2][0], (int)corners[2][1]), cv::Scalar(255,0,0), 1, 8 );
-//		cv::line( img, cv::Point((int)corners[2][0], (int)corners[2][1]), cv::Point((int)corners[3][0], (int)corners[3][1]), cv::Scalar(255,0,0), 1, 8 );
-//		cv::line( img, cv::Point((int)corners[3][0], (int)corners[3][1]), cv::Point((int)corners[0][0], (int)corners[0][1]), cv::Scalar(255,0,0), 1, 8 );
-		//PC.drawObject(img);
-	}
-//	cout << "Finished creating image" << endl;
-//	cv::imshow("Particles", img);
-//	cout << "Finished drawing image" << endl;
-}
-
 void ParticleFilter::normalizeWeights(){
+	if ( disable_resampling == true )
+		return;
+
+	double log_min_weight = std::numeric_limits<double>::infinity();
 	log_max_weight = -std::numeric_limits<double>::infinity();
 	for( ObjectHypothesis& particle: particles )
 	{
+		if ( log_min_weight > particle.getLogWeight() )
+			log_min_weight = particle.getLogWeight();
 		if ( log_max_weight < particle.getLogWeight() )
 			log_max_weight = particle.getLogWeight();
 	}
+	cout << "log max weight: " << log_max_weight << endl;
+	cout << "log min weight: " << log_min_weight << endl;
 
+	log_sum_of_weights = 0.0;
 	for( ObjectHypothesis& particle: particles )
 	{
 		particle.setLogWeight(particle.getLogWeight() - log_max_weight);
 		log_sum_of_weights += exp(particle.getLogWeight());
 	}
+	cout << "sum of weights: " << log_sum_of_weights << endl;
 	log_sum_of_weights = log(log_sum_of_weights);
+	cout << "log sum of weights: " << log_sum_of_weights << endl;
 
 	for( ObjectHypothesis& particle: particles )
 	{
 		particle.setLogWeight(particle.getLogWeight() - log_sum_of_weights);
 	}
 	log_max_weight = - log_sum_of_weights;
+	cout << "log max weight: " << log_max_weight << endl;
+
+	double sum_w = 0.0;
+	for ( ObjectHypothesis& particle: particles )
+	{
+		sum_w += exp(particle.getLogWeight());
+	}
+	double mean_weight = sum_w/number_of_particles;
+
+	double sum_square_diffs = 0.0;
+	for ( ObjectHypothesis& particle: particles )
+	{
+		sum_square_diffs += (exp(particle.getLogWeight()) - mean_weight) * (exp(particle.getLogWeight()) - mean_weight);
+	}
+	double weights_std = sqrt(sum_square_diffs / number_of_particles);
+	cout << "REAL SUM OF WEIGHTS: " << sum_w << endl;
+	cout << "MEAN WEIGHT: " << mean_weight << endl;
+	cout << "WEIGHT STD: " << weights_std << endl;
+
 }
 
 void ParticleFilter::resample(){
 	if ( disable_resampling == true )
 		return;
+
 	std::vector< ObjectHypothesis > newParticles(number_of_particles);
 
 	std::vector<double> weights(number_of_particles);
@@ -175,6 +178,9 @@ FTag2Marker ParticleFilter::computeMeanPose(){
 	tracked_pose.orientation_y = particles[0].getPose().orientation_y * current_weight;
 	tracked_pose.orientation_z = particles[0].getPose().orientation_z * current_weight;
 	tracked_pose.orientation_w = particles[0].getPose().orientation_w * current_weight;
+	cout << "Pose x: " << tracked_pose.position_x << endl;
+	cout << "Pose y: " << tracked_pose.position_y << endl;
+	cout << "Pose z: " << tracked_pose.position_z << endl;
 	for ( unsigned int i=1; i<number_of_particles; i++ )
 	{
 		current_weight = exp(particles[i].getLogWeight());
@@ -196,4 +202,33 @@ FTag2Marker ParticleFilter::computeMeanPose(){
 	br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "track" ) );
 
 	return tracked_pose;
+}
+
+
+void ParticleFilter::displayParticles(){
+	for ( unsigned int i=0; i<number_of_particles; i++ )
+	{
+		tf::Quaternion rMat(particles[i].getPose().orientation_x,particles[i].getPose().orientation_y,particles[i].getPose().orientation_z,particles[i].getPose().orientation_w);
+		static tf::TransformBroadcaster br;
+		tf::Transform transform;
+		transform.setOrigin( tf::Vector3( particles[i].getPose().position_x, particles[i].getPose().position_y, particles[i].getPose().position_z ) );
+		transform.setRotation( rMat );
+		std::ostringstream frameName;
+		frameName << "Particle_" << i;
+		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
+//		std::vector<cv::Vec2i> corners = particles[i].getCorners();
+
+//		cout << "Corners of " << i << ": { (" << corners[0][0] << ", " << corners[0][1] << "), (" << corners[1][0] << ", "
+//								<< corners[1][1] << "), (" << corners[2][0] << ", " << corners[2][1] << "), (" << corners[3][0] << ", "
+//								<< corners[3][1] << ") }" << endl;
+
+//		cv::line( img, cv::Point((int)corners[0][0], (int)corners[0][1]), cv::Point((int)corners[1][0], (int)corners[1][1]), cv::Scalar(255,0,0), 1, 8 );
+//		cv::line( img, cv::Point((int)corners[1][0], (int)corners[1][1]), cv::Point((int)corners[2][0], (int)corners[2][1]), cv::Scalar(255,0,0), 1, 8 );
+//		cv::line( img, cv::Point((int)corners[2][0], (int)corners[2][1]), cv::Point((int)corners[3][0], (int)corners[3][1]), cv::Scalar(255,0,0), 1, 8 );
+//		cv::line( img, cv::Point((int)corners[3][0], (int)corners[3][1]), cv::Point((int)corners[0][0], (int)corners[0][1]), cv::Scalar(255,0,0), 1, 8 );
+		//PC.drawObject(img);
+	}
+//	cout << "Finished creating image" << endl;
+//	cv::imshow("Particles", img);
+//	cout << "Finished drawing image" << endl;
 }

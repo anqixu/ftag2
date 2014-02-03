@@ -15,6 +15,8 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   sensor_msgs
   tf
+  image_geometry
+  image_transport
 )
 
 find_package(OMPL REQUIRED)
@@ -61,7 +63,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${FTAG2_LIB_NAME}
-  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf
+  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf 
 #  DEPENDS system_lib
 )
 
@@ -112,6 +114,15 @@ target_link_libraries(cam_testbench
   yaml-cpp
 )
 add_dependencies(cam_testbench ${PROJECT_NAME}_gencfg)
+
+add_executable(ros_cam_testbench src/ros_cam_testbench.cpp)
+target_link_libraries(ros_cam_testbench
+  ${FTAG2_LIB_NAME}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
+  yaml-cpp
+ )
+add_dependencies(ros_cam_testbench ${PROJECT_NAME}_gencfg)
 
 add_executable(freq_testbench src/freq_testbench.cpp)
 target_link_libraries(freq_testbench
