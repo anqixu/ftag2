@@ -503,3 +503,27 @@ cv::Mat extractHorzRays(cv::Mat croppedTag, unsigned int numSamples,
   }
   return rays;
 };
+
+
+void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
+    cv::Mat cameraIntrinsic, cv::Mat cameraDistortion,
+    double& tx, double &ty, double& tz,
+    double& rw, double& rx, double& ry, double& rz) {
+  std::vector<cv::Point3d> spatialPoints;
+  cv::Mat transVec, rotVec, rotMat;
+
+  double quadSizeHalved = quadSizeM / 2;
+  spatialPoints.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0));
+  spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
+  spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));
+  spatialPoints.push_back(cv::Point3d(-quadSizeHalved,  quadSizeHalved, 0.0));
+
+  cv::solvePnP(spatialPoints, cornersPx, cameraIntrinsic, cameraDistortion,
+      rotVec, transVec);
+  cv::Rodrigues(rotVec, rotMat);
+  vc_math::rotMat2quat(rotMat, rw, rx, ry, rz);
+
+  tx = transVec.at<double>(0);
+  ty = transVec.at<double>(1);
+  tz = transVec.at<double>(2);
+};

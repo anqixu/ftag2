@@ -82,6 +82,18 @@ public:
     params.quadMinEndptDist = 4.0;
     params.quadMaxStripAvgDiff = 15.0;
     params.imRotateDeg = 0;
+    params.maxQuadsToScan = 10;
+    params.markerWidthM = 0.07;
+
+    std::string cameraIntrinsicStr, cameraDistortionStr;
+    local_nh.param("camera_intrinsic", cameraIntrinsicStr, cameraIntrinsicStr);
+    local_nh.param("camera_distortion", cameraDistortionStr, cameraDistortionStr);
+    if (cameraIntrinsicStr.size() > 0) {
+      cameraIntrinsic = str2mat(cameraIntrinsicStr, 3);
+    }
+    if (cameraDistortionStr.size() > 0) {
+      cameraDistortion = str2mat(cameraDistortionStr, 1);
+    }
 
     // Process ground truth tag phases
     local_nh.param("target_tag_phases", targetTagPhasesStr, targetTagPhasesStr);
@@ -143,6 +155,7 @@ public:
     GET_PARAM(quadMaxStripAvgDiff);
     GET_PARAM(imRotateDeg);
     GET_PARAM(maxQuadsToScan);
+    GET_PARAM(markerWidthM);
     #undef GET_PARAM
     dynCfgSyncReq = true;
     local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
@@ -255,7 +268,6 @@ public:
         quads.sort(compareArea);
         quadP.toc();
 
-
         // TODO: 0 remove after debugging flickering bug
         /*
         if (quads.empty()) {
@@ -286,6 +298,38 @@ public:
               decoderP.toc();
 
               if (tag.hasSignature) {
+                // Compute pose of tag
+                std::vector<cv::Point2f> tagCorners;
+                switch ((tag.imgRotDir/90) % 4) {
+                case 1:
+                  tagCorners.push_back(currQuad->corners[1]);
+                  tagCorners.push_back(currQuad->corners[2]);
+                  tagCorners.push_back(currQuad->corners[3]);
+                  tagCorners.push_back(currQuad->corners[0]);
+                  break;
+                case 2:
+                  tagCorners.push_back(currQuad->corners[2]);
+                  tagCorners.push_back(currQuad->corners[3]);
+                  tagCorners.push_back(currQuad->corners[0]);
+                  tagCorners.push_back(currQuad->corners[1]);
+                  break;
+                case 3:
+                  tagCorners.push_back(currQuad->corners[3]);
+                  tagCorners.push_back(currQuad->corners[0]);
+                  tagCorners.push_back(currQuad->corners[1]);
+                  tagCorners.push_back(currQuad->corners[2]);
+                  break;
+                default:
+                  tagCorners = currQuad->corners;
+                  break;
+                }
+
+                solvePose(tagCorners, params.markerWidthM,
+                    cameraIntrinsic, cameraDistortion,
+                    tag.position_x, tag.position_y, tag.position_z,
+                    tag.orientation_w, tag.orientation_x, tag.orientation_y,
+                    tag.orientation_z);
+
                 // Show quad and tag images
                 cv::Mat quadsImg = sourceImgRot.clone();
                 drawQuad(quadsImg, *currQuad);
@@ -304,6 +348,13 @@ public:
                 // Publish detected tag info
                 ftag2::FreqTBMarkerInfo markerInfoMsg;
                 markerInfoMsg.frameID = frameID;
+                markerInfoMsg.pose.position.x = tag.position_x;
+                markerInfoMsg.pose.position.y = tag.position_y;
+                markerInfoMsg.pose.position.z = tag.position_z;
+                markerInfoMsg.pose.orientation.w = tag.orientation_w;
+                markerInfoMsg.pose.orientation.x = tag.orientation_x;
+                markerInfoMsg.pose.orientation.y = tag.orientation_y;
+                markerInfoMsg.pose.orientation.z = tag.orientation_z;
                 const double* magsPtr = (double*) tag.mags.data;
                 markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.mags.rows * tag.mags.cols);
                 const double* phasesPtr = (double*) tag.phases.data;
@@ -503,6 +554,8 @@ protected:
 
   int waitKeyDelay;
   std::string saveImgDir;
+
+  cv::Mat cameraIntrinsic, cameraDistortion;
 
   std::string targetTagPhasesStr;
   cv::Mat targetTagPhases;

@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 #include <cmath>
+#include <cassert>
 
 
 inline bool operator==(const cv::Vec4i& lhs, const cv::Vec4i& rhs) {
@@ -499,7 +500,49 @@ inline double dot(const cv::Point2f& endA1, const cv::Point2f& endA2,
   return (endA2.x-endA1.x)*(endB2.x-endB1.x) + (endA2.y-endA1.y)*(endB2.y-endB1.y);
 };
 
+/**
+ * Converts a rotation matrix into a quaternion
+ *
+ * From: http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
+ */
+inline void rotMat2quat(const cv::Mat rotMat,
+    double& w, double& x, double& y, double& z) {
+  assert(rotMat.rows == 3 && rotMat.cols == 3 && rotMat.isContinuous() &&
+      rotMat.elemSize() == sizeof(double));
+
+  double tr = rotMat.at<double>(0, 0) + rotMat.at<double>(1, 1) + rotMat.at<double>(2, 2);
+  double s;
+
+  if (tr > 0) {
+    s = 0.5/sqrt(tr + 1.0);
+    w = 0.25/s;
+    x = (rotMat.at<double>(2, 1) - rotMat.at<double>(1, 2))*s;
+    y = (rotMat.at<double>(0, 2) - rotMat.at<double>(2, 0))*s;
+    z = (rotMat.at<double>(1, 0) - rotMat.at<double>(0, 1))*s;
+  } else if (rotMat.at<double>(0, 0) > rotMat.at<double>(1, 1) &&
+      rotMat.at<double>(0, 0) > rotMat.at<double>(2, 2)) {
+    s = 2.0*sqrt(1.0 + 2*rotMat.at<double>(0, 0) - tr);
+    w = (rotMat.at<double>(2, 1) - rotMat.at<double>(1, 2))/s;
+    x = 0.25*s;
+    y = (rotMat.at<double>(0, 1) + rotMat.at<double>(1, 0))/s;
+    z = (rotMat.at<double>(0, 2) + rotMat.at<double>(2, 0))/s;
+  } else if (rotMat.at<double>(1, 1) > rotMat.at<double>(2, 2)) {
+    s = 2.0*sqrt(1.0 + 2*rotMat.at<double>(1, 1) - tr);
+    w = (rotMat.at<double>(0, 2) - rotMat.at<double>(2, 0))/s;
+    x = (rotMat.at<double>(0, 1) + rotMat.at<double>(1, 0))/s;
+    y = 0.25*s;
+    z = (rotMat.at<double>(1, 2) + rotMat.at<double>(2, 1))/s;
+  } else {
+    s = 2.0*sqrt(1.0 + 2*rotMat.at<double>(2, 2) - tr);
+    w = (rotMat.at<double>(1, 0) - rotMat.at<double>(0, 1))/s;
+    x = (rotMat.at<double>(0, 2) + rotMat.at<double>(2, 0))/s;
+    y = (rotMat.at<double>(1, 2) + rotMat.at<double>(2, 1))/s;
+    z = 0.25*s;
+  }
+};
+
 
 };
+
 
 #endif /* VECTORANDCIRCULARMATH_HPP_ */

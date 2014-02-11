@@ -1,5 +1,7 @@
 int32 frameID
 
+geometry_msgs/Pose pose
+
 float64[] mags
 float64[] phases
 

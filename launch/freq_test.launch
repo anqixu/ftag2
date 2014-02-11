@@ -6,6 +6,9 @@
     <param name="waitkey_delay" value="30" />
     <param name="save_img_dir" value="/localdata" />
     
+    <param name="camera_intrinsic" value="610.5064145546552, 0.0, 321.7782261425325, 0.0, 609.9872996754198, 234.51369390724136, 0.0, 0.0, 1.0" />
+    <param name="camera_distortion" value="0.12600439192381022, -0.2087299807304159, 0.0017791373517968146, 0.002607094551963359, 0.0" />
+    
     <!-- The following are recommended parameter values line detector using connected components -->
     <param name="sobelThreshHigh" value="100" />
     <param name="sobelThreshLow" value="30" />
@@ -24,6 +27,5 @@
     <param name="target_tag_phases" value="   315   135     0  0 0  135   270   270 0 0   225   135     0  0 0    0    90    90 0 0   270   225   270   0 0   0   180   180 0 0" /> <!-- 3F -->
     <param name="target_tag_phases" value="315    45     0    90 0   90   270   135    45 0 270    90   315   135  0 45     0    90     0  0 270   180   180    90 0 0   225   180     0 0" /> <!-- 4F -->
     <param name="target_tag_phases" value="270.00, 315.00, 180.00, 180.00, 180.00, 45.00, 225.00, 180.00, 315.00, 180.00, 180.00, 90.00, 315.00, 135.00, 315.00, 135.00, 225.00, 135.00, 315.00, 135.00, 270.00, 45.00, 0.00, 0.00, 45.00, 0.00, 0.00, 0.00, 0.00, 0.00" /> <!-- 5F -->
-    
   </node>
 </launch>

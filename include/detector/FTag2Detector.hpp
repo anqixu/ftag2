@@ -24,7 +24,7 @@ struct Quad {
     area = 0.5*(lenA*lenD*std::sin(angleAD) + lenB*lenC*std::sin(angleBC));
   };
 
-  Quad() : corners(4, cv::Point2d(0, 0)), area(-1.0) {};
+  Quad() : corners(4, cv::Point2f(0, 0)), area(-1.0) {};
 };
 
 
@@ -112,6 +112,18 @@ inline cv::Mat extractVertRays(cv::Mat croppedTag, unsigned int numSamples = 1,
     unsigned int numRays = 6, bool markRays = false) {
   return extractHorzRays(croppedTag.t(), numSamples, numRays, markRays);
 };
+
+
+/**
+ * quadSizeM in meters
+ * cameraIntrinsic should be a 3x3 matrix of doubles
+ * cameraDistortion should be a 5x1 matrix of doubles
+ * tx, ty, tz are in meters
+ */
+void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
+    cv::Mat cameraIntrinsic, cv::Mat cameraDistortion,
+    double& tx, double &ty, double& tz,
+    double& rw, double& rx, double& ry, double& rz);
 
 
 void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
