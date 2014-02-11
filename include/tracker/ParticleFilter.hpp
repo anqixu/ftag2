@@ -48,6 +48,7 @@ public:
 	void measurementUpdate(std::vector<FTag2Marker> detections);
 	void displayParticles();
 	FTag2Marker computeMeanPose();
+	FTag2Marker computeModePose();
 };
 
 #endif /* PARTICLEFILTER_H_ */

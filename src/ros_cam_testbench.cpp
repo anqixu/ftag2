@@ -40,7 +40,8 @@
 //#define SAVE_IMAGES_FROM sourceImgRot
 //#define ENABLE_PROFILER
 
-#undef OPENCV
+#define PARTICLE_FILTER
+
 
 using namespace std;
 using namespace std::chrono;
@@ -83,17 +84,20 @@ std::vector<cv::Point3f> Generate3DPoints()
 	std::vector<cv::Point3f> points;
 	float x,y,z;
 
-	double scale_factor = 300.0; // 1.0 = mm , 10.0 = cm , 100.0 = m
-	x=-47.5/scale_factor;y=47.5/scale_factor;z=0;
+	double tag_size = 70.0; // mm
+	double scale_factor = 100.0; // 1.0 = mm , 10.0 = cm , 100.0 = m
+	double offset = 0.0;
+
+	x = (-tag_size/2.0)/scale_factor; y = offset + (-tag_size/2.0)/scale_factor; z = 0.0;
 	points.push_back(cv::Point3f(x,y,z));
 
-	x=-47.5/scale_factor;y=-47.5/scale_factor;z=0;
+	x = (tag_size/2.0)/scale_factor; y = offset + (-tag_size/2.0)/scale_factor; z = 0.0;
 	points.push_back(cv::Point3f(x,y,z));
 
-	x=47.5/scale_factor;y=-47.5/scale_factor;z=0;
+	x = (tag_size/2.0)/scale_factor; y = offset + (tag_size/2.0)/scale_factor; z = 0.0;
 	points.push_back(cv::Point3f(x,y,z));
 
-	x=47.5/scale_factor;y=47.5/scale_factor;z=0;
+	x = (-tag_size/2.0)/scale_factor; y = offset + (tag_size/2.0)/scale_factor; z = 0.0;
 	points.push_back(cv::Point3f(x,y,z));
 
 	for(unsigned int i = 0; i < points.size(); ++i)
@@ -115,6 +119,8 @@ class RosFTag2Testbench
   image_transport::ImageTransport it_;
   image_transport::Subscriber image_sub_;
   image_transport::Publisher image_pub_;
+  //message_filters::Subscriber<CameraInfo> cam_info_;
+
 
   public:
 	CvMat *intrinsic;
@@ -124,21 +130,21 @@ class RosFTag2Testbench
     ros::NodeHandle n;
     ros::Publisher marker_pub;
     uint32_t shape;
-    //visualization_msgs::Marker marker;
-    geometry_msgs::PoseStamped marker;
+    visualization_msgs::Marker marker;
+    //geometry_msgs::PoseStamped marker;
     YAML::Emitter out;
     int frameNo;
-    VideoWriter outVideo;
-    bool recording;
+    std::vector <FTag2Marker> detections;
+    bool yaml_recording;
+    #ifdef PARTICLE_FILTER
     bool tracking;
     ParticleFilter PF;
-    std::vector <FTag2Marker> detections;
     int currentNumberOfParticles;
     double current_position_std;
     double current_orientation_std;
     double current_position_noise_std;
     double current_orientation_noise_std;
-
+#endif
 
     RosFTag2Testbench() : local_nh("~"), it_(local_nh), dynCfgSyncReq(false), alive(false), dstID(0), dstFilename((char*) calloc(1000, sizeof(char))), latestProfTime(ros::Time::now()), waitKeyDelay(30) {
 	  // Low-value params tuned for marginal acceptable results on synthetic images
@@ -153,11 +159,11 @@ class RosFTag2Testbench
 	  params.quadMinEndptDist = 4.0;
 	  params.quadMaxStripAvgDiff = 15.0;
 	  params.imRotateDeg = 0;
-	  params.numberOfParticles = 50;
-	  params.position_std = 0.5;
-	  params.orientation_std = 0.5;
-	  params.position_noise_std = 0.3;
-	  params.orientation_noise_std = 0.2;
+	  params.numberOfParticles = 100;
+	  params.position_std = 0.15;
+	  params.orientation_std = 0.15;
+	  params.position_noise_std = 0.15;
+	  params.orientation_noise_std = 0.15;
 
 	  // Setup dynamic reconfigure server
 	  dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
@@ -205,22 +211,34 @@ class RosFTag2Testbench
 	  cameraMatrix = intrinsic;
 	  std::cout << "Camera Intrinsic Matrix: " << cameraMatrix << std::endl;
 
-	  //marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
-	  marker_pub = n.advertise<geometry_msgs::PoseStamped>("PoseStamped", 1);
+	  marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 0);
+	  //marker_pub = n.advertise<geometry_msgs::PoseStamped>("visualization_marker", -1);
 	  shape = visualization_msgs::Marker::ARROW;
-	  marker.header.frame_id = "/my_frame";
+	  marker.header.frame_id = "aqua_base";
+	  marker.lifetime = ros::Duration();
+	  marker.ns = "basic_shapes";
+	  marker.type = visualization_msgs::Marker::ARROW;
+
+	  marker.color.r = 1.0f;
+	  marker.color.g = 0.0f;
+	  marker.color.b = 0.0f;
+	  marker.color.a = 1.0;
+
+	  marker.action = visualization_msgs::Marker::ADD;
 
 	  out << YAML::BeginSeq;
 	  frameNo = 0;
 
-	  outVideo.open( "/home/dacocp/Dropbox/catkin_ws/outputVideo.avi", CV_FOURCC('D','I','V','X'), 21, cv::Size ( 300,200), true );
-	  recording = false;
+#ifdef PARTICLE_FILTER
 	  tracking = false;
 	  detections = std::vector<FTag2Marker>();
+#endif
+	  yaml_recording = false;
 
 	  alive = true;
 
-    //	 Subscrive to input video feed and publish output video feed
+    //	 Subscribe to input video feed and publish output video feed
+	  //image_sub_ = it_.subscribeCamera("/usb_cam/image_raw", 1, &RosFTag2Testbench::imageCb, this);
 	  image_sub_ = it_.subscribe("/usb_cam/image_raw", 1, &RosFTag2Testbench::imageCb, this);
   };
 
@@ -229,7 +247,7 @@ class RosFTag2Testbench
     cv::destroyWindow(OPENCV_WINDOW);
   }
 
-  void imageCb(const sensor_msgs::ImageConstPtr& raw_image) {
+  void imageCb(const sensor_msgs::ImageConstPtr& raw_image /*, const sensor_msgs::CameraInfoConstPtr& cam_info */) {
 	  if (!alive) { return; }
 	  cv_bridge::CvImagePtr input_bridge;
 	  try {
@@ -354,11 +372,9 @@ class RosFTag2Testbench
 
 						  cv::Mat rotationMatrix(3,3,cv::DataType<double>::type);
 						  cv::Rodrigues(rvec,rotationMatrix);
-						  tf::Matrix3x3 rotMat(   rotationMatrix.at<double>(0,0), rotationMatrix.at<double>(0,1), rotationMatrix.at<double>(0,2),
+						  tf::Matrix3x3 rotMat( rotationMatrix.at<double>(0,0), rotationMatrix.at<double>(0,1), rotationMatrix.at<double>(0,2),
 								  	  	  	  rotationMatrix.at<double>(1,0), rotationMatrix.at<double>(1,1), rotationMatrix.at<double>(1,2),
 								  	  	  	  rotationMatrix.at<double>(2,0), rotationMatrix.at<double>(2,1), rotationMatrix.at<double>(2,2) );
-
-						  marker.header.stamp = ros::Time::now();
 
 						  tf::Quaternion quat;
 						  rotMat.getRotation(quat);
@@ -367,9 +383,10 @@ class RosFTag2Testbench
 						  tf::Transform transform;
 						  double scale_factor = 1.0;
 						  transform.setOrigin( tf::Vector3(tvec.at<double>(0)/scale_factor, tvec.at<double>(1)/scale_factor, tvec.at<double>(2)/scale_factor) );
-
 						  transform.setRotation( quat );
 						  br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "aqua_base" ) );
+
+						  marker.header.stamp = ros::Time::now();
 
 						  marker.pose.position.x = tvec.at<double>(0)/scale_factor;
 						  marker.pose.position.y = tvec.at<double>(1)/scale_factor;
@@ -380,37 +397,48 @@ class RosFTag2Testbench
 						  marker.pose.orientation.z = quat.getZ();
 						  marker.pose.orientation.w = quat.getW();
 
+						  marker.lifetime = ros::Duration();
+						  marker.type = visualization_msgs::Marker::ARROW;
+						  marker.action = visualization_msgs::Marker::ADD;
+
+						  marker.id = frameNo;
+						  marker.scale.x = 0.1;
+						  marker.scale.y = 0.1;
+						  marker.scale.z = 0.1;
 						  // Publish the marker
 						  marker_pub.publish(marker);
 
 						  std::ostringstream oss;
 						  oss << frameNo;
-						  out << YAML::BeginMap;
-						  //              out << YAML::Key << ros::Time::now().nsec;
-						  out << YAML::Key << oss.str();
-						  out << YAML::Value;
-						  out << YAML::BeginMap;
-						  out << YAML::Key << "Frame No.";
-						  out << YAML::Value << frameNo;
-						  out << YAML::Key << "Position";
-						  out << YAML::Value
-								  << YAML::BeginSeq
-								  << marker.pose.position.x << marker.pose.position.y << marker.pose.position.z
-								  << YAML::EndSeq;
-						  out << YAML::Key << "Orientation";
-						  out << YAML::Value
-								  << YAML::BeginSeq
-								  << marker.pose.orientation.x << marker.pose.orientation.y
-								  << marker.pose.orientation.z << marker.pose.orientation.w
-								  << YAML::EndSeq ;
-						  out << YAML::EndMap;
-						  out << YAML::EndMap;
 
+						  if ( yaml_recording == true )
+						  {
+							  out << YAML::BeginMap;
+							  //              out << YAML::Key << ros::Time::now().nsec;
+							  out << YAML::Key << oss.str();
+							  out << YAML::Value;
+							  out << YAML::BeginMap;
+							  out << YAML::Key << "Frame No.";
+							  out << YAML::Value << frameNo;
+							  out << YAML::Key << "Position";
+							  out << YAML::Value
+									  << YAML::BeginSeq
+									  << marker.pose.position.x << marker.pose.position.y << marker.pose.position.z
+									  << YAML::EndSeq;
+							  out << YAML::Key << "Orientation";
+							  out << YAML::Value
+									  << YAML::BeginSeq
+									  << marker.pose.orientation.x << marker.pose.orientation.y
+									  << marker.pose.orientation.z << marker.pose.orientation.w
+									  << YAML::EndSeq ;
+							  out << YAML::EndMap;
+							  out << YAML::EndMap;
+						  }
 						  //              recording = true;
 						  detections = std::vector<FTag2Marker>(1);
-						  detections[0].position_x = tvec.at<double>(0)/100.0;
-						  detections[0].position_y = tvec.at<double>(1)/100.0;
-						  detections[0].position_z = tvec.at<double>(2)/100.0;
+						  detections[0].position_x = tvec.at<double>(0)/scale_factor;
+						  detections[0].position_y = tvec.at<double>(1)/scale_factor;
+						  detections[0].position_z = tvec.at<double>(2)/scale_factor;
 
 						  detections[0].orientation_x = quat.getX();
 						  detections[0].orientation_y = quat.getY();
@@ -422,7 +450,7 @@ class RosFTag2Testbench
 						  {
 							  tracking = true;
 							  PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std  );
-							  cv::waitKey();
+//							  cv::waitKey();
 							  currentNumberOfParticles = params.numberOfParticles;
 							  current_position_std = params.position_std;
 							  current_orientation_std = params.orientation_std;
@@ -440,13 +468,7 @@ class RosFTag2Testbench
 			  cv::imshow("quads", sourceImgRot);
 		  }
 
-		  if (recording == true)
-		  {
-			  cv::Mat resizedImg = quadsImg.clone();
-			  cv::resize(quadsImg,resizedImg,cv::Size(300,200));
-			  outVideo.write(resizedImg);
-		  }
-
+#ifdef PARTICLE_FILTER
 		  if ( tracking == true )
 		  {
 			  cout << "PARAMETERS CHANGED!!!" << endl;
@@ -463,22 +485,37 @@ class RosFTag2Testbench
 			  PF.motionUpdate();
 			  PF.measurementUpdate(detections);
 			  PF.normalizeWeights();
-			  PF.computeMeanPose();
+			  //PF.computeMeanPose();
+			  PF.computeModePose();
+//			  PF.displayParticles();
 			  PF.resample();
 			  //        	if (frameNo%50 == 0)
-			  //       		PF.displayParticles();
 			  //        	cv::waitKey();
 		  }
+#endif
 
 		  // Spin ROS and HighGui
 		  c = waitKey(waitKeyDelay);
 		  if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
 			  alive = false;
-			  //out << YAML::EndSeq;
-			  //std::ofstream fout("trajectory.yaml");
-			  //fout << out.c_str();
-			  //std::cout << "Here's the output YAML:\n" << out.c_str();
-			  //    	  	fout << emitter.c_str();
+			  out << YAML::EndSeq;
+			  std::ofstream fout("/home/dacocp/Dropbox/catkin_ws/trajectory.yaml");
+			  fout << out.c_str();
+			  std::cout << "Here's the output YAML:\n" << out.c_str();
+			  ros::shutdown();
+		  }
+		  else if ( (c & 0x0FF) == 'r' || (c & 0x0FF) == 'R' )
+		  {
+			  if ( yaml_recording == true )
+			  {
+				  yaml_recording = false;
+				  cout << "NOT RECORDING" << endl;
+			  }
+			  else
+			  {
+				  yaml_recording = true;
+				  cout << "RECORDING" << endl;
+			  }
 		  }
 	  } catch (const cv::Exception& err) {
 		  ROS_ERROR_STREAM("Spin thread halted due to CV Exception: " << err.what());

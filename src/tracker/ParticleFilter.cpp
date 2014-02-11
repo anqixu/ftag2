@@ -20,6 +20,8 @@ ParticleFilter::ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker
 
 	int numDetections = detections.size();
 
+	log_max_weight = 0.0;
+
 	cout << "Creating PF" << endl;
 
 	weights.resize(number_of_particles);
@@ -59,7 +61,9 @@ void ParticleFilter::setParameters(int numP, double tagSize_, double position_st
 
 void ParticleFilter::motionUpdate() {
 	for( unsigned int i=0; i < number_of_particles; i++ )
-		particles[i].motionUpdate(position_noise_std,orientation_noise_std);
+	{
+			particles[i].motionUpdate(position_noise_std,orientation_noise_std);
+	}
 }
 
 void ParticleFilter::measurementUpdate(std::vector<FTag2Marker> detections) {
@@ -124,7 +128,6 @@ void ParticleFilter::normalizeWeights(){
 	cout << "REAL SUM OF WEIGHTS: " << sum_w << endl;
 	cout << "MEAN WEIGHT: " << mean_weight << endl;
 	cout << "WEIGHT STD: " << weights_std << endl;
-
 }
 
 void ParticleFilter::resample(){
@@ -168,6 +171,7 @@ void ParticleFilter::resample(){
 
 FTag2Marker ParticleFilter::computeMeanPose(){
 	FTag2Marker tracked_pose;
+
 	double current_weight = exp(particles[0].getLogWeight());
 //	cout << "Mean log W: " << 0 << ": " << particles[0].getLogWeight() << endl;
 //	cout << "Mean W: " << 0 << ": " << current_weight << endl;
@@ -194,6 +198,40 @@ FTag2Marker ParticleFilter::computeMeanPose(){
 		tracked_pose.orientation_z += particles[i].getPose().orientation_z * current_weight;
 		tracked_pose.orientation_w += particles[i].getPose().orientation_w * current_weight;
 	}
+
+	tf::Quaternion rMat(tracked_pose.orientation_x,tracked_pose.orientation_y,tracked_pose.orientation_z,tracked_pose.orientation_w);
+	static tf::TransformBroadcaster br;
+	tf::Transform transform;
+	transform.setOrigin( tf::Vector3( tracked_pose.position_x, tracked_pose.position_y, tracked_pose.position_z ) );
+	transform.setRotation( rMat );
+	br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "track" ) );
+
+	return tracked_pose;
+}
+
+FTag2Marker ParticleFilter::computeModePose(){
+	FTag2Marker tracked_pose;
+
+	log_max_weight = -std::numeric_limits<double>::infinity();
+	unsigned int i=0, max_index=0;
+	for( ObjectHypothesis& particle: particles )
+	{
+		if ( log_max_weight < particle.getLogWeight() )
+		{
+			log_max_weight = particle.getLogWeight();
+			max_index = i;
+		}
+		i++;
+	}
+
+	tracked_pose.position_x = particles[max_index].getPose().position_x;
+	tracked_pose.position_y = particles[max_index].getPose().position_y;
+	tracked_pose.position_z = particles[max_index].getPose().position_z;
+	tracked_pose.orientation_x = particles[max_index].getPose().orientation_x;
+	tracked_pose.orientation_y = particles[max_index].getPose().orientation_y;
+	tracked_pose.orientation_z = particles[max_index].getPose().orientation_z;
+	tracked_pose.orientation_w = particles[max_index].getPose().orientation_w;
+
 	tf::Quaternion rMat(tracked_pose.orientation_x,tracked_pose.orientation_y,tracked_pose.orientation_z,tracked_pose.orientation_w);
 	static tf::TransformBroadcaster br;
 	tf::Transform transform;
