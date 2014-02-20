@@ -144,6 +144,8 @@ class RosFTag2Testbench
     double current_orientation_std;
     double current_position_noise_std;
     double current_orientation_noise_std;
+    double current_velocity_noise_std;
+    double current_acceleration_noise_std;
 #endif
 
     RosFTag2Testbench() : local_nh("~"), it_(local_nh), dynCfgSyncReq(false), alive(false), dstID(0), dstFilename((char*) calloc(1000, sizeof(char))), latestProfTime(ros::Time::now()), waitKeyDelay(30) {
@@ -164,6 +166,8 @@ class RosFTag2Testbench
 	  params.orientation_std = 0.15;
 	  params.position_noise_std = 0.15;
 	  params.orientation_noise_std = 0.15;
+	  params.velocity_noise_std = 0.05;
+	  params.acceleration_noise_std = 0.01;
 
 	  // Setup dynamic reconfigure server
 	  dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
@@ -449,13 +453,15 @@ class RosFTag2Testbench
 						  if ( tracking == false )
 						  {
 							  tracking = true;
-							  PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std  );
+							  PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std, std::chrono::steady_clock::now() );
 //							  cv::waitKey();
 							  currentNumberOfParticles = params.numberOfParticles;
 							  current_position_std = params.position_std;
 							  current_orientation_std = params.orientation_std;
 							  current_position_noise_std = params.position_noise_std;
 							  current_orientation_noise_std = params.orientation_noise_std;
+							  current_velocity_noise_std = params.velocity_noise_std;
+							  current_acceleration_noise_std = params.acceleration_noise_std;
 						  }
 #endif
 						  foundTag = true;
@@ -472,25 +478,28 @@ class RosFTag2Testbench
 		  if ( tracking == true )
 		  {
 			  cout << "PARAMETERS CHANGED!!!" << endl;
-			  PF.setParameters(params.numberOfParticles, 10, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std);
+			  PF.setParameters(params.numberOfParticles, 10, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 			  currentNumberOfParticles = params.numberOfParticles;
 			  current_position_std = params.position_std;
 			  current_orientation_std = params.orientation_std;
 			  current_position_noise_std = params.position_noise_std;
 			  current_orientation_noise_std = params.orientation_noise_std;
+			  current_velocity_noise_std = params.velocity_noise_std;
+			  current_acceleration_noise_std = params.acceleration_noise_std;
 		  }
 
 		  if (tracking == true)
 		  {
-			  PF.motionUpdate();
+			  PF.motionUpdate(std::chrono::steady_clock::now());
+			  //cv::waitKey();
 			  PF.measurementUpdate(detections);
 			  PF.normalizeWeights();
 			  //PF.computeMeanPose();
 			  PF.computeModePose();
-//			  PF.displayParticles();
+			  //PF.displayParticles();
 			  PF.resample();
 			  //        	if (frameNo%50 == 0)
-			  //        	cv::waitKey();
+			  //cv::waitKey();
 		  }
 #endif
 

@@ -14,6 +14,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <tf/transform_broadcaster.h>
 
+#include <chrono>
 
 #ifndef PARTICLEFILTER_H_
 #define PARTICLEFILTER_H_
@@ -36,13 +37,21 @@ private:
 	double orientation_std;
 	double position_noise_std;
 	double orientation_noise_std;
+	double velocity_noise_std;
+	double acceleration_noise_std;
+	std::chrono::steady_clock::time_point starting_time;
+	std::chrono::steady_clock::time_point current_time;
+	double current_time_step_ms;
 
 public:
 	ParticleFilter(){ number_of_particles = 100; disable_resampling = false; };
-	ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker> detections, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std);
-	void setParameters(int numP, double tagSize, double position_std, double orientation_std, double position_noise_std, double orientation_noise_std);
+	ParticleFilter(int numP, double tagSize, std::vector<FTag2Marker> detections, double position_std_, double orientation_std_,
+			double position_noise_std, double orientation_noise_std, double velocity_noise_std, double acceleration_noise_std_,
+			chrono::steady_clock::time_point starting_time_);
+	void setParameters(int numP, double tagSize, double position_std_, double orientation_std_,
+			double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std);
 	virtual ~ParticleFilter();
-	void motionUpdate();
+	void motionUpdate(std::chrono::steady_clock::time_point new_time);
 	void normalizeWeights();
 	void resample();
 	void measurementUpdate(std::vector<FTag2Marker> detections);

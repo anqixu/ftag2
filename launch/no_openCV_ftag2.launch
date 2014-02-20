@@ -25,6 +25,8 @@
     <param name="orientation_std" value="0.15" />
     <param name="position_noise_std" value="0.15" />
     <param name="orientation_noise_std" value="0.15" />
+    <param name="velocity_noise_std" value="0.05" />
+    <param name="acceleration_noise_std" value="0.01" />
 
   </node>
 </launch>
