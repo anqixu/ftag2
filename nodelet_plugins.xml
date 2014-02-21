@@ -1,0 +1,5 @@
+<library path="lib/libftag2_reader_nodelet">
+  <class name="ftag2/ftag2_reader_nodelet" type="ftag2::FTag2ReaderNodelet" base_class_type="nodelet::Nodelet">
+    <description>Nodelet for decoding FTag2 markers from images or camera frames.</description>
+  </class>
+</library>
