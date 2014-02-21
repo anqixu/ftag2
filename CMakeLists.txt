@@ -32,7 +32,7 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
 
 add_message_files(
   DIRECTORY msg
-  FILES FreqTBMarkerInfo.msg FreqTBPhaseStats.msg
+  FILES FreqTBMarkerInfo.msg FreqTBPhaseStats.msg TagDetection.msg TagDetections.msg
 )
 
 ## Generate services in the 'srv' folder

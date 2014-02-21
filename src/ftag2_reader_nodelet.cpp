@@ -6,11 +6,12 @@
 
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
-#include <ftag2/FTag2ReaderConfig.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 #include <nodelet/nodelet.h>
+#include "ftag2/FTag2ReaderConfig.h"
+#include "ftag2/TagDetections.h"
 
 
 using namespace std;
@@ -31,10 +32,6 @@ class FTag2ReaderNodelet : public nodelet::Nodelet {
 protected:
   bool alive;
 
-  ros::NodeHandle nh;
-  ros::NodeHandle local_nh;
-  image_transport::ImageTransport it;
-
   ReconfigureServer* dynCfgServer;
   boost::recursive_mutex dynCfgMutex;
   bool dynCfgSyncReq;
@@ -42,6 +39,7 @@ protected:
   image_transport::Subscriber imageSub;
   image_transport::CameraSubscriber cameraSub;
   ros::Publisher tagDetectionsPub;
+  image_transport::Publisher processedImagePub;
   image_transport::Publisher firstTagImagePub;
 
   ftag2::FTag2ReaderConfig params;
@@ -56,9 +54,6 @@ protected:
 public:
   FTag2ReaderNodelet() : nodelet::Nodelet(),
       alive(false),
-      nh(),
-      local_nh("~"),
-      it(nh),
       dynCfgServer(NULL),
       dynCfgSyncReq(false),
       latestProfTime(ros::Time::now()) {
@@ -84,6 +79,10 @@ public:
 
 
   virtual void onInit() {
+    // Obtain node handles
+    //ros::NodeHandle& nh = getNodeHandle();
+    ros::NodeHandle& local_nh = getPrivateNodeHandle();
+
     // Load static camera calibration information
     std::string cameraIntrinsicStr, cameraDistortionStr;
     local_nh.param("camera_intrinsic", cameraIntrinsicStr, cameraIntrinsicStr);
@@ -128,14 +127,16 @@ public:
     namedWindow("segments", CV_GUI_EXPANDED);
     namedWindow("quad_1", CV_GUI_EXPANDED);
     namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
-    namedWindow("quads", CV_GUI_EXPANDED);
+    namedWindow("tags", CV_GUI_EXPANDED);
 #endif
 
     // Setup ROS communication links
-    imageSub = it.subscribe("image", 1, &FTag2ReaderNodelet::imageCallback, this);
-    cameraSub = it.subscribeCamera("camera", 1, &FTag2ReaderNodelet::cameraCallback, this);
-    //tagDetectionsPub = nh.advertise<ftag2::TagDetections>("detected_tags", 1);
+    image_transport::ImageTransport it(local_nh);
+    tagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
+    processedImagePub = it.advertise("overlaid_image", 1);
+    imageSub = it.subscribe("image_in", 1, &FTag2ReaderNodelet::imageCallback, this);
+    cameraSub = it.subscribeCamera("camera_in", 1, &FTag2ReaderNodelet::cameraCallback, this);
 
     // Finish initialization
     alive = true;
@@ -185,6 +186,7 @@ public:
     processImage(img->image, msg->header.seq);
   };
 
+
   void processImage(const cv::Mat sourceImg, int ID) {
     // Update profiler
     rateP.try_toc();
@@ -219,7 +221,8 @@ public:
         params.quadMinEndptDist);
     quads.sort(Quad::compareArea);
     quadP.toc();
-    if (quads.empty()) return;
+
+    NODELET_INFO_STREAM(ID << ": " << quads.size() << " quads"); // TODO: 0 remove
 
     // TODO: 0 remove after debugging flickering bug
 #ifdef REMOVE_AFTER_DEBUG
@@ -235,10 +238,9 @@ public:
 #endif
 
     // Scan through all detected quads
-    bool foundTag = false;
     int quadCount = 0;
     cv::Mat tagImg, trimmedTagImg, croppedTagImg, croppedTagImgRot;
-    FTag2Marker6S5F3B currTag;
+    std::vector<FTag2Marker6S5F3B> tags;
     for (const Quad& currQuad: quads) {
       // Check whether we have scanned enough quads
       quadCount++;
@@ -256,106 +258,97 @@ public:
 
       // Decode tag
       decoderP.tic();
-      currTag = FTag2Marker6S5F3B(croppedTagImg);
+      FTag2Marker6S5F3B currTag = FTag2Marker6S5F3B(croppedTagImg);
       decoderP.toc();
       if (!currTag.hasSignature) { continue; }
 
       // Compute pose of tag
-      std::vector<cv::Point2f> tagCorners;
       switch ((currTag.imgRotDir/90) % 4) {
       case 1:
-        tagCorners.push_back(currQuad.corners[1]);
-        tagCorners.push_back(currQuad.corners[2]);
-        tagCorners.push_back(currQuad.corners[3]);
-        tagCorners.push_back(currQuad.corners[0]);
+        currTag.corners.push_back(currQuad.corners[1]);
+        currTag.corners.push_back(currQuad.corners[2]);
+        currTag.corners.push_back(currQuad.corners[3]);
+        currTag.corners.push_back(currQuad.corners[0]);
         break;
       case 2:
-        tagCorners.push_back(currQuad.corners[2]);
-        tagCorners.push_back(currQuad.corners[3]);
-        tagCorners.push_back(currQuad.corners[0]);
-        tagCorners.push_back(currQuad.corners[1]);
+        currTag.corners.push_back(currQuad.corners[2]);
+        currTag.corners.push_back(currQuad.corners[3]);
+        currTag.corners.push_back(currQuad.corners[0]);
+        currTag.corners.push_back(currQuad.corners[1]);
         break;
       case 3:
-        tagCorners.push_back(currQuad.corners[3]);
-        tagCorners.push_back(currQuad.corners[0]);
-        tagCorners.push_back(currQuad.corners[1]);
-        tagCorners.push_back(currQuad.corners[2]);
+        currTag.corners.push_back(currQuad.corners[3]);
+        currTag.corners.push_back(currQuad.corners[0]);
+        currTag.corners.push_back(currQuad.corners[1]);
+        currTag.corners.push_back(currQuad.corners[2]);
         break;
       default:
-        tagCorners = currQuad.corners;
+        currTag.corners = currQuad.corners;
         break;
       }
-      solvePose(tagCorners, params.markerWidthM,
+      solvePose(currTag.corners, params.markerWidthM,
           cameraIntrinsic, cameraDistortion,
           currTag.position_x, currTag.position_y, currTag.position_z,
           currTag.orientation_w, currTag.orientation_x, currTag.orientation_y,
           currTag.orientation_z);
 
-      // Show quad, tag, and cropped tag images
-      BaseCV::rotate90(croppedTagImg, croppedTagImgRot, currTag.imgRotDir/90);
+      // Store tag in list
+      tags.push_back(currTag);
+
+      // Display first (largest) tag
+      if (tags.size() == 1) {
+        // Show tag and cropped tag images
+        BaseCV::rotate90(croppedTagImg, croppedTagImgRot, currTag.imgRotDir/90);
 #ifdef CV_SHOW_IMAGES
-      {
-        cv::Mat quadsImg = sourceImg.clone();
-        drawQuad(quadsImg, currQuad);
-        cv::imshow("quads", quadsImg);
-        cv::imshow("quad_1", tagImg);
-        cv::imshow("quad_1_trimmed", croppedTagImgRot);
-      }
+        {
+          cv::imshow("quad_1", tagImg);
+          cv::imshow("quad_1_trimmed", croppedTagImgRot);
+        }
 #endif
 
-      // Publish cropped tag image
-      cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
-          sensor_msgs::image_encodings::MONO8, croppedTagImgRot);
-      cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
-      firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
-
-      // TODO: 000 publish marker info
-      /*
-                      ftag2::FreqTBMarkerInfo markerInfoMsg;
-                      markerInfoMsg.frameID = frameID;
-                      markerInfoMsg.pose.position.x = tag.position_x;
-                      markerInfoMsg.pose.position.y = tag.position_y;
-                      markerInfoMsg.pose.position.z = tag.position_z;
-                      markerInfoMsg.pose.orientation.w = tag.orientation_w;
-                      markerInfoMsg.pose.orientation.x = tag.orientation_x;
-                      markerInfoMsg.pose.orientation.y = tag.orientation_y;
-                      markerInfoMsg.pose.orientation.z = tag.orientation_z;
-                      const double* magsPtr = (double*) tag.mags.data;
-                      markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.mags.rows * tag.mags.cols);
-                      const double* phasesPtr = (double*) tag.phases.data;
-                      markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.phases.rows * tag.phases.cols);
-                      markerInfoMsg.hasSignature = tag.hasSignature;
-                      markerInfoMsg.hasValidXORs = tag.hasValidXORs;
-                      markerInfoMsg.hasValidCRC = tag.hasValidCRC;
-                      markerInfoMsg.payloadOct = tag.payloadOct;
-                      markerInfoMsg.xorBin = tag.xorBin;
-                      markerInfoMsg.signature = tag.signature;
-                      markerInfoMsg.CRC12Expected = tag.CRC12Expected;
-                      markerInfoMsg.CRC12Decoded = tag.CRC12Decoded;
-                      markerInfoPub.publish(markerInfoMsg);
-      */
-
-      // Display tag info
-      std::ostringstream oss;
-      if (currTag.hasValidXORs && currTag.hasValidCRC) {
-        oss << "=> RECOG  : ";
-      } else if (currTag.hasValidXORs) {
-        oss << "x> BAD CRC: ";
-      } else {
-        oss << "x> BAD XOR: ";
+        // Publish cropped tag image
+        cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
+            sensor_msgs::image_encodings::MONO8, croppedTagImgRot);
+        cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
+        firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
       }
-      oss << currTag.payloadOct << "; XOR: " << currTag.xorBin << "; Rot=" << currTag.imgRotDir << "'";
-      if (currTag.hasValidXORs && currTag.hasValidCRC) {
-        oss << "\tID: " << currTag.payload.to_ullong();
-      }
-      NODELET_INFO_STREAM(oss.str());
-
-      // For now, terminate after finding 1 tag
-      foundTag = true;
-      break;
     } // Scan through all detected quads
-    if (!foundTag) {
-      cv::imshow("quads", sourceImg);
+
+    // Publish image overlaid with detected markers
+    cv::Mat processedImg = sourceImg.clone();
+    for (const FTag2Marker6S5F3B& tag: tags) {
+      drawQuad(processedImg, tag.corners);
+    }
+    cv_bridge::CvImage cvProcessedImg(std_msgs::Header(),
+        sensor_msgs::image_encodings::BGR8, processedImg);
+    cvProcessedImg.header.frame_id = boost::lexical_cast<std::string>(ID);
+    processedImagePub.publish(cvProcessedImg.toImageMsg());
+#ifdef CV_SHOW_IMAGES
+    cv::imshow("tags", processedImg);
+#endif
+
+    // Publish tag detections
+    if (tags.size() > 0) {
+      ftag2::TagDetections tagsMsg;
+      tagsMsg.frameID = ID;
+
+      for (const FTag2Marker6S5F3B& tag: tags) {
+        ftag2::TagDetection tagMsg;
+        tagMsg.pose.position.x = tag.position_x;
+        tagMsg.pose.position.y = tag.position_y;
+        tagMsg.pose.position.z = tag.position_z;
+        tagMsg.pose.orientation.w = tag.orientation_w;
+        tagMsg.pose.orientation.x = tag.orientation_x;
+        tagMsg.pose.orientation.y = tag.orientation_y;
+        tagMsg.pose.orientation.z = tag.orientation_z;
+        tagMsg.markerPixelWidth = tag.rectifiedWidth;
+        const double* magsPtr = (double*) tag.mags.data;
+        tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.mags.rows * tag.mags.cols);
+        const double* phasesPtr = (double*) tag.phases.data;
+        tagMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.phases.rows * tag.phases.cols);
+        tagsMsg.tags.push_back(tagMsg);
+      }
+      tagDetectionsPub.publish(tagsMsg);
     }
 
     // Update profiler

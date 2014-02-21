@@ -310,7 +310,7 @@ public:
 
                 // Show quad and tag images
                 cv::Mat quadsImg = sourceImgRot.clone();
-                drawQuad(quadsImg, *currQuad);
+                drawQuad(quadsImg, currQuad->corners);
                 cv::imshow("quads", quadsImg);
                 cv::imshow("quad_1", tagImg);
 

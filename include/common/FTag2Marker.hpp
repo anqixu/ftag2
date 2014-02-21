@@ -23,6 +23,10 @@ struct FTag2Marker {
   double orientation_z;
   double orientation_w;
 
+  double rectifiedWidth;
+
+  std::vector<cv::Point2f> corners;
+
   std::vector<cv::Mat> rays; // TODO: 1 do we need to store these?
 
   bool hasSignature;
@@ -58,6 +62,7 @@ struct FTag2Marker {
 
   FTag2Marker() : position_x(0), position_y(0), position_z(0),
       orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
+      rectifiedWidth(0),
       hasSignature(false), hasValidXORs(false),
       imgRotDir(0), payloadOct(""), payloadBin(""), xorBin(""), signature(0) {
   };
@@ -89,6 +94,7 @@ struct FTag2Marker6S5F3B : FTag2Marker {
   };
   FTag2Marker6S5F3B(cv::Mat tag) : FTag2Marker(tag),
       hasValidCRC(false), CRC12Expected(0), CRC12Decoded(0) {
+    rectifiedWidth = double(tag.cols)/6*8;
     initMatrices();
     decodePayload();
   };

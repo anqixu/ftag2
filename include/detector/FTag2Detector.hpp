@@ -65,15 +65,17 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     double minEndptDist = 6.0);
 
 
-inline void drawQuad(cv::Mat img, const Quad& quad) {
-  cv::line(img, quad.corners[0], quad.corners[1], CV_RGB(0, 255, 0), 3);
-  cv::line(img, quad.corners[0], quad.corners[1], CV_RGB(255, 0, 255), 1);
-  cv::line(img, quad.corners[1], quad.corners[2], CV_RGB(0, 255, 0), 3);
-  cv::line(img, quad.corners[1], quad.corners[2], CV_RGB(255, 0, 255), 1);
-  cv::line(img, quad.corners[2], quad.corners[3], CV_RGB(0, 255, 0), 3);
-  cv::line(img, quad.corners[2], quad.corners[3], CV_RGB(255, 0, 255), 1);
-  cv::line(img, quad.corners[3], quad.corners[0], CV_RGB(0, 255, 0), 3);
-  cv::line(img, quad.corners[3], quad.corners[0], CV_RGB(255, 0, 255), 1);
+inline void drawQuad(cv::Mat img, const std::vector<cv::Point2f>& corners) {
+  cv::circle(img, corners[0], 5, CV_RGB(255, 0, 0));
+  cv::circle(img, corners[0], 3, CV_RGB(255, 255, 0));
+  cv::line(img, corners[0], corners[1], CV_RGB(0, 255, 0), 3);
+  cv::line(img, corners[0], corners[1], CV_RGB(255, 0, 255), 1);
+  cv::line(img, corners[1], corners[2], CV_RGB(0, 255, 0), 3);
+  cv::line(img, corners[1], corners[2], CV_RGB(255, 0, 255), 1);
+  cv::line(img, corners[2], corners[3], CV_RGB(0, 255, 0), 3);
+  cv::line(img, corners[2], corners[3], CV_RGB(255, 0, 255), 1);
+  cv::line(img, corners[3], corners[0], CV_RGB(0, 255, 0), 3);
+  cv::line(img, corners[3], corners[0], CV_RGB(255, 0, 255), 1);
 };
 
 

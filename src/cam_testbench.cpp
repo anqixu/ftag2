@@ -415,7 +415,7 @@ public:
                   imagePoints.push_back(temp);
                 }
 
-                drawQuad(quadsImg, *currQuad);
+                drawQuad(quadsImg, currQuad->corners);
                 for(unsigned int k = 0; k < quads.front().corners.size(); ++k)
                 {
                 if(k==0)
