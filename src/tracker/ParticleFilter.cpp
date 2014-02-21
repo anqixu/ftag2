@@ -15,7 +15,7 @@ ParticleFilter::~ParticleFilter() {
 
 ParticleFilter::ParticleFilter(int numP, double tagSize_, std::vector<FTag2Marker> detections, double position_std_, double orientation_std_,
 		double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_,
-		std::chrono::steady_clock::time_point starting_time_){
+		ParticleFilter::time_point starting_time_){
 
 	tagSize = tagSize_;
 	number_of_particles = numP;
@@ -90,7 +90,7 @@ void ParticleFilter::setParameters(int numP, double tagSize_, double position_st
 	std::cout << "Orientation noise STD: " << orientation_noise_std << std::endl;
 }
 
-void ParticleFilter::motionUpdate( std::chrono::steady_clock::time_point new_time ) {
+void ParticleFilter::motionUpdate( ParticleFilter::time_point new_time ) {
 	std::chrono::milliseconds current_time_step_ = std::chrono::duration_cast<std::chrono::milliseconds>(new_time - current_time);
 	unsigned long long current_time_step_ms = current_time_step_.count();
 	std::cout << "Time step: " << current_time_step_ms << std::endl;

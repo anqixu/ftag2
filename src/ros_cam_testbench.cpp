@@ -453,7 +453,7 @@ class RosFTag2Testbench
 						  if ( tracking == false )
 						  {
 							  tracking = true;
-							  PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std, std::chrono::steady_clock::now() );
+							  PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std, ParticleFilter::clock::now() );
 //							  cv::waitKey();
 							  currentNumberOfParticles = params.numberOfParticles;
 							  current_position_std = params.position_std;
@@ -490,7 +490,7 @@ class RosFTag2Testbench
 
 		  if (tracking == true)
 		  {
-			  PF.motionUpdate(std::chrono::steady_clock::now());
+			  PF.motionUpdate(ParticleFilter::clock::now());
 			  //cv::waitKey();
 			  PF.measurementUpdate(detections);
 			  PF.normalizeWeights();
