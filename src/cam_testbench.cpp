@@ -207,6 +207,7 @@ public:
     params.orientation_std = 0.5;
     params.position_noise_std = 0.3;
     params.orientation_noise_std = 0.2;
+    params.velocity_noise_std = 0.15;
 
     // Setup dynamic reconfigure server
     dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
@@ -491,7 +492,7 @@ public:
                 if ( tracking == false )
                 {
                     tracking = true;
-                    PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std  );
+                    PF = ParticleFilter(params.numberOfParticles, 10, detections, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std, std::chrono::steady_clock::now());
                     cv::waitKey();
                     currentNumberOfParticles = params.numberOfParticles;
                     current_position_std = params.position_std;
@@ -520,7 +521,7 @@ public:
         if ( tracking == true )
         {
         	cout << "PARAMETERS CHANGED!!!" << endl;
-        	PF.setParameters(params.numberOfParticles, 10, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std);
+        	PF.setParameters(params.numberOfParticles, 10, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
         	currentNumberOfParticles = params.numberOfParticles;
         	current_position_std = params.position_std;
         	current_orientation_std = params.orientation_std;
@@ -530,7 +531,7 @@ public:
 
         if (tracking == true)
         {
-        	PF.motionUpdate();
+        	PF.motionUpdate(std::chrono::steady_clock::now());
         	PF.measurementUpdate(detections);
         	PF.normalizeWeights();
         	PF.computeMeanPose();

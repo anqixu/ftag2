@@ -65,6 +65,10 @@ ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, bool addNoise ) {
 		pose.position_x = marker.position_x + distribution_pos(generator);
 		pose.position_y = marker.position_y + distribution_pos(generator);
 		pose.position_z = marker.position_z + distribution_pos(generator);
+
+		vel_x = 0.0;
+		vel_y = 0.0;
+		vel_z = 0.0;
 	}
 }
 
@@ -72,7 +76,10 @@ ObjectHypothesis::~ObjectHypothesis() {
 	// TODO Auto-generated destructor stub
 }
 
-void ObjectHypothesis::motionUpdate(double position_noise_std, double orientation_noise_std) {
+void ObjectHypothesis::motionUpdate(double position_noise_std, double orientation_noise_std,
+		double velocity_noise_std, double acceleration_noise_std, double current_time_step_ms) {
+
+	pose_prev = pose;
 
     ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
     ompl::base::ScopedState<ompl::base::SO3StateSpace> stateMean(space);
@@ -85,8 +92,9 @@ void ObjectHypothesis::motionUpdate(double position_noise_std, double orientatio
 
     ompl::base::SO3StateSampler SO3ss(space->as<ompl::base::SO3StateSpace>());
 
+    double orientation_noise_std_time = orientation_noise_std * current_time_step_ms / MS_PER_FRAME;
     SO3ss.sampleGaussian(stateNew->as<ompl::base::SO3StateSpace::StateType>(),
-    		stateMean->as<ompl::base::SO3StateSpace::StateType>(), orientation_noise_std);
+    		stateMean->as<ompl::base::SO3StateSpace::StateType>(), orientation_noise_std_time );
 
     pose.orientation_x = stateNew->as<ompl::base::SO3StateSpace::StateType>()->x;
     pose.orientation_y = stateNew->as<ompl::base::SO3StateSpace::StateType>()->y;
@@ -95,11 +103,33 @@ void ObjectHypothesis::motionUpdate(double position_noise_std, double orientatio
 
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 	std::default_random_engine generator(seed);
-	std::normal_distribution<double> distribution_pos(0, position_noise_std);
 
-	pose.position_x += distribution_pos(generator);
-	pose.position_y += distribution_pos(generator);
-	pose.position_z += distribution_pos(generator);
+	double position_noise_time = position_noise_std * current_time_step_ms / MS_PER_FRAME;
+	std::normal_distribution<double> distribution_pos(0.0, position_noise_time);
+	double position_noise_x = distribution_pos(generator);
+	double position_noise_y = distribution_pos(generator);
+	double position_noise_z = distribution_pos(generator);
+
+	double velocity_noise_time = velocity_noise_std * current_time_step_ms / MS_PER_FRAME;
+	std::normal_distribution<double> distribution_vel(0.0, velocity_noise_time);
+	double vel_noise_x = distribution_vel(generator);
+	double vel_noise_y = distribution_vel(generator);
+	double vel_noise_z = distribution_vel(generator);
+
+	pose.position_x += position_noise_x + (vel_x + vel_noise_x)*current_time_step_ms/1000;
+	pose.position_y += position_noise_y + (vel_y + vel_noise_y)*current_time_step_ms/1000;
+	pose.position_z += position_noise_z + (vel_z + vel_noise_z)*current_time_step_ms/1000;
+
+	vel_x = (pose.position_x - pose_prev.position_x)/(current_time_step_ms/1000);
+	vel_y = (pose.position_y - pose_prev.position_y)/(current_time_step_ms/1000);
+	vel_z = (pose.position_z - pose_prev.position_z)/(current_time_step_ms/1000);
+	//cout << "Part i: " << pose.position_x << ", " << pose.position_y << ", " << pose.position_z << endl;
+
+	cout << "PARAMS: Mean: " << distribution_pos.mean() << "\t Std: " << distribution_pos.stddev() << endl;
+
+	cout << "Curr. t.step: " << current_time_step_ms << endl;
+	cout << "STD ORIG: " << position_noise_std << endl;
+	cout << "STD NEW: " << position_noise_time << endl;
 }
 
 /*

@@ -105,8 +105,8 @@ struct FTag2Marker6S5F3B : FTag2Marker {
 
 
 struct FTag2Marker6S2F3B : FTag2Marker {
-  constexpr static long long SIG_KEY = 0b00101010;
-  constexpr static long long SIG_KEY_FLIPPED = 0b00010101;
+	constexpr static long long SIG_KEY = 0b00100011;
+	constexpr static long long SIG_KEY_FLIPPED = 0b00110001;
   constexpr static long long CRC8_KEY = 0x0EA;
 
   // TEMP VARS
