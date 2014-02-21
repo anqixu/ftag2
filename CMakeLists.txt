@@ -1,4 +1,5 @@
 set(FTAG2_LIB_NAME "ftag2" CACHE STRING "FTag v2 API library name")
+set(FTAG2_READER_NODELET_NAME "ftag2_reader_nodelet")
 
 cmake_minimum_required(VERSION 2.8.3)
 project(ftag2)
@@ -8,6 +9,7 @@ set(CMAKE_CXX_FLAGS "-std=c++0x ${CMAKE_CXX_FLAGS} -g -Wall -O2")
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
+  nodelet
   dynamic_reconfigure
   image_transport
   std_msgs
@@ -46,6 +48,7 @@ generate_messages(
 )
 
 generate_dynamic_reconfigure_options(
+  cfg/FTag2Reader.cfg
   cfg/CamTestbench.cfg
   cfg/FreqTestbench.cfg
   )
@@ -62,8 +65,8 @@ generate_dynamic_reconfigure_options(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES ${FTAG2_LIB_NAME}
-  CATKIN_DEPENDS roscpp rospy dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf 
+  LIBRARIES ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME}
+  CATKIN_DEPENDS roscpp rospy nodelet dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf 
 #  DEPENDS system_lib
 )
 
@@ -99,12 +102,18 @@ add_library(${FTAG2_LIB_NAME}
   ${ENCODER_SOURCES}
   ${TRACKER_SOURCES}
 )
-
 target_link_libraries( ${FTAG2_LIB_NAME}
   ${OMPL_LIBRARIES}
+#  ${OpenCV_LIBRARIES}
+)
+
+add_library(${FTAG2_READER_NODELET_NAME} src/ftag2_reader_nodelet.cpp)
+target_link_libraries(${FTAG2_READER_NODELET_NAME}
+  ${FTAG2_LIB_NAME}
   ${OpenCV_LIBRARIES}
   ${catkin_LIBRARIES}
 )
+add_dependencies(${FTAG2_READER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 
 add_executable(cam_testbench src/cam_testbench.cpp)
 target_link_libraries(cam_testbench
@@ -137,9 +146,6 @@ add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_c
 ## Install ##
 #############
 
-# all install targets should use catkin DESTINATION variables
-# See http://ros.org/doc/api/catkin/html/adv_user_guide/variables.html
-
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 # install(PROGRAMS
@@ -148,7 +154,7 @@ add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_c
 # )
 
 ## Mark executables and/or libraries for installation
-install(TARGETS ${FTAG2_LIB_NAME} cam_testbench
+install(TARGETS ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME} cam_testbench freq_testbench
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -161,12 +167,13 @@ install(TARGETS ${FTAG2_LIB_NAME} cam_testbench
 #   PATTERN ".svn" EXCLUDE
 # )
 
-## Mark other files for installation (e.g. launch and bag files, etc.)
-# install(FILES
-#   # myfile1
-#   # myfile2
-#   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-# )
+install(FILES nodelet_plugins.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  )
+
+install(DIRECTORY launch/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+  )
 
 #############
 ## Testing ##

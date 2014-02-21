@@ -36,28 +36,6 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::FreqTestbenchConfig> ReconfigureServer;
 
 
-bool compareArea(const Quad& first, const Quad& second) {
-  return first.area > second.area;
-};
-
-
-cv::Mat str2mat(const std::string& s, unsigned int rows) {
-  std::string input = s;
-  auto it = std::remove_if(std::begin(input), std::end(input),
-      [](char c) { return (c == ',' || c == ';' || c == ':'); });
-  input.erase(it, std::end(input));
-
-  cv::Mat mat(0, 0, CV_64FC1);
-  std::istringstream iss(input);
-  double currNum;
-  while (!iss.eof()) {
-    iss >> currNum;
-    mat.push_back(currNum);
-  }
-  return mat.reshape(1, rows);
-};
-
-
 class FTag2Testbench {
 public:
   FTag2Testbench() :
@@ -83,22 +61,22 @@ public:
     params.quadMaxStripAvgDiff = 15.0;
     params.imRotateDeg = 0;
     params.maxQuadsToScan = 10;
-    params.markerWidthM = 0.07;
+    params.markerWidthM = 0.110;
 
     std::string cameraIntrinsicStr, cameraDistortionStr;
     local_nh.param("camera_intrinsic", cameraIntrinsicStr, cameraIntrinsicStr);
     local_nh.param("camera_distortion", cameraDistortionStr, cameraDistortionStr);
     if (cameraIntrinsicStr.size() > 0) {
-      cameraIntrinsic = str2mat(cameraIntrinsicStr, 3);
+      cameraIntrinsic = vc_math::str2mat(cameraIntrinsicStr, 3);
     }
     if (cameraDistortionStr.size() > 0) {
-      cameraDistortion = str2mat(cameraDistortionStr, 1);
+      cameraDistortion = vc_math::str2mat(cameraDistortionStr, 1);
     }
 
     // Process ground truth tag phases
     local_nh.param("target_tag_phases", targetTagPhasesStr, targetTagPhasesStr);
     if (targetTagPhasesStr.size() > 0) {
-      targetTagPhases = str2mat(targetTagPhasesStr, 6);
+      targetTagPhases = vc_math::str2mat(targetTagPhasesStr, 6);
       currPhaseErrors = cv::Mat::zeros(6, targetTagPhases.cols, CV_64FC1);
       phaseErrorsSum = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
       phaseErrorsSqrdSum = cv::Mat::zeros(1, targetTagPhases.cols, CV_64FC1);
@@ -265,7 +243,7 @@ public:
         std::list<Quad> quads = detectQuads(segments,
             params.quadMinAngleIntercept*degree,
             params.quadMinEndptDist);
-        quads.sort(compareArea);
+        quads.sort(Quad::compareArea);
         quadP.toc();
 
         // TODO: 0 remove after debugging flickering bug
@@ -355,6 +333,7 @@ public:
                 markerInfoMsg.pose.orientation.x = tag.orientation_x;
                 markerInfoMsg.pose.orientation.y = tag.orientation_y;
                 markerInfoMsg.pose.orientation.z = tag.orientation_z;
+                markerInfoMsg.markerPixelWidth = tagImg.rows;
                 const double* magsPtr = (double*) tag.mags.data;
                 markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.mags.rows * tag.mags.cols);
                 const double* phasesPtr = (double*) tag.phases.data;

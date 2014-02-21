@@ -69,9 +69,9 @@ struct FTag2Marker {
 
 
 struct FTag2Marker6S5F3B : FTag2Marker {
-  constexpr static unsigned long long SIG_KEY = 0b00101010;
-  constexpr static unsigned long long SIG_KEY_FLIPPED = 0b00010101;
-  constexpr static unsigned long long CRC12_KEY = 0x08F8;
+  constexpr static unsigned long long SIG_KEY = 0b00100011;
+  constexpr static unsigned long long SIG_KEY_FLIPPED = 0b00110001;
+  constexpr static unsigned long long CRC12_KEY = 0x01F1;
 
   boost::crc_optimal<12, CRC12_KEY, 0, 0, false, false> CRCEngine;
 

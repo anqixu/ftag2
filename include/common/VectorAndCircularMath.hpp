@@ -542,6 +542,24 @@ inline void rotMat2quat(const cv::Mat rotMat,
 };
 
 
+inline cv::Mat str2mat(const std::string& s, int rows,
+    int type = CV_64F, int channels = 1) {
+  std::string input = s;
+  auto it = std::remove_if(std::begin(input), std::end(input),
+      [](char c) { return (c == ',' || c == ';' || c == ':'); });
+  input.erase(it, std::end(input));
+
+  cv::Mat mat(0, 0, type);
+  std::istringstream iss(input);
+  double currNum;
+  while (!iss.eof()) {
+    iss >> currNum;
+    mat.push_back(currNum);
+  }
+  return mat.reshape(channels, rows);
+};
+
+
 };
 
 

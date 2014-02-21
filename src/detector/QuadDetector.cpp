@@ -377,7 +377,7 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
 };
 
 
-cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth, bool oversample, bool grayscale) {
+cv::Mat extractQuadImg(const cv::Mat img, const Quad& quad, unsigned int minWidth, bool oversample, bool grayscale) {
   int shortestEdgeWidth = floor(
       std::min(std::min(vc_math::dist(quad.corners[0], quad.corners[1]),
                         vc_math::dist(quad.corners[1], quad.corners[2])),

@@ -24,6 +24,10 @@ struct Quad {
     area = 0.5*(lenA*lenD*std::sin(angleAD) + lenB*lenC*std::sin(angleBC));
   };
 
+  static bool compareArea(const Quad& first, const Quad& second) {
+    return first.area > second.area;
+  };
+
   Quad() : corners(4, cv::Point2f(0, 0)), area(-1.0) {};
 };
 
@@ -90,7 +94,7 @@ inline void drawQuads(cv::Mat img, std::list<Quad> quads) {
 /**
  * oversample: extract approximately 1 pixel more from each of the sides
  */
-cv::Mat extractQuadImg(cv::Mat img, Quad& quad, unsigned int minWidth = 8,
+cv::Mat extractQuadImg(const cv::Mat img, const Quad& quad, unsigned int minWidth = 8,
     bool oversample = true, bool grayscale = true);
 
 
