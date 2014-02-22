@@ -80,6 +80,9 @@ void ObjectHypothesis::motionUpdate(double position_noise_std, double orientatio
 		double velocity_noise_std, double acceleration_noise_std, double current_time_step_ms) {
 
 	pose_prev = pose;
+	vel_prev_x = vel_x;
+	vel_prev_y = vel_y;
+	vel_prev_z = vel_z;
 
     ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
     ompl::base::ScopedState<ompl::base::SO3StateSpace> stateMean(space);
@@ -116,13 +119,23 @@ void ObjectHypothesis::motionUpdate(double position_noise_std, double orientatio
 	double vel_noise_y = distribution_vel(generator);
 	double vel_noise_z = distribution_vel(generator);
 
-	pose.position_x += position_noise_x + (vel_x + vel_noise_x)*current_time_step_ms/1000;
-	pose.position_y += position_noise_y + (vel_y + vel_noise_y)*current_time_step_ms/1000;
-	pose.position_z += position_noise_z + (vel_z + vel_noise_z)*current_time_step_ms/1000;
+	double acceleration_noise_time = acceleration_noise_std * current_time_step_ms / MS_PER_FRAME;
+	std::normal_distribution<double> distribution_accel(0.0, acceleration_noise_time);
+	double accel_noise_x = distribution_accel(generator);
+	double accel_noise_y = distribution_accel(generator);
+	double accel_noise_z = distribution_accel(generator);
+
+	pose.position_x += position_noise_x + (vel_x + vel_noise_x)*current_time_step_ms/1000 + (1.0/2.0)*accel_x*(current_time_step_ms/1000)*(current_time_step_ms/1000);
+	pose.position_y += position_noise_y + (vel_y + vel_noise_y)*current_time_step_ms/1000 + (1.0/2.0)*accel_y*(current_time_step_ms/1000)*(current_time_step_ms/1000);;
+	pose.position_z += position_noise_z + (vel_z + vel_noise_z)*current_time_step_ms/1000 + (1.0/2.0)*accel_z*(current_time_step_ms/1000)*(current_time_step_ms/1000);;
 
 	vel_x = (pose.position_x - pose_prev.position_x)/(current_time_step_ms/1000);
 	vel_y = (pose.position_y - pose_prev.position_y)/(current_time_step_ms/1000);
 	vel_z = (pose.position_z - pose_prev.position_z)/(current_time_step_ms/1000);
+
+	accel_x = (vel_x - vel_prev_x)/(current_time_step_ms/1000);
+	accel_y = (vel_y - vel_prev_y)/(current_time_step_ms/1000);
+	accel_z = (vel_z - vel_prev_z)/(current_time_step_ms/1000);
 	//cout << "Part i: " << pose.position_x << ", " << pose.position_y << ", " << pose.position_z << endl;
 
 	cout << "PARAMS: Mean: " << distribution_pos.mean() << "\t Std: " << distribution_pos.stddev() << endl;
