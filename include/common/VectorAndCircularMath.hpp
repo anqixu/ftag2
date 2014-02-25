@@ -7,6 +7,7 @@
 #include <opencv2/opencv.hpp>
 #include <utility>
 #include <vector>
+#include <array>
 #include <cmath>
 #include <cassert>
 
@@ -29,7 +30,10 @@ inline bool operator<(const cv::Vec4i& lhs, const cv::Vec4i& rhs) {
   if (lhs[3] < rhs[3]) return true;
   return false;
 };
-inline bool lessThan(const cv::Vec4i& lhs, const cv::Vec4i& rhs) {
+inline bool lessThanVec4i(const cv::Vec4i& lhs, const cv::Vec4i& rhs) {
+  return (lhs < rhs);
+};
+inline bool lessThanArray5i(const std::array<int, 5>& lhs, const std::array<int, 5>& rhs) {
   return (lhs < rhs);
 };
 
@@ -331,6 +335,29 @@ cv::Vec2d findClosestPointToLines2(const cv::Vec2d& vp,
 
 
 /**
+ * Check if the line segments (a<->b) and (c<->d) intersect with each other
+ *
+ * From: http://gamedev.stackexchange.com/questions/26004/how-to-detect-2d-line-on-line-collision
+ *
+ * WARNING: algorithm returns true for special case where the line segments
+ *          are co-linear and do not overlap
+ */
+inline bool isIntersecting(const cv::Point2f& a, const cv::Point2f& b,
+    const cv::Point2f& c, const cv::Point2f& d) {
+  float denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
+  float numerator1 = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
+  float numerator2 = ((a.y - c.y) * (b.x - a.x)) - ((a.x - c.x) * (b.y - a.y));
+
+  if (denominator == 0) return numerator1 == 0 && numerator2 == 0;
+
+  float r = numerator1 / denominator;
+  float s = numerator2 / denominator;
+
+  return (r >= 0 && r <= 1) && (s >= 0 && s <= 1);
+};
+
+
+/**
  * Computes x intercept (in pixels, intersection with bottom of image) and
  * slope (in degrees, 0' = top of image) given line in image
  *
@@ -416,8 +443,11 @@ inline double computeScaleFactor(const cv::Size& from, const cv::Size& to) {
 /**
  * Computes orientation of line segment (of the form [x1, y1, x2, y2])
  */
-inline double orientation(cv::Vec4i seg) {
+inline double orientation(const cv::Vec4i& seg) {
   return std::atan2(seg[3] - seg[1], seg[2] - seg[0]);
+};
+inline double orientation(const cv::Point2d& ptA, const cv::Point2d& ptB) {
+  return std::atan2(ptB.y - ptA.y, ptB.x - ptA.x);
 };
 
 /**
@@ -461,24 +491,35 @@ inline cv::Vec4i sort(cv::Vec4i v) {
  * ordering of values are preserved
  */
 inline cv::Vec4i minCyclicOrder(cv::Vec4i v) {
-  if ((v[1] <= v[0]) && (v[1] <= v[2]) && (v[1] <= v[3])) {
-    return cv::Vec4i(v[1], v[2], v[3], v[0]);
+  if ((v[0] <= v[1]) && (v[0] <= v[2]) && (v[0] <= v[3])) {
+    return v;
+  } else if ((v[1] <= v[0]) && (v[1] <= v[2]) && (v[1] <= v[3])) {
+      return cv::Vec4i(v[1], v[2], v[3], v[0]);
   } else if ((v[2] <= v[0]) && (v[2] <= v[1]) && (v[2] <= v[3])) {
     return cv::Vec4i(v[2], v[3], v[0], v[1]);
-  } else if ((v[3] <= v[0]) && (v[3] <= v[1]) && (v[3] <= v[2])) {
+  } else { // if ((v[3] <= v[0]) && (v[3] <= v[1]) && (v[3] <= v[2])) {
     return cv::Vec4i(v[3], v[0], v[1], v[2]);
   }
-  return v;
 };
 
 /**
  * Sorts and removes duplicate entries in-place
  */
 inline void unique(std::vector<cv::Vec4i>& v) {
-  std::sort(v.begin(), v.end(), lessThan);
+  std::sort(v.begin(), v.end(), lessThanVec4i);
 
   std::vector<cv::Vec4i> u;
-  for (cv::Vec4i& d: v) {
+  for (const cv::Vec4i& d: v) {
+    if (u.empty()) { u.push_back(d); }
+    else if (u.back() < d) { u.push_back(d); }
+  }
+  v.swap(u);
+};
+inline void unique(std::vector< std::array<int, 5> >& v) {
+  std::sort(v.begin(), v.end(), lessThanArray5i);
+
+  std::vector< std::array<int, 5> > u;
+  for (const std::array<int, 5>& d: v) {
     if (u.empty()) { u.push_back(d); }
     else if (u.back() < d) { u.push_back(d); }
   }

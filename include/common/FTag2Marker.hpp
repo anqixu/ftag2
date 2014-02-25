@@ -27,7 +27,7 @@ struct FTag2Marker {
 
   std::vector<cv::Point2f> corners;
 
-  std::vector<cv::Mat> rays; // TODO: 1 do we need to store these?
+  std::vector<cv::Mat> rays; // TODO: 3 do we need to store these?
 
   bool hasSignature;
   bool hasValidXORs;

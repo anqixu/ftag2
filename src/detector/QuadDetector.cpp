@@ -2,6 +2,15 @@
 #include <cmath>
 
 
+// TODO: 1 remove debug code
+#ifdef TODO_REMOVE
+#include <sstream>
+#include <iostream>
+#include <fstream>
+using namespace std;
+#endif
+
+
 /**
  * Returns 1 if the line segments intersect, 0 if their lines intersect
  * beyond one or both segments, or -1 if they are co-linear.
@@ -44,60 +53,20 @@ char getSegmentIntersection(const cv::Vec4i& segA, const cv::Vec4i& segB,
 
 
 inline bool areEndpointsNear(const cv::Vec4i& segA, const cv::Vec4i& segB,
-    double minEndptDist) {
-  return ((vc_math::dist(segA[0], segA[1], segB[0], segB[1]) <= minEndptDist) ||
-          (vc_math::dist(segA[0], segA[1], segB[2], segB[3]) <= minEndptDist) ||
-          (vc_math::dist(segA[2], segA[3], segB[0], segB[1]) <= minEndptDist) ||
-          (vc_math::dist(segA[2], segA[3], segB[2], segB[3]) <= minEndptDist));
+    double maxEndptDist) {
+  return ((vc_math::dist(segA[0], segA[1], segB[0], segB[1]) <= maxEndptDist) ||
+          (vc_math::dist(segA[0], segA[1], segB[2], segB[3]) <= maxEndptDist) ||
+          (vc_math::dist(segA[2], segA[3], segB[0], segB[1]) <= maxEndptDist) ||
+          (vc_math::dist(segA[2], segA[3], segB[2], segB[3]) <= maxEndptDist));
 };
 
 
 inline bool overlap(const cv::Vec4i& a, const cv::Vec4i& b) {
   return (
-    (a[0] == b[0]) ||(a[0] == b[1]) || (a[0] == b[2]) || (a[0] == b[3]) ||
-    (a[1] == b[0]) ||(a[1] == b[1]) || (a[1] == b[2]) || (a[1] == b[3]) ||
-    (a[2] == b[0]) ||(a[2] == b[1]) || (a[2] == b[2]) || (a[2] == b[3]) ||
-    (a[3] == b[0]) ||(a[3] == b[1]) || (a[3] == b[2]) || (a[3] == b[3]));
-};
-
-
-// WARNING: this function uses the lengths of the segments to estimate the
-//          area of the quad, which implicitly assumes that the segment
-//          endpoints are sufficiently close to the corners of the quad
-double area(const cv::Vec4i& segA, const cv::Vec4i& segB,
-    const cv::Vec4i& segC, const cv::Vec4i& segD) {
-  double lenA = vc_math::dist(segA);
-  double lenB = vc_math::dist(segB);
-  double lenC = vc_math::dist(segC);
-  double lenD = vc_math::dist(segD);
-  double angleAD = std::acos(vc_math::dot(segA, segD)/lenA/lenD);
-  double angleBC = std::acos(vc_math::dot(segB, segC)/lenB/lenC);
-  return 0.5*(lenA*lenD*std::sin(angleAD) + lenB*lenC*std::sin(angleBC));
-};
-
-
-// Flags smaller quad by changing its first segment idx to -1
-//
-// WARNING: this function uses the lengths of the segments to estimate the
-//          area of the quad, which implicitly assumes that the segment
-//          endpoints are sufficiently close to the corners of the quad
-void flagSmallerQuad(cv::Vec4i& segQuadA, cv::Vec4i& segQuadB,
-    const std::vector<int>& toOrigSegIDs, const std::vector<cv::Vec4i>& segments) {
-  const cv::Vec4i& segAA = segments[toOrigSegIDs[segQuadA[0]]];
-  const cv::Vec4i& segAB = segments[toOrigSegIDs[segQuadA[1]]];
-  const cv::Vec4i& segAC = segments[toOrigSegIDs[segQuadA[2]]];
-  const cv::Vec4i& segAD = segments[toOrigSegIDs[segQuadA[3]]];
-  const cv::Vec4i& segBA = segments[toOrigSegIDs[segQuadB[0]]];
-  const cv::Vec4i& segBB = segments[toOrigSegIDs[segQuadB[1]]];
-  const cv::Vec4i& segBC = segments[toOrigSegIDs[segQuadB[2]]];
-  const cv::Vec4i& segBD = segments[toOrigSegIDs[segQuadB[3]]];
-  double areaQuadA = area(segAA, segAB, segAC, segAD);
-  double areaQuadB = area(segBA, segBB, segBC, segBD);
-  if (areaQuadA > areaQuadB) {
-    segQuadB[0] = -1;
-  } else {
-    segQuadA[0] = -1;
-  }
+    (a[0] == b[0]) || (a[0] == b[1]) || (a[0] == b[2]) || (a[0] == b[3]) ||
+    (a[1] == b[0]) || (a[1] == b[1]) || (a[1] == b[2]) || (a[1] == b[3]) ||
+    (a[2] == b[0]) || (a[2] == b[1]) || (a[2] == b[2]) || (a[2] == b[3]) ||
+    (a[3] == b[0]) || (a[3] == b[1]) || (a[3] == b[2]) || (a[3] == b[3]));
 };
 
 
@@ -134,46 +103,16 @@ bool isClockwiseOrder(const cv::Vec4i& segA, const cv::Vec4i& segB, const cv::Po
 };
 
 
-/*
-// NOTE: This alternative implementation allows segments to be visited at most
- *       once. This returns unstable results when there are 2 quads that share
- *       2 segments (i.e. share a corner).
-void completeQuadDFT(const std::vector< std::list<unsigned int> >& adjList,
-    std::vector<cv::Vec4i>& quads,
-    cv::Vec4i& currQuad,
-    std::vector<bool>& visited,
-    unsigned int startIdx, unsigned int currIdx, int depth) {
-  currQuad[depth] = currIdx;
-  if (currIdx != startIdx) visited[currIdx] = true;
-
-  if (depth > 3) {
-    return;
-  } else if (depth == 3) {
-    for (unsigned int adjIdx: adjList[currIdx]) {
-      if (adjIdx == startIdx) {
-        quads.push_back(vc_math::minCyclicOrder(currQuad));
-        return;
-      }
-    }
-  } else {
-    for (unsigned int adjIdx: adjList[currIdx]) {
-      if (adjIdx == startIdx) continue; // found a cycle shorter than a quad
-      if (!visited[adjIdx])
-        completeQuadDFT(adjList, quads, currQuad, visited, startIdx, adjIdx, depth + 1);
-    }
-  }
-};
- */
-
+// Scan for 4-connected cycles
 void completeQuadDFT(const std::vector< std::list<unsigned int> >& adjList,
     std::vector<cv::Vec4i>& quads,
     cv::Vec4i& currQuad,
     unsigned int startIdx, unsigned int currIdx, int depth) {
+  if (depth > 3) return;
+
   currQuad[depth] = currIdx;
 
-  if (depth > 3) {
-    return;
-  } else if (depth == 3) {
+  if (depth == 3) {
     for (unsigned int adjIdx: adjList[currIdx]) {
       if (adjIdx == startIdx) {
         quads.push_back(vc_math::minCyclicOrder(currQuad));
@@ -189,8 +128,170 @@ void completeQuadDFT(const std::vector< std::list<unsigned int> >& adjList,
 };
 
 
+struct PartialQuadDFTParams {
+  const std::vector< std::list<unsigned int> >& redAdjList;
+  const std::vector<cv::Vec4i>& segments;
+  const std::vector<double>& segmentLengths;
+  const std::vector<int>& toOrigSegIDs;
+  double fourConnMaxEndptDistRatio;
+  double fiveConnMaxGapDistRatio;
+  double fiveConnMaxAlignAngle; // in radians
+  PartialQuadDFTParams(
+      const std::vector< std::list<unsigned int> >& _redAdjList,
+      const std::vector<cv::Vec4i>& _segments,
+      const std::vector<double>& _segmentLengths,
+      const std::vector<int>& _toOrigSegIDs,
+      double _fourConnMaxEndptDistRatio,
+      double _fiveConnMaxGapDistRatio,
+      double _fiveConnMaxAlignAngle) :
+        redAdjList(_redAdjList),
+        segments(_segments),
+        segmentLengths(_segmentLengths),
+        toOrigSegIDs(_toOrigSegIDs),
+        fourConnMaxEndptDistRatio(_fourConnMaxEndptDistRatio),
+        fiveConnMaxGapDistRatio(_fiveConnMaxGapDistRatio),
+        fiveConnMaxAlignAngle(_fiveConnMaxAlignAngle) {};
+};
+
+
+// Scan for 4-connected segments (either cycles, or where 1 quad corner is
+// gapped), and potential 5-connected segments (quads where middle of 1 edge is
+// gapped, to be later verified by isFiveConnQuad())
+void partialQuadDFT(const PartialQuadDFTParams& data,
+    std::vector<cv::Vec4i>& quads,
+    std::vector< std::array<int, 5> >& fiveConnSegments,
+    std::array<int, 5>& currQuadIDs,
+    unsigned int currIdx, int depth) {
+  if (depth > 3) return;
+
+  currQuadIDs[depth] = currIdx;
+
+  if (depth == 3) {
+    cv::Point2d intPt;
+    double distSegAInt, distSegBInt;
+    int i = data.toOrigSegIDs[currQuadIDs[0]];
+    int j = data.toOrigSegIDs[currIdx];
+
+    // Check for 4-connected partial quad
+    char intersect = getSegmentIntersection(data.segments[i], data.segments[j],
+        intPt, &distSegAInt, &distSegBInt);
+    if (intersect == 0 &&
+        (distSegAInt / (distSegAInt + data.segmentLengths[i]) <= data.fourConnMaxEndptDistRatio) &&
+        (distSegBInt / (distSegBInt + data.segmentLengths[j]) <= data.fourConnMaxEndptDistRatio)) {
+      intersect = 1;
+    }
+    if (intersect > 0) {
+      quads.push_back(vc_math::minCyclicOrder(cv::Vec4i(currQuadIDs[0], currQuadIDs[1], currQuadIDs[2], currQuadIDs[3])));
+      return;
+    }
+
+    // If not a partial 4-conn quad, then store 5-conn quads, to be bridged later
+    for (unsigned int adjIdx: data.redAdjList[currIdx]) {
+      // Check for cyclic quads
+      // NOTE: triggered only if fourConnMaxEndptDistRatio is lower than quadMaxEndptDistRatio
+      if ((int) adjIdx == currQuadIDs[0]) {
+        quads.push_back(vc_math::minCyclicOrder(cv::Vec4i(currQuadIDs[0], currQuadIDs[1], currQuadIDs[2], currQuadIDs[3])));
+        continue;
+      } else {
+        currQuadIDs[4] = adjIdx;
+        fiveConnSegments.push_back(currQuadIDs);
+      }
+    }
+  } else {
+    bool foundCycle;
+    for (unsigned int adjIdx: data.redAdjList[currIdx]) {
+      // Check for less-than-4 cycles
+      foundCycle = false;
+      for (int prevDepth = 0; prevDepth < depth - 1; prevDepth++) {
+        if ((int) adjIdx == currQuadIDs[prevDepth]) {
+          foundCycle = true;
+          continue;
+        }
+      }
+      if (foundCycle) continue;
+
+      // Recurse
+      partialQuadDFT(data, quads, fiveConnSegments, currQuadIDs, adjIdx, depth + 1);
+    }
+  }
+};
+
+
+// Verify if 5-connected segment corresponds to a quad
+bool isFiveConnQuad(const PartialQuadDFTParams& data,
+    const std::array<int, 5>& fiveConnSegIDs,
+    Quad& resultBuffer, double minQuadWidth) {
+  int firstIdx = data.toOrigSegIDs[fiveConnSegIDs[0]];
+  int fifthIdx = data.toOrigSegIDs[fiveConnSegIDs[4]];
+  const cv::Vec4i& firstSegment = data.segments[firstIdx];
+  const cv::Vec4i& fifthSegment = data.segments[fifthIdx];
+
+  // Find intersection points between 1st/2nd segments, and 4th/5th segments
+  cv::Point2d intPtFirstSecond, intPtFourthFifth;
+  int secondIdx = data.toOrigSegIDs[fiveConnSegIDs[1]];
+  int fourthIdx = data.toOrigSegIDs[fiveConnSegIDs[3]];
+  const cv::Vec4i& secondSegment = data.segments[secondIdx];
+  const cv::Vec4i& fourthSegment = data.segments[fourthIdx];
+  getSegmentIntersection(firstSegment, secondSegment, intPtFirstSecond);
+  getSegmentIntersection(fourthSegment, fifthSegment, intPtFourthFifth);
+  double superSegmentDist = vc_math::dist(intPtFirstSecond, intPtFourthFifth);
+  if (superSegmentDist < minQuadWidth) { return false; }
+
+  // Ensure that first and last segments each align sufficiently to the super segment
+  double superSegmentOrientation = vc_math::orientation(intPtFirstSecond, intPtFourthFifth);
+  double firstSegmentAlignAngle = vc_math::angularDist(vc_math::orientation(firstSegment),
+      superSegmentOrientation, vc_math::pi);
+  double fifthSegmentAlignAngle = vc_math::angularDist(vc_math::orientation(fifthSegment),
+      superSegmentOrientation, vc_math::pi);
+  if (firstSegmentAlignAngle > data.fiveConnMaxAlignAngle &&
+      firstSegmentAlignAngle < vc_math::pi - data.fiveConnMaxAlignAngle) { return false; }
+  if (fifthSegmentAlignAngle > data.fiveConnMaxAlignAngle &&
+      fifthSegmentAlignAngle < vc_math::pi - data.fiveConnMaxAlignAngle) { return false; }
+
+  // Start with a "0 to 1" range corresponding to the super-segment bridging
+  // between the aforementioned 2 intersection points, and reduce this range
+  // based on overlaps from the projected 1st segment and projected 5th segment
+  //
+  // norm_proj(Pt onto intA->intB) = (Pt-intA) (dot) (intB-intA) / norm(intB-intA)^2
+  //
+  // Also note that we only care about the range "right" of the projected first
+  // segment and "left" of the projected fifth segment, on this super-segment
+  double superSegmentDistSqrd = superSegmentDist*superSegmentDist;
+  double intBAx = intPtFourthFifth.x - intPtFirstSecond.x;
+  double intBAy = intPtFourthFifth.y - intPtFirstSecond.y;
+  double projFirstLeft = ((firstSegment[0] - intPtFirstSecond.x)*intBAx +
+      (firstSegment[1] - intPtFirstSecond.y)*intBAy)/superSegmentDistSqrd;
+  double projFirstRight = ((firstSegment[2] - intPtFirstSecond.x)*intBAx +
+      (firstSegment[3] - intPtFirstSecond.y)*intBAy)/superSegmentDistSqrd;
+  double projFifthLeft = ((fifthSegment[0] - intPtFirstSecond.x)*intBAx +
+      (fifthSegment[1] - intPtFirstSecond.y)*intBAy)/superSegmentDistSqrd;
+  double projFifthRight = ((fifthSegment[2] - intPtFirstSecond.x)*intBAx +
+      (fifthSegment[3] - intPtFirstSecond.y)*intBAy)/superSegmentDistSqrd;
+  if (projFirstLeft > projFirstRight) { std::swap(projFirstLeft, projFirstRight); }
+  if (projFifthLeft > projFifthRight) { std::swap(projFifthLeft, projFifthRight); }
+  if (projFifthLeft > 1) projFifthLeft = 1;
+  if (projFirstRight < 0) projFirstRight = 0;
+  double normGapDist = projFifthLeft - projFirstRight;
+  if (normGapDist > data.fiveConnMaxGapDistRatio) { return false; }
+
+  // If the 1st/5th segments are sufficiently aligned, and if their gap is
+  // sufficiently short, then construct quad
+  int thirdIdx = data.toOrigSegIDs[fiveConnSegIDs[2]];
+  const cv::Vec4i& thirdSegment = data.segments[thirdIdx];
+  cv::Point2d corner;
+  resultBuffer.corners[0].x = intPtFirstSecond.x; resultBuffer.corners[0].y = intPtFirstSecond.y;
+  getSegmentIntersection(secondSegment, thirdSegment, corner);
+  resultBuffer.corners[1].x = corner.x; resultBuffer.corners[1].y = corner.y;
+  getSegmentIntersection(thirdSegment, fourthSegment, corner);
+  resultBuffer.corners[2].x = corner.x; resultBuffer.corners[2].y = corner.y;
+  resultBuffer.corners[3].x = intPtFourthFifth.x; resultBuffer.corners[3].y = intPtFourthFifth.y;
+  resultBuffer.updateArea();
+  return (resultBuffer.area > 0);
+};
+
+
 std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
-    double intSegMinAngle, double minEndptDist) {
+    double intSegMinAngle, double maxEndptDist) {
   std::list<Quad> quads;
 
   // Identify connected segments
@@ -202,11 +303,10 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
   double distSegAInt, distSegBInt;
   for (i = 0; i < segments.size(); i++) {
     for (j = i+1; j < segments.size(); j++) {
-      // Do not connect nearby segments with sharp angles in between them
-      if (vc_math::angularDist(
-          vc_math::orientation(segments[i]),
-          vc_math::orientation(segments[j]),
-          vc_math::pi) < intSegMinAngle) { continue; }
+      // Do not connect nearby segments with sharp (or near-180') angles in between them
+      double intAngle = vc_math::angularDist(vc_math::orientation(segments[i]),
+          vc_math::orientation(segments[j]), vc_math::pi);
+      if (intAngle < intSegMinAngle || intAngle > vc_math::pi - intSegMinAngle) { continue; }
 
       intersect = getSegmentIntersection(segments[i], segments[j], intPt,
           &distSegAInt, &distSegBInt);
@@ -216,9 +316,9 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
       // intersecting point is at most as sharp as a triangle with sides
       // endptThresh, 2*endptThresh, 2*endptThresh)
       if (intersect == 0 &&
-          distSegAInt <= 2*minEndptDist &&
-          distSegBInt <= 2*minEndptDist &&
-          areEndpointsNear(segments[i], segments[j], minEndptDist)) {
+          distSegAInt <= 2*maxEndptDist &&
+          distSegBInt <= 2*maxEndptDist &&
+          areEndpointsNear(segments[i], segments[j], maxEndptDist)) {
         intersect = 1;
       }
 
@@ -234,37 +334,6 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
       }
     }
   }
-
-  // TEMP: Display adjascent edges (blue -> red)
-  /*
-  char c;
-  bool alive = true;
-  bool done = false;
-  cv::namedWindow("adj");
-  cv::Mat segmentsImg, overlaidImg;
-  img.copyTo(segmentsImg);
-  drawLineSegments(segmentsImg, segments);
-  for (i = 0; i < segments.size(); i++) {
-    for (int jj: adjList[i]) {
-      std::cout << i << " -> " << jj << std::endl;
-      segmentsImg.copyTo(overlaidImg);
-      cv::line(overlaidImg, cv::Point2i(segments[i][0], segments[i][1]), cv::Point2i(segments[i][2], segments[i][3]), CV_RGB(0, 0, 255), 3);
-      cv::line(overlaidImg, cv::Point2i(segments[jj][0], segments[jj][1]), cv::Point2i(segments[jj][2], segments[jj][3]), CV_RGB(255, 0, 0), 3);
-      cv::imshow("adj", overlaidImg);
-      c = cv::waitKey();
-      if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
-        alive = false;
-        done = true;
-        break;
-      } else if ((c & 0x0FF) == 'k' || (c & 0x0FF) == 'K') {
-        done = true;
-        break;
-      }
-    }
-    if (done) { break; }
-  }
-  return alive;
-  */
 
   // Keep only intersecting edgels and create reduced adjacency matrix + list
   std::vector<int> toIntSegIDs(segments.size(), -1);
@@ -312,30 +381,6 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
   }
   vc_math::unique(segQuads);
 
-  // Find pairs of quads that share one or more edges with each other, and
-  // remove the smaller quad among each pair found
-  std::vector<cv::Vec4i>::iterator segQuadA, segQuadB;
-  const std::vector<cv::Vec4i>::iterator segQuadEnd = segQuads.end();
-  for (segQuadA = segQuads.begin(); segQuadA != segQuadEnd; segQuadA++) {
-    if ((*segQuadA)[0] < 0) continue;
-
-    segQuadB = segQuadA; segQuadB++;
-    for (; segQuadB != segQuadEnd; segQuadB++) {
-      if ((*segQuadB)[0] < 0) continue;
-      if (overlap(*segQuadA, *segQuadB)) {
-        flagSmallerQuad(*segQuadA, *segQuadB, toOrigSegIDs, segments);
-      }
-    }
-  }
-  segQuadA = segQuads.begin();
-  while (segQuadA != segQuads.end()) {
-    if ((*segQuadA)[0] < 0) {
-      segQuadA = segQuads.erase(segQuadA);
-    } else {
-      segQuadA++;
-    }
-  }
-
   // Compute corners of quads
   cv::Point2d corner;
   for (cv::Vec4i& segQuad: segQuads) {
@@ -353,25 +398,180 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     getSegmentIntersection(segD, segA, corner);
     quad.corners[3].x = corner.x; quad.corners[3].y = corner.y;
     quad.updateArea();
-    quads.push_back(quad);
+    if (quad.area > 0) {
+      quads.push_back(quad);
+    }
   }
 
-  // TEMP: show results in connectivity
-  /*
-  cv::Mat segmentsM(segments);
-  segmentsM = segmentsM.reshape(1, segments.size());
-  cv::Mat intSegIDs(toOrigSegIDs);
-  cv::Mat quadsM(segQuads);
-  quadsM = quadsM.reshape(1, quads.size());
-  std::cout << "segments = ..." << std::endl << cv::format(segmentsM, "matlab") << ";" << std::endl << std::endl;
-  std::cout << "intSegIDs = ..." << std::endl << cv::format(intSegIDs, "matlab") << ";" << std::endl << std::endl;
-  std::cout << "adj = ..." << std::endl << cv::format(redAdj, "matlab") << ";" << std::endl << std::endl;
-  std::cout << "quadsCyclesAdj = ..." << std::endl << cv::format(quadsCyclesAdj, "matlab") << ";" << std::endl << std::endl;
-  std::cout << "segQuads = ..." << std::endl << cv::format(quadsM, "matlab") << ";" << std::endl << std::endl;
-  */
+  return quads;
+};
 
-  // TODO: 1 determine corner-obstructed quads by finding 4-connected non-cyclic path, where the intersection of the 2 end segments form a convex quad
-  // TODO: 1 Determine side-obstructed quads by finding 5-connected non-cyclic path, with co-linear end segments
+
+std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
+    double intSegMinAngle, double maxEndptDistRatio,
+    double maxCornerGapEndptDistRatio,
+    double maxEdgeGapDistRatio, double maxEdgeGapAlignAngle,
+    double minQuadWidth) {
+  std::list<Quad> quads;
+
+  // Compute lengths of each segment
+  std::vector<double> segmentLengths;
+  for (const cv::Vec4i& seg: segments) {
+    segmentLengths.push_back(vc_math::dist(seg));
+  }
+
+  // Identify connected segments
+  std::vector< std::list<unsigned int> > adjList(segments.size());
+  std::vector<bool> incomingAdj(segments.size(), false); // whether segment has incoming adjacent segment(s)
+  unsigned int i, j;
+  cv::Point2d intPt;
+  char intersect;
+  double distSegAInt, distSegBInt;
+  for (i = 0; i < segments.size(); i++) {
+    for (j = i+1; j < segments.size(); j++) {
+      // Do not connect nearby segments with sharp (or near-180') angles in between them
+      double intAngle = vc_math::angularDist(vc_math::orientation(segments[i]),
+          vc_math::orientation(segments[j]), vc_math::pi);
+      if (intAngle < intSegMinAngle || intAngle > vc_math::pi - intSegMinAngle) { continue; }
+
+      intersect = getSegmentIntersection(segments[i], segments[j], intPt,
+          &distSegAInt, &distSegBInt);
+
+      // Connect segments whose endpoints are nearby, and also whose
+      // intersecting point is also near each of the segments' endpoints
+      // (specifically where the triangle between the 2 endpoints and the
+      // intersecting point is at most as sharp as a triangle with sides
+      // endptThresh, 2*endptThresh, 2*endptThresh)
+      if (intersect == 0 &&
+          (distSegAInt / (distSegAInt + segmentLengths[i]) <= maxEndptDistRatio) &&
+          (distSegBInt / (distSegBInt + segmentLengths[j]) <= maxEndptDistRatio)) {
+        intersect = 1;
+      }
+
+      // Determine adjacency order between the two segments
+      if (intersect > 0) {
+        if (isClockwiseOrder(segments[i], segments[j], intPt)) {
+          adjList[i].push_back(j);
+          incomingAdj[j] = true;
+        } else {
+          adjList[j].push_back(i);
+          incomingAdj[i] = true;
+        }
+      }
+    }
+  }
+
+  // Keep only intersecting edgels and create reduced adjacency matrix + list
+  std::vector<int> toIntSegIDs(segments.size(), -1);
+  std::vector<int> toOrigSegIDs;
+  for (i = 0; i < segments.size(); i++) {
+    if (adjList[i].size() > 0 || incomingAdj[i]) {
+      j = toOrigSegIDs.size();
+      toIntSegIDs[i] = j;
+      toOrigSegIDs.push_back(i);
+    }
+  }
+  std::vector< std::list<unsigned int> > redAdjList(toOrigSegIDs.size());
+  for (j = 0; j < toOrigSegIDs.size(); j++) {
+    std::list<unsigned int>& currAdj = redAdjList[j];
+    i = toOrigSegIDs[j];
+    for (unsigned int neighI: adjList[i]) {
+      unsigned int neighJ = toIntSegIDs[neighI];
+      currAdj.push_back(neighJ);
+    }
+  }
+
+  // Traverse through adjascency list and search for complete (cyclic) and
+  // partial (single-corner-obstructed and single-edge-obstructed) quads
+  PartialQuadDFTParams partialQuadData(redAdjList, segments, segmentLengths,
+      toOrigSegIDs, maxCornerGapEndptDistRatio, maxEdgeGapDistRatio,
+      maxEdgeGapAlignAngle);
+  std::vector<cv::Vec4i> segQuads;
+  std::vector< std::array<int, 5> > segFiveConns;
+  std::array<int, 5> currQuadIDs;
+  for (unsigned int currCandIdx = 0; currCandIdx < toOrigSegIDs.size(); currCandIdx++) {
+    partialQuadDFT(partialQuadData, segQuads, segFiveConns, currQuadIDs, currCandIdx, 0);
+  }
+  vc_math::unique(segQuads);
+  vc_math::unique(segFiveConns);
+
+#ifdef TODO_REMOVE
+  if (segQuads.size() <= 0 && segFiveConns.size() <= 0) {
+    ostringstream oss;
+    oss << "%%%%%%%%%%" << endl;
+    oss << "clear all;" << endl;
+    oss << "intSegMinAngle = " << intSegMinAngle << ";" << endl;
+    oss << "maxEndptDistRatio = " << maxEndptDistRatio << ";" << endl;
+    oss << "segments = [";
+    for (unsigned int k = 0; k < segments.size(); k++) {
+      const cv::Vec4i& seg = segments[k];
+      oss << seg[0] << ", " << seg[1] << ", " << seg[2] << ", " << seg[3] << ";" << endl;
+    }
+    oss << "];" << endl;
+    oss << "adjlist = cell(" << adjList.size() << ", 1);" << endl;
+    unsigned int k = 0;
+    for (std::list<unsigned int>& redAdj: adjList) {
+      if (redAdj.size() > 0) {
+        oss << "adjlist{" << k+1 << "} = [";
+        for (unsigned int neigh: redAdj) {
+          oss << neigh+1 << ", ";
+        }
+        oss << "];" << endl;
+      }
+      k++;
+    }
+    oss << "segQuads = [";
+    for (const cv::Vec4i& segQuad: segQuads) {
+      oss << toOrigSegIDs[segQuad[0]]+1 << ", " << toOrigSegIDs[segQuad[1]]+1 << ", " <<
+          toOrigSegIDs[segQuad[2]]+1 << ", " << toOrigSegIDs[segQuad[3]]+1 << ";" << endl;
+    }
+    oss << "];" << endl;
+
+    oss << "segFiveConns = [";
+    for (const std::array<int, 5>& segFiveConn: segFiveConns) {
+      oss << toOrigSegIDs[segFiveConn[0]]+1 << ", " << toOrigSegIDs[segFiveConn[1]]+1 << ", " <<
+          toOrigSegIDs[segFiveConn[2]]+1 << ", " << toOrigSegIDs[segFiveConn[3]]+1 << ", " <<
+          toOrigSegIDs[segFiveConn[4]]+1 << ";" << endl;
+    }
+    oss << "];" << endl;
+
+    ofstream myfile;
+    myfile.open("~/Desktop/QUAD_DATA.m");
+    myfile << oss.str() << endl;
+    myfile.close();
+  }
+#endif
+
+  // Compute corners of 4-connected quads
+  cv::Point2d corner;
+  Quad quad;
+  for (cv::Vec4i& segQuad: segQuads) {
+    const cv::Vec4i& segA = segments[toOrigSegIDs[segQuad[0]]];
+    const cv::Vec4i& segB = segments[toOrigSegIDs[segQuad[1]]];
+    const cv::Vec4i& segC = segments[toOrigSegIDs[segQuad[2]]];
+    const cv::Vec4i& segD = segments[toOrigSegIDs[segQuad[3]]];
+    getSegmentIntersection(segA, segB, corner);
+    quad.corners[0].x = corner.x; quad.corners[0].y = corner.y;
+    getSegmentIntersection(segB, segC, corner);
+    quad.corners[1].x = corner.x; quad.corners[1].y = corner.y;
+    getSegmentIntersection(segC, segD, corner);
+    quad.corners[2].x = corner.x; quad.corners[2].y = corner.y;
+    getSegmentIntersection(segD, segA, corner);
+    quad.corners[3].x = corner.x; quad.corners[3].y = corner.y;
+    quad.updateArea();
+    if (quad.area >= minQuadWidth*minQuadWidth) {
+      quads.push_back(quad);
+    }
+  }
+
+  // Construct single-edge-obstructed quads from 5-connected segments
+  for (const std::array<int, 5>& segFiveConn: segFiveConns) {
+    if (isFiveConnQuad(partialQuadData, segFiveConn, quad, minQuadWidth)) {
+      if (quad.area >= minQuadWidth*minQuadWidth) {
+        quads.push_back(quad);
+      }
+    }
+  }
 
   return quads;
 };

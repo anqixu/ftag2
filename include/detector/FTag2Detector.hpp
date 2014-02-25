@@ -22,6 +22,12 @@ struct Quad {
     double angleAD = std::acos(vc_math::dot(corners[1], corners[0], corners[0], corners[3])/lenA/lenD);
     double angleBC = std::acos(vc_math::dot(corners[1], corners[2], corners[2], corners[3])/lenB/lenC);
     area = 0.5*(lenA*lenD*std::sin(angleAD) + lenB*lenC*std::sin(angleBC));
+
+    // Check for non-simple quads
+    if (vc_math::isIntersecting(corners[0], corners[1], corners[2], corners[3]) ||
+        vc_math::isIntersecting(corners[1], corners[2], corners[3], corners[0])) {
+      area *= -1;
+    }
   };
 
   static bool compareArea(const Quad& first, const Quad& second) {
@@ -62,12 +68,19 @@ std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
 
 std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle = 30.0*vc_math::degree,
-    double minEndptDist = 6.0);
+    double maxEndptDist = 6.0);
+
+
+std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
+    double intSegMinAngle = 30.0*vc_math::degree,
+    double maxEndptDistRatio = 0.1,
+    double maxCornerGapEndptDistRatio = 0.2,
+    double maxEdgeGapDistRatio = 0.5,
+    double maxEdgeGapAlignAngle = 15.0*vc_math::degree,
+    double minQuadWidth = 15.0);
 
 
 inline void drawQuad(cv::Mat img, const std::vector<cv::Point2f>& corners) {
-  cv::circle(img, corners[0], 5, CV_RGB(255, 0, 0));
-  cv::circle(img, corners[0], 3, CV_RGB(255, 255, 0));
   cv::line(img, corners[0], corners[1], CV_RGB(0, 255, 0), 3);
   cv::line(img, corners[0], corners[1], CV_RGB(255, 0, 255), 1);
   cv::line(img, corners[1], corners[2], CV_RGB(0, 255, 0), 3);
@@ -76,6 +89,20 @@ inline void drawQuad(cv::Mat img, const std::vector<cv::Point2f>& corners) {
   cv::line(img, corners[2], corners[3], CV_RGB(255, 0, 255), 1);
   cv::line(img, corners[3], corners[0], CV_RGB(0, 255, 0), 3);
   cv::line(img, corners[3], corners[0], CV_RGB(255, 0, 255), 1);
+};
+
+
+inline void drawTag(cv::Mat img, const std::vector<cv::Point2f>& corners) {
+  cv::line(img, corners[0], corners[1], CV_RGB(0, 0, 255), 3);
+  cv::line(img, corners[0], corners[1], CV_RGB(255, 255, 0), 1);
+  cv::line(img, corners[1], corners[2], CV_RGB(0, 0, 255), 3);
+  cv::line(img, corners[1], corners[2], CV_RGB(255, 255, 0), 1);
+  cv::line(img, corners[2], corners[3], CV_RGB(0, 0, 255), 3);
+  cv::line(img, corners[2], corners[3], CV_RGB(255, 255, 0), 1);
+  cv::line(img, corners[3], corners[0], CV_RGB(0, 0, 255), 3);
+  cv::line(img, corners[3], corners[0], CV_RGB(255, 255, 0), 1);
+  cv::circle(img, corners[0], 5, CV_RGB(255, 0, 0));
+  cv::circle(img, corners[0], 3, CV_RGB(0, 255, 255));
 };
 
 

@@ -49,6 +49,7 @@ protected:
   // DEBUG VARIABLES
   Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
   ros::Time latestProfTime;
+  double profilerDelaySec;
 
 
 public:
@@ -56,17 +57,21 @@ public:
       alive(false),
       dynCfgServer(NULL),
       dynCfgSyncReq(false),
-      latestProfTime(ros::Time::now()) {
+      latestProfTime(ros::Time::now()),
+      profilerDelaySec(0) {
     // Set default parameter values
     params.sobelThreshHigh = 100;
     params.sobelThreshLow = 30;
     params.sobelBlurWidth = 3;
     params.lineAngleMargin = 20.0; // *degree
     params.lineMinEdgelsCC = 50;
-    params.lineMinEdgelsSeg = 15;
-    params.quadMinWidth = 15.0;
+    params.lineMinEdgelsSeg = 10;
+    params.quadMinWidth = 15;
     params.quadMinAngleIntercept = 30.0;
-    params.quadMinEndptDist = 4.0;
+    params.quadMaxEndptDistRatio = 0.1;
+    params.quadMaxCornerGapEndptDistRatio = 0.2;
+    params.quadMaxEdgeGapDistRatio = 0.5;
+    params.quadMaxEdgeGapAlignAngle = 10.0;
     params.quadMaxStripAvgDiff = 15.0;
     params.maxQuadsToScan = 10;
     params.markerWidthM = 0.07;
@@ -82,6 +87,9 @@ public:
     // Obtain node handles
     //ros::NodeHandle& nh = getNodeHandle();
     ros::NodeHandle& local_nh = getPrivateNodeHandle();
+
+    // Load misc. non-dynamic parameters
+    local_nh.param("profiler_delay_sec", profilerDelaySec, profilerDelaySec);
 
     // Load static camera calibration information
     std::string cameraIntrinsicStr, cameraDistortionStr;
@@ -102,7 +110,6 @@ public:
     dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
     dynCfgServer->setCallback(bind(&FTag2ReaderNodelet::configCallback, this, _1, _2));
 
-
     // Parse static parameters and update dynamic reconfigure values
     #define GET_PARAM(v) \
       local_nh.param(std::string(#v), params.v, params.v)
@@ -114,7 +121,10 @@ public:
     GET_PARAM(lineMinEdgelsSeg);
     GET_PARAM(quadMinWidth);
     GET_PARAM(quadMinAngleIntercept);
-    GET_PARAM(quadMinEndptDist);
+    GET_PARAM(quadMaxEndptDistRatio);
+    GET_PARAM(quadMaxCornerGapEndptDistRatio);
+    GET_PARAM(quadMaxEdgeGapDistRatio);
+    GET_PARAM(quadMaxEdgeGapAlignAngle);
     GET_PARAM(quadMaxStripAvgDiff);
     GET_PARAM(maxQuadsToScan);
     GET_PARAM(markerWidthM);
@@ -124,9 +134,10 @@ public:
 #ifdef CV_SHOW_IMAGES
     // Configure windows
     namedWindow("edgels", CV_GUI_EXPANDED);
-    namedWindow("segments", CV_GUI_EXPANDED);
     namedWindow("quad_1", CV_GUI_EXPANDED);
     namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
+    namedWindow("segments", CV_GUI_EXPANDED);
+    namedWindow("quads", CV_GUI_EXPANDED);
     namedWindow("tags", CV_GUI_EXPANDED);
 #endif
 
@@ -197,15 +208,13 @@ public:
     cv::Mat grayImg;
     cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
 
-    // Extract line segments using optimized segment detector using
-    // angle-bounded connected edgel components
+    // 1. Detect line segments
     lineSegP.tic();
     std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
         params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
         params.lineMinEdgelsCC, params.lineAngleMargin*degree,
         params.lineMinEdgelsSeg);
     lineSegP.toc();
-
 #ifdef CV_SHOW_IMAGES
     {
       cv::Mat overlaidImg = sourceImg.clone();
@@ -214,30 +223,28 @@ public:
     }
 #endif
 
-    // Detect quads
+    // 2. Detect quadrilaterals
     quadP.tic();
-    std::list<Quad> quads = detectQuads(segments,
+    std::list<Quad> quads = detectQuadsNew(segments,
         params.quadMinAngleIntercept*degree,
-        params.quadMinEndptDist);
+        params.quadMaxEndptDistRatio,
+        params.quadMaxCornerGapEndptDistRatio,
+        params.quadMaxEdgeGapDistRatio,
+        params.quadMaxEdgeGapAlignAngle*degree,
+        params.quadMinWidth);
     quads.sort(Quad::compareArea);
     quadP.toc();
-
-    NODELET_INFO_STREAM(ID << ": " << quads.size() << " quads"); // TODO: 0 remove
-
-    // TODO: 0 remove after debugging flickering bug
-#ifdef REMOVE_AFTER_DEBUG
-    if (quads.empty()) {
-      ROS_WARN_STREAM("NO QUADS IN FRAME");
-    }
-    if (false) {
-      cout << "Quads: " << quads.size() << endl;
-      for (const Quad& q: quads) {
-        cout << "- " << q.area << endl;
+#ifdef CV_SHOW_IMAGES
+    {
+      cv::Mat overlaidImg = sourceImg.clone();
+      for (const Quad& quad: quads) {
+        drawQuad(overlaidImg, quad.corners);
       }
+      cv::imshow("quads", overlaidImg);
     }
 #endif
 
-    // Scan through all detected quads
+    // 3. Decode tags from quads
     int quadCount = 0;
     cv::Mat tagImg, trimmedTagImg, croppedTagImg, croppedTagImgRot;
     std::vector<FTag2Marker6S5F3B> tags;
@@ -314,13 +321,27 @@ public:
       }
     } // Scan through all detected quads
 
+
+
+
+    // TODO: 1 remove notification
+    if (tags.size() > 0) {
+      NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+    } else if (quads.size() > 0) {
+      NODELET_WARN_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+    } else {
+      NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+    }
+
+
+
     // Publish image overlaid with detected markers
     cv::Mat processedImg = sourceImg.clone();
     for (const FTag2Marker6S5F3B& tag: tags) {
-      drawQuad(processedImg, tag.corners);
+      drawTag(processedImg, tag.corners);
     }
     cv_bridge::CvImage cvProcessedImg(std_msgs::Header(),
-        sensor_msgs::image_encodings::BGR8, processedImg);
+        sensor_msgs::image_encodings::RGB8, processedImg);
     cvProcessedImg.header.frame_id = boost::lexical_cast<std::string>(ID);
     processedImagePub.publish(cvProcessedImg.toImageMsg());
 #ifdef CV_SHOW_IMAGES
@@ -353,20 +374,26 @@ public:
 
     // Update profiler
     durationP.toc();
-    // TODO: 000 deal with profiler verbosity (have profiler spit time as rosparam)
-#ifdef TODO
-    ros::Time currTime = ros::Time::now();
-    ros::Duration td = currTime - latestProfTime;
-    if (td.toSec() > 1.0) {
+    if (profilerDelaySec > 0) {
+      ros::Time currTime = ros::Time::now();
+      ros::Duration td = currTime - latestProfTime;
+      if (td.toSec() > profilerDelaySec) {
+        cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
+        cout << "detectQuads: " << quadP.getStatsString() << endl;
+        cout << "extractTags: " << quadExtractorP.getStatsString() << endl;
+        cout << "decodeTag: " << decoderP.getStatsString() << endl;
 
-      cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
-      cout << "detectQuads: " << quadP.getStatsString() << endl;
-      cout << "extractTags: " << quadExtractorP.getStatsString() << endl;
-      cout << "decodeTag: " << decoderP.getStatsString() << endl;
+        cout << "Pipeline Duration: " << durationP.getStatsString() << endl;
+        cout << "Pipeline Rate: " << rateP.getStatsString() << endl;
+        latestProfTime = currTime;
+      }
+    }
 
-      cout << "Pipeline Duration: " << durationP.getStatsString() << endl;
-      cout << "Pipeline Rate: " << rateP.getStatsString() << endl;
-      latestProfTime = currTime;
+    // Allow OpenCV HighGUI events to process
+#ifdef CV_SHOW_IMAGES
+    char c = waitKey(1);
+    if (c == 'x' || c == 'X') {
+      ros::shutdown();
     }
 #endif
   };

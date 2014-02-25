@@ -204,5 +204,5 @@ void FTag2Marker6S2F3B::decodePayload() {
   assert(!horzPhases.empty() && !vertPhases.empty());
   hasSignature = false;
 
-  // TODO: 1
+  // TODO: 2 re-implement FTag2Marker6S5F3B, then carry over to FTag2Marker6S2F3B
 };

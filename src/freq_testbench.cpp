@@ -246,19 +246,6 @@ public:
         quads.sort(Quad::compareArea);
         quadP.toc();
 
-        // TODO: 0 remove after debugging flickering bug
-        /*
-        if (quads.empty()) {
-          ROS_WARN_STREAM("NO QUADS IN FRAME");
-        }
-        if (false) {
-          cout << "Quads: " << quads.size() << endl;
-          for (const Quad& q: quads) {
-            cout << "- " << q.area << endl;
-          }
-        }
-        */
-
         bool foundTag = false;
         if (!quads.empty()) {
           std::list<Quad>::iterator currQuad = quads.begin();

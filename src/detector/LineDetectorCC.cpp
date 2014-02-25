@@ -284,7 +284,6 @@ std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
   //cv::Sobel(grayImg, dxImg, CV_16S, 1, 0, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
   //cv::Sobel(grayImg, dyImg, CV_16S, 0, 1, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
   OpenCVCanny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth, dxImg, dyImg);
-  cv::imshow("edgels", edgelImg); // TODO: 0 remove after debug
 
   // Identify all connected edgel components above minimum count threshold
   std::vector< std::vector<cv::Point2i> > edgelCCs = identifyEdgelCCs(edgelImg);

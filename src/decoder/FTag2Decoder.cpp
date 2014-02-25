@@ -114,7 +114,7 @@ long long FTag2Decoder::_extractSigBits(const cv::Mat& phases, bool flipped, uns
 };
 
 
-// TODO: 1 look up math on homography projection of square, and see how it's limited vs. general quad (both to obtain 3D pose, and also to pre-filter quads)
+// TODO: 2 look up math on homography projection of square, and see how it's limited vs. general quad (both to obtain 3D pose, and also to pre-filter quads)
 
 void FTag2Decoder::flipPhases(const cv::Mat& phasesSrc, cv::Mat& phasesFlipped) {
   cv::flip(phasesSrc, phasesFlipped, 0);
@@ -131,23 +131,4 @@ void FTag2Decoder::flipPSK(const cv::Mat& pskSrc, cv::Mat& pskFlipped, unsigned 
   for (int i = 0; i < pskFlipped.rows * pskFlipped.cols; i++, pskFlippedPtr++) {
     *pskFlippedPtr = (pskSize - (unsigned int) *pskFlippedPtr) % pskSize;
   }
-};
-
-
-unsigned char FTag2Decoder::adjustPSK(double phaseDeg, unsigned int pskSize) {
-  // TODO: 0 validate this fn
-  unsigned char result;
-
-  const int pskMaxCount = pow(2, pskSize);
-  const double PSKRange = (360.0/pskMaxCount);
-  const unsigned char maxPSKCount = pow(2, pskSize);
-
-  double pskApprox = vc_math::wrapAngle(phaseDeg, 360.0)/PSKRange;
-  if (pskApprox - std::floor(pskApprox) < 0.5) { // adjust up
-    result = ((unsigned char) std::floor(pskApprox) + 1) % maxPSKCount;
-  } else { // adjust down
-    result = ((unsigned char) std::floor(pskApprox)) % maxPSKCount;
-  }
-
-  return result;
 };
