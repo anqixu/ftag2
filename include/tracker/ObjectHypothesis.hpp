@@ -41,6 +41,12 @@ private:
 	double vel_x;
 	double vel_y;
 	double vel_z;
+	double vel_prev_x;
+	double vel_prev_y;
+	double vel_prev_z;
+	double accel_x;
+	double accel_y;
+	double accel_z;
 
 public:
 	ObjectHypothesis();
