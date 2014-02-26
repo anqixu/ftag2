@@ -115,15 +115,6 @@ target_link_libraries(${FTAG2_READER_NODELET_NAME}
 )
 add_dependencies(${FTAG2_READER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 
-add_executable(cam_testbench src/cam_testbench.cpp)
-target_link_libraries(cam_testbench
-  ${FTAG2_LIB_NAME}
-  ${OpenCV_LIBRARIES}
-  ${catkin_LIBRARIES}
-  yaml-cpp
-)
-add_dependencies(cam_testbench ${PROJECT_NAME}_gencfg)
-
 add_executable(ros_cam_testbench src/ros_cam_testbench.cpp)
 target_link_libraries(ros_cam_testbench
   ${FTAG2_LIB_NAME}
@@ -154,7 +145,7 @@ add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_c
 # )
 
 ## Mark executables and/or libraries for installation
-install(TARGETS ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME} cam_testbench freq_testbench
+install(TARGETS ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME}
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

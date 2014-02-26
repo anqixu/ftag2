@@ -5,7 +5,7 @@
   <!-- remap from="/$(arg nodelet_name)/image_in" to="/camera/image_raw" / -->
   <remap from="/$(arg nodelet_name)/camera_in" to="/camera/image_raw" />
 
-  <!-- node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen" launch-prefix="gdb -ex run - -args"/ -->
+  <!-- node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen" launch-prefix="gdb -ex run - -args" / -->
   <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen"/>
   
   <node pkg="nodelet" type="nodelet" name="$(arg nodelet_name)"

@@ -98,12 +98,12 @@ public:
     if (cameraIntrinsicStr.size() > 0) {
       cameraIntrinsic = str2mat(cameraIntrinsicStr, 3);
     } else {
-      cameraIntrinsic = cv::Mat::zeros(3, 3, CV_64FC1);
+      cameraIntrinsic = cv::Mat::zeros(3, 3, CV_64FC1); // prepare buffer for camera_info
     }
     if (cameraDistortionStr.size() > 0) {
       cameraDistortion = str2mat(cameraDistortionStr, 1);
     } else {
-      cameraDistortion = cv::Mat::zeros(1, 5, CV_64FC1);
+      cameraDistortion = cv::Mat::zeros(1, 5, CV_64FC1); // prepare buffer for camera_info
     }
 
     // Setup and initialize dynamic reconfigure server
@@ -133,7 +133,6 @@ public:
 
 #ifdef CV_SHOW_IMAGES
     // Configure windows
-    namedWindow("edgels", CV_GUI_EXPANDED);
     namedWindow("quad_1", CV_GUI_EXPANDED);
     namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
     namedWindow("segments", CV_GUI_EXPANDED);
@@ -217,7 +216,8 @@ public:
     lineSegP.toc();
 #ifdef CV_SHOW_IMAGES
     {
-      cv::Mat overlaidImg = sourceImg.clone();
+      cv::Mat overlaidImg;
+      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
       drawLineSegments(overlaidImg, segments);
       cv::imshow("segments", overlaidImg);
     }
@@ -236,7 +236,8 @@ public:
     quadP.toc();
 #ifdef CV_SHOW_IMAGES
     {
-      cv::Mat overlaidImg = sourceImg.clone();
+      cv::Mat overlaidImg;
+      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
       for (const Quad& quad: quads) {
         drawQuad(overlaidImg, quad.corners);
       }
@@ -256,7 +257,7 @@ public:
       // Extract, rectify, and crop tag payload image, corresponding to quad
       quadExtractorP.tic();
       tagImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth);
-      if (tagImg.empty()) { continue; }
+      if (tagImg.empty()) { continue; } // TODO: 0 push trimming/cropping into FTag2Marker (so that we can save uncropped tag image) (and port to freq_testbench)
       trimmedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
       croppedTagImg = cropFTag2Border(trimmedTagImg);
       if (croppedTagImg.rows < params.quadMinWidth ||
@@ -301,24 +302,6 @@ public:
 
       // Store tag in list
       tags.push_back(currTag);
-
-      // Display first (largest) tag
-      if (tags.size() == 1) {
-        // Show tag and cropped tag images
-        BaseCV::rotate90(croppedTagImg, croppedTagImgRot, currTag.imgRotDir/90);
-#ifdef CV_SHOW_IMAGES
-        {
-          cv::imshow("quad_1", tagImg);
-          cv::imshow("quad_1_trimmed", croppedTagImgRot);
-        }
-#endif
-
-        // Publish cropped tag image
-        cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
-            sensor_msgs::image_encodings::MONO8, croppedTagImgRot);
-        cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
-        firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
-      }
     } // Scan through all detected quads
 
 
@@ -335,6 +318,24 @@ public:
 
 
 
+    // Post-process largest detected tag
+    if (tags.size() >= 1) {
+      const FTag2Marker6S5F3B& firstTag = tags[0];
+
+      // Show cropped tag image
+#ifdef CV_SHOW_IMAGES
+      {
+        cv::imshow("quad_1_trimmed", firstTag.img);
+      }
+#endif
+
+      // Publish cropped tag image
+      cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
+          sensor_msgs::image_encodings::MONO8, firstTag.img);
+      cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
+      firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
+    }
+
     // Publish image overlaid with detected markers
     cv::Mat processedImg = sourceImg.clone();
     for (const FTag2Marker6S5F3B& tag: tags) {
@@ -345,7 +346,11 @@ public:
     cvProcessedImg.header.frame_id = boost::lexical_cast<std::string>(ID);
     processedImagePub.publish(cvProcessedImg.toImageMsg());
 #ifdef CV_SHOW_IMAGES
-    cv::imshow("tags", processedImg);
+    {
+      cv::Mat overlaidImg;
+      cv::cvtColor(processedImg, overlaidImg, CV_RGB2BGR);
+      cv::imshow("tags", overlaidImg);
+    }
 #endif
 
     // Publish tag detections

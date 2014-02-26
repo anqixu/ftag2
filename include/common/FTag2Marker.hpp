@@ -8,6 +8,8 @@
 #include <vector>
 #include <bitset>
 
+#include "common/BaseCV.hpp"
+
 
 struct FTag2Marker {
   constexpr static unsigned int MAX_NUM_FREQS = 5;
@@ -97,6 +99,9 @@ struct FTag2Marker6S5F3B : FTag2Marker {
     rectifiedWidth = double(tag.cols)/6*8;
     initMatrices();
     decodePayload();
+    if (hasSignature) {
+      BaseCV::rotate90(tag, img, imgRotDir/90);
+    }
   };
   virtual ~FTag2Marker6S5F3B() {};
 

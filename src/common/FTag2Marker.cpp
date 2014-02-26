@@ -9,7 +9,7 @@ using namespace std;
 FTag2Marker::FTag2Marker(cv::Mat tag) :
     position_x(0), position_y(0), position_z(0),
     orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
-    hasSignature(false), hasValidXORs(false),
+    rectifiedWidth(-1), hasSignature(false), hasValidXORs(false),
     imgRotDir(0), payloadOct(""), payloadBin(""), xorBin(""), signature(0) {
   FTag2Decoder::analyzeRays(tag, this);
 };
