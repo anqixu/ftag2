@@ -34,6 +34,13 @@ struct Quad {
     return first.area > second.area;
   };
 
+  bool checkMinWidth(double w) {
+    return ((vc_math::dist(corners[0], corners[1]) >= w) &&
+        (vc_math::dist(corners[1], corners[2]) >= w) &&
+        (vc_math::dist(corners[2], corners[3]) >= w) &&
+        (vc_math::dist(corners[3], corners[0]) >= w));
+  };
+
   Quad() : corners(4, cv::Point2f(0, 0)), area(-1.0) {};
 };
 
