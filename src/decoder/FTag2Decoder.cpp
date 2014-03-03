@@ -114,8 +114,6 @@ long long FTag2Decoder::_extractSigBits(const cv::Mat& phases, bool flipped, uns
 };
 
 
-// TODO: 2 look up math on homography projection of square, and see how it's limited vs. general quad (both to obtain 3D pose, and also to pre-filter quads)
-
 void FTag2Decoder::flipPhases(const cv::Mat& phasesSrc, cv::Mat& phasesFlipped) {
   cv::flip(phasesSrc, phasesFlipped, 0);
   double* phasesFlippedPtr = (double*) phasesFlipped.data;

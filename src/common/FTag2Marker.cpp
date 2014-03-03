@@ -198,11 +198,3 @@ void FTag2Marker6S5F3B::decodePayload() {
 
   // TODO: 2 eventually, we should check for the validity of magnitude spectrum
 };
-
-
-void FTag2Marker6S2F3B::decodePayload() {
-  assert(!horzPhases.empty() && !vertPhases.empty());
-  hasSignature = false;
-
-  // TODO: 2 re-implement FTag2Marker6S5F3B, then carry over to FTag2Marker6S2F3B
-};

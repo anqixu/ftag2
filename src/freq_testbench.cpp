@@ -106,6 +106,7 @@ public:
     params.quadMinWidth = 15;
     params.quadMinAngleIntercept = 30.0;
     params.quadMaxEndptDistRatio = 0.1;
+    params.quadMaxTIntDistRatio = 0.05;
     params.quadMaxCornerGapEndptDistRatio = 0.2;
     params.quadMaxEdgeGapDistRatio = 0.5;
     params.quadMaxEdgeGapAlignAngle = 10.0;
@@ -181,6 +182,7 @@ public:
     GET_PARAM(quadMinWidth);
     GET_PARAM(quadMinAngleIntercept);
     GET_PARAM(quadMaxEndptDistRatio);
+    GET_PARAM(quadMaxTIntDistRatio);
     GET_PARAM(quadMaxCornerGapEndptDistRatio);
     GET_PARAM(quadMaxEdgeGapDistRatio);
     GET_PARAM(quadMaxEdgeGapAlignAngle);
@@ -292,6 +294,7 @@ public:
         quadP.tic();
         std::list<Quad> quads = detectQuadsNew(segments,
             params.quadMinAngleIntercept*degree,
+            params.quadMaxTIntDistRatio,
             params.quadMaxEndptDistRatio,
             params.quadMaxCornerGapEndptDistRatio,
             params.quadMaxEdgeGapDistRatio,

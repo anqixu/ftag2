@@ -2,15 +2,6 @@
 #include <cmath>
 
 
-// TODO: 1 remove debug code
-#ifdef TODO_REMOVE
-#include <sstream>
-#include <iostream>
-#include <fstream>
-using namespace std;
-#endif
-
-
 /**
  * Returns 1 if the line segments intersect, 0 if their lines intersect
  * beyond one or both segments, or -1 if they are co-linear.
@@ -413,14 +404,11 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
   return quads;
 };
 
-
 std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
-    double intSegMinAngle, double maxEndptDistRatio,
+    double intSegMinAngle, double maxTIntDistRatio, double maxEndptDistRatio,
     double maxCornerGapEndptDistRatio,
     double maxEdgeGapDistRatio, double maxEdgeGapAlignAngle,
     double minQuadWidth) {
-  double quadMaxTIntDistRatio = 0.25; // TODO: 0 move to param; to prevent T-shaped junctions, intersecting line segments are rejected if intersecting point lies at [quadMaxTIntDistRatio, 1-quadMaxTIntDistRatio] range of either segment
-
   std::list<Quad> quads;
 
   // Compute lengths of each segment
@@ -447,9 +435,8 @@ std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
           &distSegAInt, &distSegBInt, &segAIntRatio, &segBIntRatio);
 
       // Do not connect T-shaped segments
-      if ((segAIntRatio >= quadMaxTIntDistRatio && segAIntRatio < 1.0 - quadMaxTIntDistRatio) ||
-          (segBIntRatio >= quadMaxTIntDistRatio && segBIntRatio < 1.0 - quadMaxTIntDistRatio)) {
-        std::cout << "!" << std::endl; // TODO: 0 remove
+      if ((segAIntRatio >= maxTIntDistRatio && segAIntRatio < 1.0 - maxTIntDistRatio) ||
+          (segBIntRatio >= maxTIntDistRatio && segBIntRatio < 1.0 - maxTIntDistRatio)) {
         continue;
       }
 
@@ -542,61 +529,6 @@ std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
     }
   }
 
-#ifdef TODO_REMOVE
-  if (true) {
-    ostringstream oss;
-    oss << "%%%%%%%%%%" << endl;
-    oss << "clear all;" << endl;
-    oss << "intSegMinAngle = " << intSegMinAngle << ";" << endl;
-    oss << "maxEndptDistRatio = " << maxEndptDistRatio << ";" << endl;
-    oss << "segments = [";
-    for (unsigned int k = 0; k < segments.size(); k++) {
-      const cv::Vec4i& seg = segments[k];
-      oss << seg[0] << ", " << seg[1] << ", " << seg[2] << ", " << seg[3] << ";" << endl;
-    }
-    oss << "];" << endl;
-    oss << "adjlist = cell(" << adjList.size() << ", 1);" << endl;
-    unsigned int k = 0;
-    for (std::list<unsigned int>& redAdj: adjList) {
-      if (redAdj.size() > 0) {
-        oss << "adjlist{" << k+1 << "} = [";
-        for (unsigned int neigh: redAdj) {
-          oss << neigh+1 << ", ";
-        }
-        oss << "];" << endl;
-      }
-      k++;
-    }
-    oss << "segQuads = [";
-    for (const cv::Vec4i& segQuad: segQuads) {
-      oss << toOrigSegIDs[segQuad[0]]+1 << ", " << toOrigSegIDs[segQuad[1]]+1 << ", " <<
-          toOrigSegIDs[segQuad[2]]+1 << ", " << toOrigSegIDs[segQuad[3]]+1 << ";" << endl;
-    }
-    oss << "];" << endl;
-
-    oss << "segFiveConns = [";
-    for (const std::array<int, 5>& segFiveConn: segFiveConns) {
-      oss << toOrigSegIDs[segFiveConn[0]]+1 << ", " << toOrigSegIDs[segFiveConn[1]]+1 << ", " <<
-          toOrigSegIDs[segFiveConn[2]]+1 << ", " << toOrigSegIDs[segFiveConn[3]]+1 << ", " <<
-          toOrigSegIDs[segFiveConn[4]]+1 << ";" << endl;
-    }
-    oss << "];" << endl;
-    oss << "quads = [";
-    for (const Quad& q: quads) {
-      oss << q.corners[0].x << ", " << q.corners[0].y << ", " <<
-          q.corners[1].x << ", " << q.corners[1].y << ", " <<
-          q.corners[2].x << ", " << q.corners[2].y << ", " <<
-          q.corners[3].x << ", " << q.corners[3].y << ";" << endl;
-    }
-    oss << "];" << endl;
-
-    ofstream myfile;
-    myfile.open("/home/thalassa/anqixu/Desktop/QUAD_DATA.m");
-    myfile << oss.str() << endl;
-    myfile.close();
-    cout << "wrote to quads" << endl;
-  }
-#endif
   return quads;
 };
 

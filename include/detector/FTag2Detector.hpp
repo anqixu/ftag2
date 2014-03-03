@@ -80,6 +80,7 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
 
 std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle = 30.0*vc_math::degree,
+    double maxTIntDistRatio = 0.25,
     double maxEndptDistRatio = 0.1,
     double maxCornerGapEndptDistRatio = 0.2,
     double maxEdgeGapDistRatio = 0.5,

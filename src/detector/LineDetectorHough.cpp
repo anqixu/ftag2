@@ -160,7 +160,7 @@ cv::Mat houghAccum(const cv::Mat& edgels, const cv::Mat& dx, const cv::Mat& dy,
           rhoI = std::floor(double(rho + rhoHalfRange)/rhoRes);
           thetaRhoAccum.at<double>(thetaI, rhoI) += 1 -
               vc_math::angularDist(theta, thetaEdgel, vc_math::pi)/thetaMargin;
-          // TODO: 9 test if decayed range really does help reduce false positive local maxima or not [if not, might even consider switching to integer accumulator!]
+          // LATER todo: test if decayed range really does help reduce false positive local maxima or not [if not, might even consider switching to integer accumulator!]
         }
       }
     }
@@ -362,7 +362,7 @@ SegmentHoughs houghExtractSegments(
   *rotTPtr = -sin(currTheta); rotTPtr++;
   *rotTPtr = cos(currTheta);
 
-  const double xLine = currRho * cos(currTheta); // TODO: 9 use cos/sine lookup table to optimize computation
+  const double xLine = currRho * cos(currTheta); // LATER todo: 9 use cos/sine lookup table to optimize computation
   const double yLine = currRho * sin(currTheta);
   const unsigned int numEdgels = edgelsXY.cols * edgelsXY.rows * edgelsXY.channels() / 2;
 
@@ -377,7 +377,7 @@ SegmentHoughs houghExtractSegments(
   for (edgelI = 0; edgelI < numEdgels; edgelI++) {
     const cv::Point2d& currPt = edgelsXY.at<cv::Point2d>(edgelI, 0);
     const cv::Point2d& currPtRot = edgelsXYRot.at<cv::Point2d>(edgelI, 0);
-    currEdgelDir = edgelDir.at<double>(currPt.y, currPt.x); // TODO: 9 this can be cached via edgelI, and passed as input arg
+    currEdgelDir = edgelDir.at<double>(currPt.y, currPt.x); // LATER todo: 9 this can be cached via edgelI, and passed as input arg
     dirDist = vc_math::angularDist(currEdgelDir, currTheta, vc_math::two_pi);
     if (fabs(currPtRot.x) <= maxDistToLine) {
       if (dirDist <= thetaMargin) {
@@ -419,7 +419,7 @@ SegmentHoughs houghExtractSegments(
     nextSeg = currSeg;
     nextSeg++;
     while (nextSeg != segments.end()) {
-      // TODO: 9 something might be wrong with this access pattern: we've seen segfaults trying to access nextSeg->startX and startY in certain cases; suspect occurs following delete (look at which iterators are invalidated when removing entries from list; also double-check validity of currSeg; finally ensure that other similar style access of code does not segfault either)
+      // LATER todo: 9 something might be wrong with this access pattern: we've seen segfaults trying to access nextSeg->startX and startY in certain cases; suspect occurs following delete (look at which iterators are invalidated when removing entries from list; also double-check validity of currSeg; finally ensure that other similar style access of code does not segfault either)
       gapDist = vc_math::dist(currSeg->endX, currSeg->endY, nextSeg->startX, nextSeg->startY);
       if (gapDist <= minGap) {
         currSeg->append(*nextSeg);
