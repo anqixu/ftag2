@@ -28,8 +28,11 @@ private:
 public:
 	FTag2Tracker();
 	virtual ~FTag2Tracker();
-	void correspondence(std::vector<FTag2Marker> detectedTags);
 	void director(std::vector<FTag2Marker> detectedTags);
+	void correspondence(std::vector<FTag2Marker> detectedTags);
+	void spawnFilters();
+	void updateFilters();
+	void killFilters();
 };
 
 #endif /* FTAG2TRACKER_HPP_ */

@@ -8,6 +8,7 @@
 #include "tracker/FTag2Tracker.hpp"
 
 bool compareMarkerFilters( MarkerFilter a, MarkerFilter b) { return a.getSumOfStds() < b.getSumOfStds(); }
+
 double markerDistance( FTag2Marker m1, FTag2Marker m2 ) {
 	return sqrt( ( m1.position_x - m2.position_x )*( m1.position_x - m2.position_x ) +
 			( m1.position_y - m2.position_y )*( m1.position_y - m2.position_y ) +
