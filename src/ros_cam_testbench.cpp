@@ -37,11 +37,14 @@
 
 #include <tf/LinearMath/Matrix3x3.h>
 
+#include "std_msgs/Float64MultiArray.h"
+
+
 //#define SAVE_IMAGES_FROM sourceImgRot
 //#define ENABLE_PROFILER
 
 #define PARTICLE_FILTER
-
+#undef OPEN_CV
 
 using namespace std;
 using namespace std::chrono;
@@ -60,6 +63,8 @@ typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer
 
 static const std::string OPENCV_WINDOW = "Image window";
 
+ParticleFilter::time_point last_frame_time;
+ParticleFilter::time_point starting_time;
 
 std::vector<cv::Point2f> Generate2DPoints( Quad quad )
 {
@@ -127,8 +132,10 @@ class RosFTag2Testbench
 	CvMat *distortion;
     cv::Mat distCoeffs;
     cv::Mat cameraMatrix;
-    ros::NodeHandle n;
+    //ros::NodeHandle n;
     ros::Publisher marker_pub;
+    ros::Publisher pubTrack;
+    ros::Publisher pubDet;
     uint32_t shape;
     visualization_msgs::Marker marker;
     //geometry_msgs::PoseStamped marker;
@@ -168,6 +175,7 @@ class RosFTag2Testbench
 	  params.orientation_noise_std = 0.15;
 	  params.velocity_noise_std = 0.05;
 	  params.acceleration_noise_std = 0.01;
+	  params.run_id = 1;
 
 	  // Setup dynamic reconfigure server
 	  dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
@@ -193,11 +201,13 @@ class RosFTag2Testbench
 	  GET_PARAM(orientation_std);
 	  GET_PARAM(position_noise_std);
 	  GET_PARAM(orientation_noise_std);
+	  GET_PARAM(run_id);
 #undef GET_PARAM
 	  dynCfgSyncReq = true;
 	  local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
 	  local_nh.param("save_img_dir", saveImgDir, saveImgDir);
 
+#ifdef OPEN_CV
 	  //namedWindow("source", CV_GUI_EXPANDED);
 	  //namedWindow("debug", CV_GUI_EXPANDED);
 	  namedWindow("edgels", CV_GUI_EXPANDED);
@@ -207,7 +217,7 @@ class RosFTag2Testbench
 	  namedWindow("quad_1", CV_GUI_EXPANDED);
 	  namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
 	  namedWindow("quads", CV_GUI_EXPANDED);
-
+#endif
 
 	  intrinsic = (CvMat*)cvLoad("/home/dacocp/Dropbox/catkin_ws/Intrinsics.xml");
 	  distortion = (CvMat*)cvLoad("/home/dacocp/Dropbox/catkin_ws/Distortion.xml");
@@ -215,7 +225,10 @@ class RosFTag2Testbench
 	  cameraMatrix = intrinsic;
 	  std::cout << "Camera Intrinsic Matrix: " << cameraMatrix << std::endl;
 
-	  marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 0);
+	  marker_pub = local_nh.advertise<visualization_msgs::Marker>("visualization_marker", 0);
+	  pubTrack = local_nh.advertise<std_msgs::Float64MultiArray>("detected_and_tracked_pose", 0);
+	  //pubDet = local_nh.advertise<std_msgs::Float64MultiArray>("detected_pose", 0);
+
 	  //marker_pub = n.advertise<geometry_msgs::PoseStamped>("visualization_marker", -1);
 	  shape = visualization_msgs::Marker::ARROW;
 	  marker.header.frame_id = "aqua_base";
@@ -240,10 +253,14 @@ class RosFTag2Testbench
 	  yaml_recording = false;
 
 	  alive = true;
+	  starting_time = ParticleFilter::clock::now();
+	  last_frame_time = ParticleFilter::clock::now();
 
     //	 Subscribe to input video feed and publish output video feed
 	  //image_sub_ = it_.subscribeCamera("/usb_cam/image_raw", 1, &RosFTag2Testbench::imageCb, this);
 	  image_sub_ = it_.subscribe("/usb_cam/image_raw", 1, &RosFTag2Testbench::imageCb, this);
+
+	  spinThread = std::thread(&RosFTag2Testbench::spin, this);
   };
 
   ~RosFTag2Testbench()
@@ -302,7 +319,9 @@ class RosFTag2Testbench
 		  lineSegP.toc();
 		  sourceImgRot.copyTo(overlaidImg);
 		  drawLineSegments(overlaidImg, segments);
+#ifdef OPEN_CV
 		  cv::imshow("segments", overlaidImg);
+#endif
 
 		  // Detect quads
 		  quadP.tic();
@@ -339,9 +358,10 @@ class RosFTag2Testbench
 
 						  std::cout << "=====> RECOGNIZED TAG: " << " (@ rot=" << tag.imgRotDir << ")" << std::endl;
 						  //std::cout << "psk = ..." << std::endl << cv::format(tag.PSK, "matlab") << std::endl << std::endl;
+#ifdef OPEN_CV
 						  cv::imshow("quad_1", tagImgRot);
 						  cv::imshow("quad_1_trimmed", croppedTagImgRot);
-
+#endif
 						  std::vector<cv::Point3f> objectPoints = Generate3DPoints();
 						  std::vector<cv::Point2f> imagePoints = quads.front().corners;
 
@@ -364,7 +384,9 @@ class RosFTag2Testbench
 							  else
 								  cv::circle(quadsImg, imagePoints[k], 5, cv::Scalar(255, 255, 255), 3, 8, 0);
 						  }
+#ifdef OPEN_CV
 						  cv::imshow("quads", quadsImg);
+#endif
 
 						  cv::Mat rvec(3,1,cv::DataType<double>::type);
 						  cv::Mat tvec(3,1,cv::DataType<double>::type);
@@ -466,18 +488,20 @@ class RosFTag2Testbench
 #endif
 						  foundTag = true;
 						  break; // stop scanning for more quads
+						  cout << "??????" << endl;
 					  }
 				  }
 			  }
 		  }
 		  if (!foundTag) {
+#ifdef OPEN_CV
 			  cv::imshow("quads", sourceImgRot);
+#endif
 		  }
 
 #ifdef PARTICLE_FILTER
 		  if ( tracking == true )
 		  {
-			  cout << "PARAMETERS CHANGED!!!" << endl;
 			  PF.setParameters(params.numberOfParticles, 10, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 			  currentNumberOfParticles = params.numberOfParticles;
 			  current_position_std = params.position_std;
@@ -495,11 +519,45 @@ class RosFTag2Testbench
 			  PF.measurementUpdate(detections);
 			  PF.normalizeWeights();
 			  //PF.computeMeanPose();
-			  PF.computeModePose();
+			  FTag2Marker track = PF.computeModePose();
 			  //PF.displayParticles();
 			  PF.resample();
 			  //        	if (frameNo%50 == 0)
 			  //cv::waitKey();
+
+			  std_msgs::Float64MultiArray array;
+			  array.data.clear();
+
+			  cout << "RUN ID: " << params.run_id << endl;
+
+			  array.data.push_back(params.run_id);
+			  array.data.push_back(current_position_noise_std);
+			  array.data.push_back(current_velocity_noise_std);
+			  array.data.push_back(current_acceleration_noise_std);
+			  array.data.push_back(current_orientation_noise_std);
+			  array.data.push_back(current_position_std);
+			  array.data.push_back(current_orientation_noise_std);
+			  array.data.push_back(track.position_x);
+			  array.data.push_back(track.position_y);
+			  array.data.push_back(track.position_z);
+			  array.data.push_back(track.orientation_x);
+			  array.data.push_back(track.orientation_y);
+			  array.data.push_back(track.orientation_z);
+			  array.data.push_back(track.orientation_w);
+
+			  if (detections.size()>0)
+			  {
+				  array.data.push_back(detections[0].position_x);
+				  array.data.push_back(detections[0].position_y);
+				  array.data.push_back(detections[0].position_z);
+				  array.data.push_back(detections[0].orientation_x);
+				  array.data.push_back(detections[0].orientation_y);
+				  array.data.push_back(detections[0].orientation_z);
+				  array.data.push_back(detections[0].orientation_w);
+			  }
+			  pubTrack.publish(array);
+//			  cout << "PUBLIQUE: " << track.position_x << endl;
+
 		  }
 #endif
 
@@ -531,6 +589,7 @@ class RosFTag2Testbench
 	  } catch (const std::string& err) {
 		  ROS_ERROR_STREAM("Spin thread halted due to code error: " << err);
 	  }
+	  last_frame_time = ParticleFilter::clock::now();
   };
 
   void configCallback(ftag2::CamTestbenchConfig& config, uint32_t level) {
@@ -538,8 +597,45 @@ class RosFTag2Testbench
     params = config;
   };
 
+  void spin() {
+	  char c;
+	  try {
+		  while (ros::ok() && alive) {
+			  ParticleFilter::time_point curr_time = ParticleFilter::clock::now();
+			  std::chrono::milliseconds ms_since_last_frame_ = std::chrono::duration_cast<std::chrono::milliseconds>(curr_time - last_frame_time);
+			  unsigned long long ms_since_last_frame = ms_since_last_frame_.count();
+			  std::chrono::milliseconds ms_since_start_ = std::chrono::duration_cast<std::chrono::milliseconds>(curr_time - starting_time);
+			  unsigned long long ms_since_start = ms_since_start_.count();
+			  //cout << "SINCE DET: " << ms_since_last_frame << "\t SINCE START: " << ms_since_start << endl;
+			  if (ms_since_last_frame > 3000 && ms_since_start > 5000 )
+			  {
+				  alive = false;
+				  ros::shutdown();
+			  }
+			  if (!alive) { break; }
+			  c = waitKey(waitKeyDelay);
+			  if ((c & 0x0FF) == 'x' || (c & 0x0FF) == 'X') {
+				  alive = false;
+			  }
+			  ros::spinOnce();
+			  ros::Rate r(100); // 10 hz
+			  r.sleep();
+		  }
+	  } catch (const cv::Exception& err) {
+		  ROS_ERROR_STREAM("Spin thread halted due to CV Exception: " << err.what());
+	  } catch (const std::string& err) {
+		  ROS_ERROR_STREAM("Spin thread halted due to code error: " << err);
+	  }
+	  ros::shutdown();
+  }
+
+  void join() {
+	  spinThread.join();
+  };
 
 protected:
+
+  std::thread spinThread;
 
   ReconfigureServer* dynCfgServer;
   boost::recursive_mutex dynCfgMutex;
@@ -562,12 +658,20 @@ protected:
   std::string saveImgDir;
 };
 
+
+
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "ros_cam_testbench");
-  RosFTag2Testbench ic;
-  ros::spin();
-  return 0;
+	ros::init(argc, argv, "ros_cam_testbench");
+	try {
+		RosFTag2Testbench ic;
+	    ic.join();
+	}catch (const std::string& err) {
+		cout << "ERROR: " << err << endl;
+	} catch (std::system_error& err) {
+		cout << "SYSTEM ERROR: " << err.what() << endl;
+	}
+	return 0;
 }
 
 
@@ -590,7 +694,7 @@ int main(int argc, char** argv)
     cv::circle(cv_ptr->image, cv::Point(50, 50), 10, CV_RGB(255,0,0));
 
   // Update GUI Window
-  cv::imshow(OPENCV_WINDOW, cv_ptr->image);
+  cv::Z(OPENCV_WINDOW, cv_ptr->image);
   cv::waitKey(3);
 
   // Output modified video stream

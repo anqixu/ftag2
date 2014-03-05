@@ -7,6 +7,10 @@
 
 #include "tracker/ParticleFilter.hpp"
 
+#ifndef SILENT
+	#define SILENT
+#endif
+
 double ParticleFilter::sampling_percent = 0.9;
 
 ParticleFilter::~ParticleFilter() {
@@ -30,16 +34,11 @@ ParticleFilter::ParticleFilter(int numP, double tagSize_, std::vector<FTag2Marke
 
 	std::chrono::milliseconds ms_(100);
 	unsigned long long ms = ms_.count();
-    cout << "********** MS **********: " << ms << endl;
-    //cv::waitKey();
 
 	starting_time = starting_time_ - std::chrono::milliseconds(100);
 	current_time = starting_time;
 
-	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
-
-    cout << "Starting time orig: " << st_.count() << endl;
- //   cout << "Adj. starting time: " << st.count() << endl;
+//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
 
 	this->tagSize = tagSize;
 	number_of_particles = numP;
@@ -53,7 +52,7 @@ ParticleFilter::ParticleFilter(int numP, double tagSize_, std::vector<FTag2Marke
 	weights.resize(number_of_particles);
 	particles.resize(number_of_particles);
 	srand(time(NULL));
-	std::cout << "Particles: " << std::endl;
+//	std::cout << "Particles: " << std::endl;
 	for ( unsigned int i=0; i < number_of_particles; i++ )
 	{
 		int k = i%numDetections;
@@ -83,17 +82,18 @@ void ParticleFilter::setParameters(int numP, double tagSize_, double position_st
 	velocity_noise_std = velocity_noise_std_;
 	acceleration_noise_std = acceleration_noise_std_;
 
+#ifndef SILENT
 	std::cout << "Params: " << std::endl << "Num. paritlces: " << number_of_particles << std::endl;
 	std::cout << "Position STD: " << position_std << std::endl;
 	std::cout << "Orientation STD: " << orientation_std << std::endl;
 	std::cout << "Position noise STD: " << position_noise_std << std::endl;
 	std::cout << "Orientation noise STD: " << orientation_noise_std << std::endl;
+#endif
 }
 
 void ParticleFilter::motionUpdate( ParticleFilter::time_point new_time ) {
 	std::chrono::milliseconds current_time_step_ = std::chrono::duration_cast<std::chrono::milliseconds>(new_time - current_time);
 	unsigned long long current_time_step_ms = current_time_step_.count();
-	std::cout << "Time step: " << current_time_step_ms << std::endl;
 	current_time = new_time;
 	for( unsigned int i=0; i < number_of_particles; i++ )
 	{
@@ -127,26 +127,29 @@ void ParticleFilter::normalizeWeights(){
 		if ( log_max_weight < particle.getLogWeight() )
 			log_max_weight = particle.getLogWeight();
 	}
+#ifndef SILENT
 	std::cout << "log max weight: " << log_max_weight << std::endl;
 	std::cout << "log min weight: " << log_min_weight << std::endl;
-
+#endif
 	log_sum_of_weights = 0.0;
 	for( ObjectHypothesis& particle: particles )
 	{
 		particle.setLogWeight(particle.getLogWeight() - log_max_weight);
 		log_sum_of_weights += exp(particle.getLogWeight());
 	}
-	std::cout << "sum of weights: " << log_sum_of_weights << std::endl;
 	log_sum_of_weights = log(log_sum_of_weights);
+#ifndef SILENT
+	std::cout << "sum of weights: " << log_sum_of_weights << std::endl;
 	std::cout << "log sum of weights: " << log_sum_of_weights << std::endl;
-
+#endif
 	for( ObjectHypothesis& particle: particles )
 	{
 		particle.setLogWeight(particle.getLogWeight() - log_sum_of_weights);
 	}
 	log_max_weight = - log_sum_of_weights;
+#ifndef SILENT
 	std::cout << "log max weight: " << log_max_weight << std::endl;
-
+#endif
 	double sum_w = 0.0;
 	double sum_squared_w = 0.0;
 	for ( ObjectHypothesis& particle: particles )
@@ -164,10 +167,12 @@ void ParticleFilter::normalizeWeights(){
 		sum_square_diffs += (exp(particle.getLogWeight()) - mean_weight) * (exp(particle.getLogWeight()) - mean_weight);
 	}
 	double weights_std = sqrt(sum_square_diffs / number_of_particles);
+#ifndef SILENT
 	std::cout << "REAL SUM OF WEIGHTS: " << sum_w << std::endl;
 	std::cout << "MEAN WEIGHT: " << mean_weight << std::endl;
 	std::cout << "WEIGHT STD: " << weights_std << std::endl;
 	std::cout << "Effective sample size: " << Neff << std::endl;
+#endif
 }
 
 void ParticleFilter::resample(){
@@ -222,14 +227,16 @@ FTag2Marker ParticleFilter::computeMeanPose(){
 	tracked_pose.orientation_y = particles[0].getPose().orientation_y * current_weight;
 	tracked_pose.orientation_z = particles[0].getPose().orientation_z * current_weight;
 	tracked_pose.orientation_w = particles[0].getPose().orientation_w * current_weight;
+#ifndef SILENT
 	std::cout << "Pose x: " << tracked_pose.position_x << std::endl;
 	std::cout << "Pose y: " << tracked_pose.position_y << std::endl;
 	std::cout << "Pose z: " << tracked_pose.position_z << std::endl;
+#endif
 	for ( unsigned int i=1; i<number_of_particles; i++ )
 	{
 		current_weight = exp(particles[i].getLogWeight());
 //		std::cout << "Mean log W: " << i << ": " << particles[i].getLogWeight() << std::endl;
-//		std::cout << "Mean W: " << i << ": " << current_weight << std::endl;
+//		std::Z << "Mean W: " << i << ": " << current_weight << std::endl;
 		tracked_pose.position_x += particles[i].getPose().position_x * current_weight;
 		tracked_pose.position_y += particles[i].getPose().position_y * current_weight;
 		tracked_pose.position_z += particles[i].getPose().position_z * current_weight;
