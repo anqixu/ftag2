@@ -60,6 +60,11 @@ struct FTag2Marker {
   cv::Mat phases;
   cv::Mat bitChunks;
 
+  double sumOfStds;
+  std::vector<double> stds;
+
+  bool withinPhaseRange(FTag2Marker marker);
+
   FTag2Marker() : position_x(0), position_y(0), position_z(0),
       orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
       rectifiedWidth(0),
