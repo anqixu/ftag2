@@ -34,6 +34,13 @@ struct Quad {
     return first.area > second.area;
   };
 
+  bool checkMinWidth(double w) {
+    return ((vc_math::dist(corners[0], corners[1]) >= w) &&
+        (vc_math::dist(corners[1], corners[2]) >= w) &&
+        (vc_math::dist(corners[2], corners[3]) >= w) &&
+        (vc_math::dist(corners[3], corners[0]) >= w));
+  };
+
   Quad() : corners(4, cv::Point2f(0, 0)), area(-1.0) {};
 };
 
@@ -73,6 +80,7 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
 
 std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle = 30.0*vc_math::degree,
+    double maxTIntDistRatio = 0.25,
     double maxEndptDistRatio = 0.1,
     double maxCornerGapEndptDistRatio = 0.2,
     double maxEdgeGapDistRatio = 0.5,

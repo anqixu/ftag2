@@ -29,8 +29,6 @@ struct FTag2Marker {
 
   std::vector<cv::Point2f> corners;
 
-  std::vector<cv::Mat> rays; // TODO: 3 do we need to store these?
-
   bool hasSignature;
   bool hasValidXORs;
   int imgRotDir; // counter-clockwise degrees
@@ -110,27 +108,6 @@ struct FTag2Marker6S5F3B : FTag2Marker {
     XORDecoded = cv::Mat::zeros(6, 3, CV_8UC1);
     payloadChunks = cv::Mat::ones(6, 3, CV_8SC1) * -1;
   };
-
-  virtual void decodePayload();
-};
-
-
-struct FTag2Marker6S2F3B : FTag2Marker {
-	constexpr static long long SIG_KEY = 0b00100011;
-	constexpr static long long SIG_KEY_FLIPPED = 0b00110001;
-  constexpr static long long CRC8_KEY = 0x0EA;
-
-  // TEMP VARS
-  long long signature;
-
-  long long CRC8;
-
-  FTag2Marker6S2F3B() : FTag2Marker(), signature(0), CRC8(0) {
-  };
-  FTag2Marker6S2F3B(cv::Mat tag) : FTag2Marker(tag), signature(0), CRC8(0) {
-    decodePayload();
-  };
-  virtual ~FTag2Marker6S2F3B() {};
 
   virtual void decodePayload();
 };
