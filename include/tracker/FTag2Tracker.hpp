@@ -17,19 +17,19 @@ using namespace std;
 class FTag2Tracker {
 
 private:
-	std::vector<FTag2Marker> detectedTags;
 	std::vector<MarkerFilter> filters;
 	std::vector<MarkerFilter> filters_with_match;
-	std::vector<FTag2Marker> detection_matches;
-	std::vector<FTag2Marker> to_be_spawned;
 	std::vector<MarkerFilter> not_matched;
 	std::vector<MarkerFilter> ready_to_be_killed;
+	std::vector<FTag2Marker> detection_matches;
+	std::vector<FTag2Marker> to_be_spawned;
+	int MAX_FRAMES_NO_DETECTION = 10;
 
 public:
 	FTag2Tracker();
-	~FTag2Tracker();
-	void correspondence(std::vector<FTag2Marker> detectedTags_);
-	void director(std::vector<FTag2Marker> detectedTags_);
+	virtual ~FTag2Tracker();
+	void correspondence(std::vector<FTag2Marker> detectedTags);
+	void director(std::vector<FTag2Marker> detectedTags);
 };
 
 #endif /* FTAG2TRACKER_HPP_ */
