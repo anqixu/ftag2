@@ -404,6 +404,7 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
   return quads;
 };
 
+
 std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle, double maxTIntDistRatio, double maxEndptDistRatio,
     double maxCornerGapEndptDistRatio,

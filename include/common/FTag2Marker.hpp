@@ -70,6 +70,17 @@ struct FTag2Marker {
   virtual ~FTag2Marker() {};
 
   virtual void decodePayload() {};
+
+  // Returns angle between marker's normal vector and camera's ray vector,
+  // in radians. Also known as angle for out-of-plane rotation.
+  //
+  // WARNING: behavior is undefined if pose has not been set.
+  inline double getAngleFromCamera() const {
+    cv::Mat rotMat = vc_math::quat2RotMat(orientation_w, orientation_x, orientation_y, orientation_z);
+    // tagVec = rotMat * [0; 0; 1]; // obtain +z ray of tag's pose, in camera frame
+    // angle = acos([0; 0; 1] (dot) tagVec) // obtain angle using dot product rule
+    return acos(rotMat.at<double>(2, 2));
+  }
 };
 
 

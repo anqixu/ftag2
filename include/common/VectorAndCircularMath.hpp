@@ -583,6 +583,29 @@ inline void rotMat2quat(const cv::Mat rotMat,
 };
 
 
+inline cv::Mat quat2RotMat(double w, double x, double y, double z) {
+  double distSqrd = x*x+y*y+z*z+w*w;
+  if (distSqrd == 0.0) { return cv::Mat::zeros(3, 3, CV_64FC1); }
+  double s = 2.0/distSqrd;
+  double xs = x * s,   ys = y * s,   zs = z * s;
+  double wx = w * xs,  wy = w * ys,  wz = w * zs;
+  double xx = x * xs,  xy = x * ys,  xz = x * zs;
+  double yy = y * ys,  yz = y * zs,  zz = z * zs;
+  cv::Mat result(3, 3, CV_64FC1);
+  double* data = (double*) result.data;
+  *data = 1.0 - (yy + zz); data++;
+  *data = xy - wz; data++;
+  *data = xz + wy; data++;
+  *data = xy + wz; data++;
+  *data = 1.0 - (xx + zz); data++;
+  *data = yz - wx; data++;
+  *data = xz - wy; data++;
+  *data = yz + wx; data++;
+  *data = 1.0 - (xx + yy);
+  return result;
+};
+
+
 inline cv::Mat str2mat(const std::string& s, int rows,
     int type = CV_64F, int channels = 1) {
   std::string input = s;

@@ -311,6 +311,7 @@ public:
 
 
     // TODO: 5 remove notification
+    /*
     if (tags.size() > 0) {
       NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     } else if (quads.size() > 0) {
@@ -318,6 +319,7 @@ public:
     } else {
       NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     }
+    */
 
 
 

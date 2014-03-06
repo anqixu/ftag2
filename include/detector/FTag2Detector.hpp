@@ -8,6 +8,7 @@
 #include <cmath>
 #include "common/VectorAndCircularMath.hpp"
 #include "common/BaseCV.hpp"
+#include "common/FTag2Marker.hpp"
 
 
 struct Quad {
@@ -172,10 +173,38 @@ void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
                 int aperture_size, cv::Mat& dx, cv::Mat& dy, bool L2gradient = false );
 
 
-class FTag2Detector : public BaseCV {
+/**
+ * This class predicts the variance of encoded phases inside a FTag2 marker,
+ * using a linear regression model incorporating a constant bias, the
+ * marker's distance and angle from the camera, and the frequency of each
+ * encoded phase.
+ */
+class PhaseVariancePredictor {
+protected:
+  double weight_r; // norm of XY components of position
+  double weight_z; // projective distance from camera, in camera's ray vector
+  double weight_angle; // angle between tag's normal vector and camera's ray vector
+  double weight_freq; // encoding frequency of phase
+  double weight_bias; // constant bias
+
 public:
-  FTag2Detector();
-  ~FTag2Detector();
+  PhaseVariancePredictor(double w_r, double w_z, double w_a, double w_f,
+      double w_b) : weight_r(w_r), weight_z(w_z), weight_angle(w_a),
+      weight_freq(w_f), weight_bias(w_b) {};
+  ~PhaseVariancePredictor();
+
+  std::vector<double> predict(FTag2Marker* tag) {
+    std::vector<double> variances;
+    double r = sqrt(tag->position_x*tag->position_x + tag->position_y*tag->position_y);
+    double z = tag->position_z;
+    double angle = tag->getAngleFromCamera();
+    int numFreqs = tag->phases.cols;
+    for (int freq = 1; freq <= numFreqs; freq++) {
+      variances.push_back(weight_bias + weight_r*r + weight_z*z +
+          weight_angle*angle + weight_freq*freq);
+    }
+    return variances;
+  }
 };
 
 
