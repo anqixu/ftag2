@@ -46,7 +46,7 @@ protected:
 
   cv::Mat cameraIntrinsic, cameraDistortion;
 
-  PhaseVariancePredictor phaseVariance;
+  PhaseVariancePredictor phaseVariancePredictor;
 
   // DEBUG VARIABLES
   Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
@@ -144,7 +144,7 @@ public:
     GET_PARAM(markerWidthM);
     #undef GET_PARAM
     dynCfgSyncReq = true;
-    phaseVariance.updateParams(params.phaseVarWeightR,
+    phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
 
@@ -174,7 +174,7 @@ public:
   void configCallback(ftag2::FTag2ReaderConfig& config, uint32_t level) {
     if (!alive) return;
     params = config;
-    phaseVariance.updateParams(params.phaseVarWeightR,
+    phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
   };
@@ -268,61 +268,32 @@ public:
 
     // 3. Decode tags from quads
     int quadCount = 0;
-    cv::Mat tagImg, trimmedTagImg, croppedTagImg, croppedTagImgRot;
+    cv::Mat quadImg;
     std::vector<FTag2Marker6S5F3B> tags;
+    FTag2Marker6S5F3B currTag;
     for (const Quad& currQuad: quads) {
       // Check whether we have scanned enough quads
       quadCount++;
       if (quadCount > params.maxQuadsToScan) break;
 
-      // Extract, rectify, and crop tag payload image, corresponding to quad
+      // Extract rectified quad image from frame
       quadExtractorP.tic();
-      tagImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth);
-      if (tagImg.empty()) { continue; } // TODO: 0 push trimming/cropping into FTag2Marker (so that we can save uncropped tag image) (and port to freq_testbench)
-      trimmedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
-      croppedTagImg = cropFTag2Border(trimmedTagImg);
-      if (croppedTagImg.rows < params.quadMinWidth ||
-          croppedTagImg.cols < params.quadMinWidth) { continue; }
+      quadImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth*(8/6));
       quadExtractorP.toc();
+      if (quadImg.empty()) { continue; }
 
       // Decode tag
       decoderP.tic();
-      FTag2Marker6S5F3B currTag = FTag2Marker6S5F3B(croppedTagImg);
-      decoderP.toc();
-      if (!currTag.hasSignature) { continue; }
-
-      // Compute pose of tag
-      switch ((currTag.imgRotDir/90) % 4) {
-      case 1:
-        currTag.corners.push_back(currQuad.corners[1]);
-        currTag.corners.push_back(currQuad.corners[2]);
-        currTag.corners.push_back(currQuad.corners[3]);
-        currTag.corners.push_back(currQuad.corners[0]);
-        break;
-      case 2:
-        currTag.corners.push_back(currQuad.corners[2]);
-        currTag.corners.push_back(currQuad.corners[3]);
-        currTag.corners.push_back(currQuad.corners[0]);
-        currTag.corners.push_back(currQuad.corners[1]);
-        break;
-      case 3:
-        currTag.corners.push_back(currQuad.corners[3]);
-        currTag.corners.push_back(currQuad.corners[0]);
-        currTag.corners.push_back(currQuad.corners[1]);
-        currTag.corners.push_back(currQuad.corners[2]);
-        break;
-      default:
-        currTag.corners = currQuad.corners;
-        break;
+      try {
+        currTag = FTag2Decoder::decodeTag(quadImg, currQuad,
+            params.markerWidthM,
+            cameraIntrinsic, cameraDistortion,
+            params.quadMaxStripAvgDiff,
+            phaseVariancePredictor);
+      } catch (const std::string& err) {
+        continue;
       }
-      solvePose(currTag.corners, params.markerWidthM,
-          cameraIntrinsic, cameraDistortion,
-          currTag.position_x, currTag.position_y, currTag.position_z,
-          currTag.orientation_w, currTag.orientation_x, currTag.orientation_y,
-          currTag.orientation_z);
-
-      // Predict phase variances
-      phaseVariance.predict(&currTag);
+      decoderP.toc();
 
       // Store tag in list
       tags.push_back(currTag);
@@ -332,7 +303,6 @@ public:
 
 
     // TODO: 5 remove notification
-    /*
     if (tags.size() > 0) {
       NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     } else if (quads.size() > 0) {
@@ -340,7 +310,6 @@ public:
     } else {
       NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     }
-    */
 
 
 

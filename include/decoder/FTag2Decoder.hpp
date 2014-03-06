@@ -4,11 +4,20 @@
 
 #include <opencv2/core/core.hpp>
 #include "common/FTag2Marker.hpp"
+#include "detector/FTag2Detector.hpp"
 
 
 class FTag2Decoder {
 public:
+  static FTag2Marker6S5F3B decodeTag(const cv::Mat quadImg, const Quad& quad,
+      double markerWidthM,
+      const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
+      double quadMaxStripAvgDiff,
+      PhaseVariancePredictor& phaseVariancePredictor);
+
   static void analyzeRays(const cv::Mat& img, FTag2Marker* tag);
+
+  static bool checkSignature(FTag2Marker* tag);
 
   static void flipPhases(const cv::Mat& phasesSrc, cv::Mat& phasesFlipped);
 

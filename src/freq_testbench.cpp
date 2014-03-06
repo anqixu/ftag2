@@ -70,6 +70,8 @@ protected:
 
   cv::Mat cameraIntrinsic, cameraDistortion;
 
+  PhaseVariancePredictor phaseVariancePredictor;
+
   std::string targetTagPhasesStr;
   cv::Mat targetTagPhases;
 
@@ -111,8 +113,13 @@ public:
     params.quadMaxEdgeGapDistRatio = 0.5;
     params.quadMaxEdgeGapAlignAngle = 10.0;
     params.quadMaxStripAvgDiff = 15.0;
-    params.maxQuadsToScan = 10;
+    params.phaseVarWeightR = 0;
+    params.phaseVarWeightZ = 0;
+    params.phaseVarWeightAngle = 0;
+    params.phaseVarWeightFreq = 0;
+    params.phaseVarWeightBias = 10*10;
     params.markerWidthM = 0.07;
+    params.maxQuadsToScan = 10;
     params.imRotateDeg = 0;
 
     std::string cameraIntrinsicStr, cameraDistortionStr;
@@ -188,10 +195,18 @@ public:
     GET_PARAM(quadMaxEdgeGapAlignAngle);
     GET_PARAM(quadMaxStripAvgDiff);
     GET_PARAM(maxQuadsToScan);
+    GET_PARAM(phaseVarWeightR);
+    GET_PARAM(phaseVarWeightZ);
+    GET_PARAM(phaseVarWeightAngle);
+    GET_PARAM(phaseVarWeightFreq);
+    GET_PARAM(phaseVarWeightBias);
     GET_PARAM(markerWidthM);
     GET_PARAM(imRotateDeg);
     #undef GET_PARAM
     dynCfgSyncReq = true;
+    phaseVariancePredictor.updateParams(params.phaseVarWeightR,
+        params.phaseVarWeightZ, params.phaseVarWeightAngle,
+        params.phaseVarWeightFreq, params.phaseVarWeightBias);
     local_nh.param("waitkey_delay", waitKeyDelay, waitKeyDelay);
     local_nh.param("save_img_dir", saveImgDir, saveImgDir);
 
@@ -230,6 +245,9 @@ public:
   void configCallback(ftag2::FreqTestbenchConfig& config, uint32_t level) {
     if (!alive) return;
     params = config;
+    phaseVariancePredictor.updateParams(params.phaseVarWeightR,
+        params.phaseVarWeightZ, params.phaseVarWeightAngle,
+        params.phaseVarWeightFreq, params.phaseVarWeightBias);
   };
 
 
@@ -305,58 +323,32 @@ public:
 
         // 3. Decode tags from quads
         int quadCount = 0;
-        cv::Mat tagImg, trimmedTagImg, croppedTagImg, croppedTagImgRot;
+        cv::Mat quadImg;
+        FTag2Marker6S5F3B currTag;
         std::vector<FTag2Marker6S5F3B> tags;
         for (const Quad& currQuad: quads) {
           // Check whether we have scanned enough quads
           quadCount++;
           if (quadCount > params.maxQuadsToScan) break;
 
-          // Extract, rectify, and crop tag payload image, corresponding to quad
+          // Extract rectified quad image from frame
           quadExtractorP.tic();
-          tagImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth);
-          if (tagImg.empty()) { continue; }
-          trimmedTagImg = trimFTag2Quad(tagImg, params.quadMaxStripAvgDiff);
-          croppedTagImg = cropFTag2Border(trimmedTagImg);
-          if (croppedTagImg.rows < params.quadMinWidth ||
-              croppedTagImg.cols < params.quadMinWidth) { continue; }
+          quadImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth*(8/6));
           quadExtractorP.toc();
+          if (quadImg.empty()) { continue; }
 
           // Decode tag
           decoderP.tic();
-          FTag2Marker6S5F3B currTag = FTag2Marker6S5F3B(croppedTagImg);
-          decoderP.toc();
-          if (!currTag.hasSignature) { continue; }
-
-          // Compute pose of tag
-          switch ((currTag.imgRotDir/90) % 4) {
-          case 1:
-            currTag.corners.push_back(currQuad.corners[1]);
-            currTag.corners.push_back(currQuad.corners[2]);
-            currTag.corners.push_back(currQuad.corners[3]);
-            currTag.corners.push_back(currQuad.corners[0]);
-            break;
-          case 2:
-            currTag.corners.push_back(currQuad.corners[2]);
-            currTag.corners.push_back(currQuad.corners[3]);
-            currTag.corners.push_back(currQuad.corners[0]);
-            currTag.corners.push_back(currQuad.corners[1]);
-            break;
-          case 3:
-            currTag.corners.push_back(currQuad.corners[3]);
-            currTag.corners.push_back(currQuad.corners[0]);
-            currTag.corners.push_back(currQuad.corners[1]);
-            currTag.corners.push_back(currQuad.corners[2]);
-            break;
-          default:
-            currTag.corners = currQuad.corners;
-            break;
+          try {
+            currTag = FTag2Decoder::decodeTag(quadImg, currQuad,
+                params.markerWidthM,
+                cameraIntrinsic, cameraDistortion,
+                params.quadMaxStripAvgDiff,
+                phaseVariancePredictor);
+          } catch (const std::string& err) {
+            continue;
           }
-          solvePose(currTag.corners, params.markerWidthM,
-              cameraIntrinsic, cameraDistortion,
-              currTag.position_x, currTag.position_y, currTag.position_z,
-              currTag.orientation_w, currTag.orientation_x, currTag.orientation_y,
-              currTag.orientation_z);
+          decoderP.toc();
 
           // Store tag in list
           tags.push_back(currTag);
@@ -385,19 +377,19 @@ public:
           markerInfoMsg.pose.orientation.x = tag.orientation_x;
           markerInfoMsg.pose.orientation.y = tag.orientation_y;
           markerInfoMsg.pose.orientation.z = tag.orientation_z;
-          markerInfoMsg.markerPixelWidth = tagImg.rows;
+          markerInfoMsg.markerPixelWidth = quadImg.rows;
           const double* magsPtr = (double*) tag.mags.data;
           markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.mags.rows * tag.mags.cols);
           const double* phasesPtr = (double*) tag.phases.data;
           markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.phases.rows * tag.phases.cols);
           markerInfoMsg.hasSignature = tag.hasSignature;
           markerInfoMsg.hasValidXORs = tag.hasValidXORs;
-          markerInfoMsg.hasValidCRC = tag.hasValidCRC;
+          markerInfoMsg.hasValidCRC = false;
           markerInfoMsg.payloadOct = tag.payloadOct;
           markerInfoMsg.xorBin = tag.xorBin;
           markerInfoMsg.signature = tag.signature;
-          markerInfoMsg.CRC12Expected = tag.CRC12Expected;
-          markerInfoMsg.CRC12Decoded = tag.CRC12Decoded;
+          markerInfoMsg.CRC12Expected = 0;
+          markerInfoMsg.CRC12Decoded = 0;
           markerInfoPub.publish(markerInfoMsg);
 
           // Compute and publish stats
@@ -476,16 +468,14 @@ public:
 
             phaseStatsPub.publish(phaseStatsMsg);
           } else {
-            if (tag.hasValidXORs && tag.hasValidCRC) {
+            if (tag.hasValidXORs) {
               cout << "=> RECOG  : ";
-            } else if (tag.hasValidXORs) {
-              cout << "x> BAD CRC: ";
             } else {
               cout << "x> BAD XOR: ";
             }
             cout << tag.payloadOct << "; XOR: " << tag.xorBin << "; Rot=" << tag.imgRotDir << "'";
-            if (tag.hasValidXORs && tag.hasValidCRC) {
-              cout << "\tID: " << tag.payload.to_ullong();
+            if (tag.hasValidXORs) {
+              cout << "\tID: " << tag.payloadBin;
             }
             cout << endl;
           }

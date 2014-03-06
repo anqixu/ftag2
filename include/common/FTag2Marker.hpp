@@ -65,7 +65,7 @@ struct FTag2Marker {
   double sumOfStds;
   std::vector<double> stds;
 
-  bool withinPhaseRange(FTag2Marker marker);
+  bool withinPhaseRange(FTag2Marker& marker);
 
   FTag2Marker() : position_x(0), position_y(0), position_z(0),
       orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
@@ -74,10 +74,11 @@ struct FTag2Marker {
       imgRotDir(0), payloadOct(""), payloadBin(""), xorBin(""), signature(0),
       sumOfStds(0) {
   };
-  FTag2Marker(cv::Mat tag); // Extracts and analyzes rays
   virtual ~FTag2Marker() {};
 
-  virtual void decodePayload() {};
+  virtual unsigned long long getSigKey() { return 0; };
+
+  virtual void decodeSignature() {};
 
   // Returns angle between marker's normal vector and camera's ray vector,
   // in radians. Also known as angle for out-of-plane rotation.
@@ -94,42 +95,27 @@ struct FTag2Marker {
 
 struct FTag2Marker6S5F3B : FTag2Marker {
   constexpr static unsigned long long SIG_KEY = 0b00100011;
-  constexpr static unsigned long long SIG_KEY_FLIPPED = 0b00110001;
-  constexpr static unsigned long long CRC12_KEY = 0x01F1;
+  //constexpr static unsigned long long CRC12_KEY = 0x01F1;
 
-  boost::crc_optimal<12, CRC12_KEY, 0, 0, false, false> CRCEngine;
-
-  bool hasValidCRC;
+  //boost::crc_optimal<12, CRC12_KEY, 0, 0, false, false> CRCEngine;
 
   // TEMP VARS
-  std::bitset<54> payload;
+  //std::bitset<54> payload;
 
-  unsigned long long CRC12Expected;
-  unsigned long long CRC12Decoded;
+  FTag2Marker6S5F3B() {}; // STUB CONSTRUCTOR! DO NOT INITIALIZE ANY VARIABLES
 
-  FTag2Marker6S5F3B() : FTag2Marker(),
-      hasValidCRC(false), CRC12Expected(0), CRC12Decoded(0) {
-    initMatrices();
-  };
-  FTag2Marker6S5F3B(cv::Mat tag) : FTag2Marker(tag),
-      hasValidCRC(false), CRC12Expected(0), CRC12Decoded(0) {
+  FTag2Marker6S5F3B(double quadWidth) :
+      FTag2Marker() { // TODO: 2 find way to prevent this object from being constructed directly; need to use FTag2Decoder as factory
+    // Initialize local storage
     for (int i = 0; i < 5; i++) { phaseVariances.push_back(0); }
-    rectifiedWidth = double(tag.cols)/6*8;
-    initMatrices();
-    decodePayload();
-    if (hasSignature) {
-      BaseCV::rotate90(tag, img, imgRotDir/90);
-    }
+    payloadChunks = cv::Mat::ones(6, 5, CV_8SC1) * -1;
+
+    // Update attributes
+    rectifiedWidth = quadWidth;
   };
   virtual ~FTag2Marker6S5F3B() {};
 
-  virtual void initMatrices() {
-    XORExpected = cv::Mat::zeros(6, 3, CV_8UC1);
-    XORDecoded = cv::Mat::zeros(6, 3, CV_8UC1);
-    payloadChunks = cv::Mat::ones(6, 3, CV_8SC1) * -1;
-  };
-
-  virtual void decodePayload();
+  virtual unsigned long long getSigKey() { return SIG_KEY; }
 };
 
 

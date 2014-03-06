@@ -115,22 +115,22 @@ target_link_libraries(${FTAG2_READER_NODELET_NAME}
 )
 add_dependencies(${FTAG2_READER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 
-add_executable(ros_cam_testbench src/ros_cam_testbench.cpp)
-target_link_libraries(ros_cam_testbench
-  ${FTAG2_LIB_NAME}
-  ${OpenCV_LIBRARIES}
-  ${catkin_LIBRARIES}
-  yaml-cpp
- )
-add_dependencies(ros_cam_testbench ${PROJECT_NAME}_gencfg)
-
-#add_executable(freq_testbench src/freq_testbench.cpp)
-#target_link_libraries(freq_testbench
+#add_executable(ros_cam_testbench src/ros_cam_testbench.cpp)
+#target_link_libraries(ros_cam_testbench
 #  ${FTAG2_LIB_NAME}
 #  ${OpenCV_LIBRARIES}
 #  ${catkin_LIBRARIES}
-#)
-#add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_cpp)
+#  yaml-cpp
+# )
+#add_dependencies(ros_cam_testbench ${PROJECT_NAME}_gencfg)
+
+add_executable(freq_testbench src/freq_testbench.cpp)
+target_link_libraries(freq_testbench
+  ${FTAG2_LIB_NAME}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_cpp)
 
 
 #############

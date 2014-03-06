@@ -6,21 +6,14 @@
 using namespace std;
 
 /* TODO: Write the function */
-bool FTag2Marker::withinPhaseRange( FTag2Marker marker ) {
+bool FTag2Marker::withinPhaseRange( FTag2Marker& marker ) {
 	if ( true )
 		return true;
 	return false;
 }
 
-FTag2Marker::FTag2Marker(cv::Mat tag) :
-    position_x(0), position_y(0), position_z(0),
-    orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
-    rectifiedWidth(-1), hasSignature(false), hasValidXORs(false),
-    imgRotDir(0), payloadOct(""), payloadBin(""), xorBin(""), signature(0) {
-  FTag2Decoder::analyzeRays(tag, this);
-};
 
-
+/*
 void FTag2Marker6S5F3B::decodePayload() {
   int i;
 
@@ -185,7 +178,7 @@ void FTag2Marker6S5F3B::decodePayload() {
     hasValidCRC = (CRC12Expected == CRC12Decoded);
   }
 
-  /*
+#ifdef SPIT_OUT_DECODED_DATA
   cout << "XORExpected = ..." << endl << cv::format(XORExpected, "matlab") << endl << endl;
   cout << "XORDecoded = ..." << endl << cv::format(XORDecoded, "matlab") << endl << endl;
   cout << "payloadBitChunks = ..." << endl << cv::format(payloadBitChunks, "matlab") << endl << endl;
@@ -200,7 +193,6 @@ void FTag2Marker6S5F3B::decodePayload() {
       "0b" << (unsigned short) payloadBytes[6] << std::dec << endl;
   cout << "CEC12Expected: " << std::hex << CRC12Expected << std::dec << endl;
   cout << "CEC12Decoded : " << std::hex << CRC12Decoded  << std::dec << endl;
-  */
-
-  // TODO: 2 eventually, we should check for the validity of magnitude spectrum
+#endif
 };
+*/
