@@ -5,6 +5,7 @@
 #include <opencv2/core/core.hpp>
 #include <list>
 #include <vector>
+#include <mutex>
 #include <cmath>
 #include "common/VectorAndCircularMath.hpp"
 #include "common/BaseCV.hpp"
@@ -174,37 +175,46 @@ void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
 
 
 /**
- * This class predicts the variance of encoded phases inside a FTag2 marker,
- * using a linear regression model incorporating a constant bias, the
- * marker's distance and angle from the camera, and the frequency of each
+ * This class predicts the variance of encoded phases (in degrees) inside a
+ * FTag2 marker, using a linear regression model incorporating a constant bias,
+ * the marker's distance and angle from the camera, and the frequency of each
  * encoded phase.
  */
 class PhaseVariancePredictor {
 protected:
+  std::mutex paramsMutex;
+
   double weight_r; // norm of XY components of position
   double weight_z; // projective distance from camera, in camera's ray vector
-  double weight_angle; // angle between tag's normal vector and camera's ray vector
+  double weight_angle; // angle between tag's normal vector and camera's ray vector (in degrees)
   double weight_freq; // encoding frequency of phase
   double weight_bias; // constant bias
 
 public:
-  PhaseVariancePredictor(double w_r, double w_z, double w_a, double w_f,
-      double w_b) : weight_r(w_r), weight_z(w_z), weight_angle(w_a),
-      weight_freq(w_f), weight_bias(w_b) {};
-  ~PhaseVariancePredictor();
+  PhaseVariancePredictor() : weight_r(0), weight_z(0), weight_angle(0),
+      weight_freq(0), weight_bias(0) {};
 
-  std::vector<double> predict(FTag2Marker* tag) {
-    std::vector<double> variances;
+  void updateParams(double w_r, double w_z, double w_a, double w_f, double w_b) {
+    paramsMutex.lock();
+    weight_r = w_r;
+    weight_z = w_z;
+    weight_angle = w_a;
+    weight_freq = w_f;
+    weight_bias = w_b;
+    paramsMutex.unlock();
+  };
+
+  void predict(FTag2Marker* tag) {
     double r = sqrt(tag->position_x*tag->position_x + tag->position_y*tag->position_y);
     double z = tag->position_z;
-    double angle = tag->getAngleFromCamera();
-    int numFreqs = tag->phases.cols;
-    for (int freq = 1; freq <= numFreqs; freq++) {
-      variances.push_back(weight_bias + weight_r*r + weight_z*z +
-          weight_angle*angle + weight_freq*freq);
+    double angle = tag->getAngleFromCamera()*vc_math::radian;
+    paramsMutex.lock();
+    for (unsigned int freq = 1; freq <= tag->phaseVariances.size(); freq++) {
+      tag->phaseVariances[freq-1]= weight_bias + weight_r*r + weight_z*z +
+          weight_angle*angle + weight_freq*freq;
     }
-    return variances;
-  }
+    paramsMutex.unlock();
+  };
 };
 
 

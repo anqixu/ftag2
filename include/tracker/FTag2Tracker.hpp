@@ -23,7 +23,7 @@ private:
 	std::vector<MarkerFilter> ready_to_be_killed;
 	std::vector<FTag2Marker> detection_matches;
 	std::vector<FTag2Marker> to_be_spawned;
-	int MAX_FRAMES_NO_DETECTION = 10;
+	constexpr static int MAX_FRAMES_NO_DETECTION = 10;
 
 public:
 	FTag2Tracker();

@@ -46,6 +46,8 @@ protected:
 
   cv::Mat cameraIntrinsic, cameraDistortion;
 
+  PhaseVariancePredictor phaseVariance;
+
   // DEBUG VARIABLES
   Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
   ros::Time latestProfTime;
@@ -75,6 +77,11 @@ public:
     params.quadMaxEdgeGapAlignAngle = 10.0;
     params.quadMaxStripAvgDiff = 15.0;
     params.maxQuadsToScan = 10;
+    params.phaseVarWeightR = 0;
+    params.phaseVarWeightZ = 0;
+    params.phaseVarWeightAngle = 0;
+    params.phaseVarWeightFreq = 0;
+    params.phaseVarWeightBias = 10*10;
     params.markerWidthM = 0.07;
   };
 
@@ -129,9 +136,17 @@ public:
     GET_PARAM(quadMaxEdgeGapAlignAngle);
     GET_PARAM(quadMaxStripAvgDiff);
     GET_PARAM(maxQuadsToScan);
+    GET_PARAM(phaseVarWeightR);
+    GET_PARAM(phaseVarWeightZ);
+    GET_PARAM(phaseVarWeightAngle);
+    GET_PARAM(phaseVarWeightFreq);
+    GET_PARAM(phaseVarWeightBias);
     GET_PARAM(markerWidthM);
     #undef GET_PARAM
     dynCfgSyncReq = true;
+    phaseVariance.updateParams(params.phaseVarWeightR,
+        params.phaseVarWeightZ, params.phaseVarWeightAngle,
+        params.phaseVarWeightFreq, params.phaseVarWeightBias);
 
 #ifdef CV_SHOW_IMAGES
     // Configure windows
@@ -159,6 +174,9 @@ public:
   void configCallback(ftag2::FTag2ReaderConfig& config, uint32_t level) {
     if (!alive) return;
     params = config;
+    phaseVariance.updateParams(params.phaseVarWeightR,
+        params.phaseVarWeightZ, params.phaseVarWeightAngle,
+        params.phaseVarWeightFreq, params.phaseVarWeightBias);
   };
 
 
@@ -302,6 +320,9 @@ public:
           currTag.position_x, currTag.position_y, currTag.position_z,
           currTag.orientation_w, currTag.orientation_x, currTag.orientation_y,
           currTag.orientation_z);
+
+      // Predict phase variances
+      phaseVariance.predict(&currTag);
 
       // Store tag in list
       tags.push_back(currTag);

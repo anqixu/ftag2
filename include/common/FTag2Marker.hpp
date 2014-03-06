@@ -29,6 +29,8 @@ struct FTag2Marker {
 
   std::vector<cv::Point2f> corners;
 
+  std::vector<double> phaseVariances;
+
   bool hasSignature;
   bool hasValidXORs;
   int imgRotDir; // counter-clockwise degrees
@@ -67,9 +69,10 @@ struct FTag2Marker {
 
   FTag2Marker() : position_x(0), position_y(0), position_z(0),
       orientation_x(0), orientation_y(0), orientation_z(0), orientation_w(0),
-      rectifiedWidth(0),
+      rectifiedWidth(0), phaseVariances(),
       hasSignature(false), hasValidXORs(false),
-      imgRotDir(0), payloadOct(""), payloadBin(""), xorBin(""), signature(0) {
+      imgRotDir(0), payloadOct(""), payloadBin(""), xorBin(""), signature(0),
+      sumOfStds(0) {
   };
   FTag2Marker(cv::Mat tag); // Extracts and analyzes rays
   virtual ~FTag2Marker() {};
@@ -110,6 +113,7 @@ struct FTag2Marker6S5F3B : FTag2Marker {
   };
   FTag2Marker6S5F3B(cv::Mat tag) : FTag2Marker(tag),
       hasValidCRC(false), CRC12Expected(0), CRC12Decoded(0) {
+    for (int i = 0; i < 5; i++) { phaseVariances.push_back(0); }
     rectifiedWidth = double(tag.cols)/6*8;
     initMatrices();
     decodePayload();
