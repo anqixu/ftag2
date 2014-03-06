@@ -5,6 +5,12 @@
 
 using namespace std;
 
+/* TODO: Write the function */
+bool FTag2Marker::withinPhaseRange( FTag2Marker marker ) {
+	if ( true )
+		return true;
+	return false;
+}
 
 FTag2Marker::FTag2Marker(cv::Mat tag) :
     position_x(0), position_y(0), position_z(0),

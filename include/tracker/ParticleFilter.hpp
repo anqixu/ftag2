@@ -45,6 +45,7 @@ private:
 	double acceleration_noise_std;
 	time_point starting_time;
 	time_point current_time;
+	time_point last_detection_time;
 	double current_time_step_ms;
 
 public:

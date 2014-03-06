@@ -124,13 +124,13 @@ target_link_libraries(ros_cam_testbench
  )
 add_dependencies(ros_cam_testbench ${PROJECT_NAME}_gencfg)
 
-#add_executable(freq_testbench src/freq_testbench.cpp)
-#target_link_libraries(freq_testbench
-#  ${FTAG2_LIB_NAME}
-#  ${OpenCV_LIBRARIES}
-#  ${catkin_LIBRARIES}
-#)
-#add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_cpp)
+add_executable(freq_testbench src/freq_testbench.cpp)
+target_link_libraries(freq_testbench
+  ${FTAG2_LIB_NAME}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_cpp)
 
 
 #############
