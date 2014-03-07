@@ -17,18 +17,62 @@ ParticleFilter::~ParticleFilter() {
 	// TODO Auto-generated destructor stub
 }
 
-ParticleFilter::ParticleFilter(int numP, double tagSize_, std::vector<FTag2Marker> detections, double position_std_, double orientation_std_,
-		double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_,
-		ParticleFilter::time_point starting_time_){
+ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
+		ParticleFilter::time_point starting_time_):
+				ParticleFilter(numP,observations,0.15,0.15,0.15,0.15,0.01,0.01, starting_time){
+}
 
-	tagSize = tagSize_;
+ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_,
+		double orientation_std_, double position_noise_std_, double orientation_noise_std_,
+		double velocity_noise_std_, double acceleration_noise_std_,
+		ParticleFilter::time_point starting_time_ ):
+				number_of_particles(numP), position_std(position_std_), orientation_std(orientation_std_),
+				position_noise_std(position_noise_std_), orientation_noise_std(orientation_noise_std_),
+				velocity_noise_std(velocity_noise_std_), acceleration_noise_std(acceleration_noise_std_) {
+
+	std::chrono::duration<int,std::milli> start_delay(50);
+
+	std::chrono::milliseconds ms_(100);
+	unsigned long long ms = ms_.count();
+
+	starting_time = starting_time_ - std::chrono::milliseconds(100);
+	current_time = starting_time;
+
+	//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
+
 	number_of_particles = numP;
-	position_std = position_std_;
-	orientation_std = orientation_std_;
-	position_noise_std = position_noise_std_;
-	orientation_noise_std = orientation_noise_std_;
-	velocity_noise_std = velocity_noise_std_;
-	acceleration_noise_std = acceleration_noise_std_;
+
+	int numObservations = observations.size();
+
+	log_max_weight = 0.0;
+
+	std::cout << "Creating PF" << std::endl;
+
+	weights.resize(number_of_particles);
+	particles.resize(number_of_particles);
+	srand(time(NULL));
+	//	std::cout << "Particles: " << std::endl;
+	for ( unsigned int i=0; i < number_of_particles; i++ )
+	{
+		int k = i%numObservations;
+		weights[i] = 1.0/number_of_particles;
+		particles[i] = ObjectHypothesis(observations.at(k), true);
+		//std::cout <<  "Pose_x: " << observations[k].position_x << std::endl;
+		//std::cout <<  "Pose_y: " << observations[k].position_y << std::endl;
+		//std::cout <<  "Pose_z: " << observations[k].position_z << std::endl;
+		//std::cout <<  "Part Pose_x: " << particles[i].getPose().position_x << std::endl;
+		//std::cout <<  "Part Pose_y: " << particles[i].getPose().position_y << std::endl;
+		//std::cout <<  "Part Pose_z: " << particles[i].getPose().position_z << std::endl;
+	}
+	std::cout << "Cloud created" << std::endl;
+	//cv::waitKey();
+
+	disable_resampling = false;
+}
+
+ParticleFilter::ParticleFilter(int numP, FTag2Pose observation, ParticleFilter::time_point starting_time_) :
+		number_of_particles(numP), position_std(0.15), orientation_std(0.15),
+		position_noise_std(0.15), orientation_noise_std(0.15) {
 
 	std::chrono::duration<int,std::milli> start_delay(50);
 
@@ -40,10 +84,7 @@ ParticleFilter::ParticleFilter(int numP, double tagSize_, std::vector<FTag2Marke
 
 //	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
 
-	this->tagSize = tagSize;
 	number_of_particles = numP;
-
-	int numDetections = detections.size();
 
 	log_max_weight = 0.0;
 
@@ -55,12 +96,11 @@ ParticleFilter::ParticleFilter(int numP, double tagSize_, std::vector<FTag2Marke
 //	std::cout << "Particles: " << std::endl;
 	for ( unsigned int i=0; i < number_of_particles; i++ )
 	{
-		int k = i%numDetections;
 		weights[i] = 1.0/number_of_particles;
-		particles[i] = ObjectHypothesis(detections.at(k), true);
-		//std::cout <<  "Pose_x: " << detections[k].position_x << std::endl;
-		//std::cout <<  "Pose_y: " << detections[k].position_y << std::endl;
-		//std::cout <<  "Pose_z: " << detections[k].position_z << std::endl;
+		particles[i] = ObjectHypothesis(observation, true);
+		//std::cout <<  "Pose_x: " << observations[k].position_x << std::endl;
+		//std::cout <<  "Pose_y: " << observations[k].position_y << std::endl;
+		//std::cout <<  "Pose_z: " << observations[k].position_z << std::endl;
 		//std::cout <<  "Part Pose_x: " << particles[i].getPose().position_x << std::endl;
 		//std::cout <<  "Part Pose_y: " << particles[i].getPose().position_y << std::endl;
 		//std::cout <<  "Part Pose_z: " << particles[i].getPose().position_z << std::endl;
@@ -71,9 +111,8 @@ ParticleFilter::ParticleFilter(int numP, double tagSize_, std::vector<FTag2Marke
 	disable_resampling = false;
 }
 
-void ParticleFilter::setParameters(int numP, double tagSize_, double position_std_, double orientation_std_,
+void ParticleFilter::updateParameters(int numP, double position_std_, double orientation_std_,
 		double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_ ){
-	tagSize = tagSize_;
 	number_of_particles = numP;
 	position_std = position_std_;
 	orientation_std = orientation_std_;
@@ -91,6 +130,24 @@ void ParticleFilter::setParameters(int numP, double tagSize_, double position_st
 #endif
 }
 
+void ParticleFilter::step(FTag2Pose observation)
+{
+	new_observations.push_back(observation);
+	step();
+}
+
+void ParticleFilter::step()
+{
+	motionUpdate(ParticleFilter::clock::now());
+	measurementUpdate(new_observations);
+	normalizeWeights();
+	estimated_pose = computeModePose();
+	resample();
+
+	/* Clear processed observations */
+	new_observations.clear();
+}
+
 void ParticleFilter::motionUpdate( ParticleFilter::time_point new_time ) {
 	std::chrono::milliseconds current_time_step_ = std::chrono::duration_cast<std::chrono::milliseconds>(new_time - current_time);
 	unsigned long long current_time_step_ms = current_time_step_.count();
@@ -101,8 +158,8 @@ void ParticleFilter::motionUpdate( ParticleFilter::time_point new_time ) {
 	}
 }
 
-void ParticleFilter::measurementUpdate(std::vector<FTag2Marker> detections) {
-	if ( detections.size() == 0 )
+void ParticleFilter::measurementUpdate(std::vector<FTag2Pose> observations) {
+	if ( observations.size() == 0 )
 	{
 		disable_resampling = true;
 		return;
@@ -110,7 +167,7 @@ void ParticleFilter::measurementUpdate(std::vector<FTag2Marker> detections) {
 	disable_resampling = false;
 
 	for (ObjectHypothesis& particle: particles) {
-		particle.measurementUpdate(detections,position_std,orientation_std);
+		particle.measurementUpdate(observations,position_std,orientation_std);
 	}
 }
 
@@ -214,8 +271,8 @@ void ParticleFilter::resample(){
 		particles[i] = newParticles[i];
 }
 
-FTag2Marker ParticleFilter::computeMeanPose(){
-	FTag2Marker tracked_pose;
+FTag2Pose ParticleFilter::computeMeanPose(){
+	FTag2Pose tracked_pose;
 
 	double current_weight = exp(particles[0].getLogWeight());
 //	std::cout << "Mean log W: " << 0 << ": " << particles[0].getLogWeight() << std::endl;
@@ -256,8 +313,8 @@ FTag2Marker ParticleFilter::computeMeanPose(){
 	return tracked_pose;
 }
 
-FTag2Marker ParticleFilter::computeModePose(){
-	FTag2Marker tracked_pose;
+FTag2Pose ParticleFilter::computeModePose(){
+	FTag2Pose tracked_pose;
 
 	log_max_weight = -std::numeric_limits<double>::infinity();
 	unsigned int i=0, max_index=0;

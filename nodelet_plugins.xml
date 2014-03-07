@@ -3,3 +3,8 @@
     <description>Nodelet for decoding FTag2 markers from images or camera frames.</description>
   </class>
 </library>
+<library path="lib/libftag2_tracker_nodelet">
+  <class name="ftag2/ftag2_tracker_nodelet" type="ftag2::FTag2TrackerNodelet" base_class_type="nodelet::Nodelet">
+    <description>Nodelet for decoding FTag2 markers from images or camera frames.</description>
+  </class>
+</library>

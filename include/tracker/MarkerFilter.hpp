@@ -25,13 +25,12 @@ private:
 
 public:
 	MarkerFilter(){};
-	MarkerFilter(FTag2Marker detection){};
+	MarkerFilter(FTag2Marker detection);
 	virtual ~MarkerFilter() {};
-	double getSumOfStds() { return hypothesis.sumOfStds; }
 	FTag2Marker getHypothesis() { return hypothesis; }
 	int get_frames_without_detection() { return frames_without_detection; }
-	void step( FTag2Marker detection ) {};
-	void step( ) {};
+	void step( FTag2Marker detection );
+	void step( );
 };
 
 #endif /* MARKERFILTER_HPP_ */

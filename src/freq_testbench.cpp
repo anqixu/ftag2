@@ -324,8 +324,8 @@ public:
         // 3. Decode tags from quads
         int quadCount = 0;
         cv::Mat quadImg;
-        FTag2Marker6S5F3B currTag;
-        std::vector<FTag2Marker6S5F3B> tags;
+        FTag2Marker currTag;
+        std::vector<FTag2Marker> tags;
         for (const Quad& currQuad: quads) {
           // Check whether we have scanned enough quads
           quadCount++;
@@ -356,7 +356,7 @@ public:
 
         // Post-process largest detected tag
         if (tags.size() >= 1) {
-          const FTag2Marker6S5F3B& tag = tags[0];
+          const FTag2Marker& tag = tags[0];
 
           // Show cropped tag image
           cv::imshow("quad_1_trimmed", tag.img);
@@ -370,24 +370,24 @@ public:
           // Publish detected tag info
           ftag2::FreqTBMarkerInfo markerInfoMsg;
           markerInfoMsg.frameID = frameID;
-          markerInfoMsg.pose.position.x = tag.position_x;
-          markerInfoMsg.pose.position.y = tag.position_y;
-          markerInfoMsg.pose.position.z = tag.position_z;
-          markerInfoMsg.pose.orientation.w = tag.orientation_w;
-          markerInfoMsg.pose.orientation.x = tag.orientation_x;
-          markerInfoMsg.pose.orientation.y = tag.orientation_y;
-          markerInfoMsg.pose.orientation.z = tag.orientation_z;
+          markerInfoMsg.pose.position.x = tag.pose.position_x;
+          markerInfoMsg.pose.position.y = tag.pose.position_y;
+          markerInfoMsg.pose.position.z = tag.pose.position_z;
+          markerInfoMsg.pose.orientation.w = tag.pose.orientation_w;
+          markerInfoMsg.pose.orientation.x = tag.pose.orientation_x;
+          markerInfoMsg.pose.orientation.y = tag.pose.orientation_y;
+          markerInfoMsg.pose.orientation.z = tag.pose.orientation_z;
           markerInfoMsg.markerPixelWidth = quadImg.rows;
-          const double* magsPtr = (double*) tag.mags.data;
-          markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.mags.rows * tag.mags.cols);
-          const double* phasesPtr = (double*) tag.phases.data;
-          markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.phases.rows * tag.phases.cols);
-          markerInfoMsg.hasSignature = tag.hasSignature;
-          markerInfoMsg.hasValidXORs = tag.hasValidXORs;
+          const double* magsPtr = (double*) tag.payload.mags.data;
+          markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+          const double* phasesPtr = (double*) tag.payload.phases.data;
+          markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+          markerInfoMsg.hasSignature = tag.payload.hasSignature;
+          markerInfoMsg.hasValidXORs = tag.payload.hasValidXORs;
           markerInfoMsg.hasValidCRC = false;
-          markerInfoMsg.payloadOct = tag.payloadOct;
-          markerInfoMsg.xorBin = tag.xorBin;
-          markerInfoMsg.signature = tag.signature;
+          markerInfoMsg.payloadOct = tag.payload.payloadOct;
+          markerInfoMsg.xorBin = tag.payload.xorBin;
+          markerInfoMsg.signature = tag.payload.signature;
           markerInfoMsg.CRC12Expected = 0;
           markerInfoMsg.CRC12Decoded = 0;
           markerInfoPub.publish(markerInfoMsg);
@@ -399,7 +399,7 @@ public:
 
             // Compute phase stats
             double* targetTagPhasesPtr = (double*) targetTagPhases.data;
-            double* currTagPhasesPtr = (double*) tag.phases.data;
+            double* currTagPhasesPtr = (double*) tag.payload.phases.data;
             double* currPhaseErrorsPtr = (double*) currPhaseErrors.data;
             for (int i = 0; i < targetTagPhases.rows * targetTagPhases.cols; i++) {
               *currPhaseErrorsPtr = vc_math::angularDist(*currTagPhasesPtr, *targetTagPhasesPtr, 360.0);
@@ -425,7 +425,7 @@ public:
 
             // Compute mags stats
             double mag_norm_divisor = 0;
-            tag.mags.copyTo(currMagNorm);
+            tag.payload.mags.copyTo(currMagNorm);
             double* currMagNormPtr = (double*) currMagNorm.data;
             for (int r = 0; r < currMagNorm.rows; r++) {
               mag_norm_divisor = *currMagNormPtr;
@@ -468,14 +468,14 @@ public:
 
             phaseStatsPub.publish(phaseStatsMsg);
           } else {
-            if (tag.hasValidXORs) {
+            if (tag.payload.hasValidXORs) {
               cout << "=> RECOG  : ";
             } else {
               cout << "x> BAD XOR: ";
             }
-            cout << tag.payloadOct << "; XOR: " << tag.xorBin << "; Rot=" << tag.imgRotDir << "'";
-            if (tag.hasValidXORs) {
-              cout << "\tID: " << tag.payloadBin;
+            cout << tag.payload.payloadOct << "; XOR: " << tag.payload.xorBin << "; Rot=" << tag.imgRotDir << "'";
+            if (tag.payload.hasValidXORs) {
+              cout << "\tID: " << tag.payload.payloadBin;
             }
             cout << endl;
           }
@@ -488,7 +488,7 @@ public:
         }
         cv::imshow("quads", overlaidImg);
         overlaidImg = sourceImg.clone();
-        for (const FTag2Marker6S5F3B& tag: tags) {
+        for (const FTag2Marker& tag: tags) {
           drawTag(overlaidImg, tag.corners);
         }
         cv::imshow("tags", overlaidImg);

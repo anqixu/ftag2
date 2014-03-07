@@ -40,7 +40,7 @@ ObjectHypothesis::ObjectHypothesis() {
 //	corners = std::vector<cv::Vec2i>(4);
 }
 
-ObjectHypothesis::ObjectHypothesis(FTag2Marker marker, bool addNoise ) {
+ObjectHypothesis::ObjectHypothesis(FTag2Pose marker, bool addNoise ) {
 	this->pose = pose;
 	if ( addNoise == true )
 	{
@@ -246,7 +246,7 @@ ObjectHypothesis::ObjectHypothesis(int SX, int SY){
 */
 
 
-double ObjectHypothesis::measurementUpdate(std::vector<FTag2Marker> detections, double position_std, double orientation_std) {
+double ObjectHypothesis::measurementUpdate(std::vector<FTag2Pose> detections, double position_std, double orientation_std) {
 
 	if ( detections.size() == 0 )
 		return log_weight;

@@ -1,9 +1,9 @@
 #ifndef PAYLOADFILTER_HPP_
 #define PAYLOADFILTER_HPP_
 
-
 #include <chrono>
 #include "common/VectorAndCircularMath.hpp"
+#include "common/FTag2Payload.hpp"
 
 
 class PayloadFilter {
@@ -28,6 +28,7 @@ protected:
   cv::Mat sumWeightedSinTheta;
 
   // TODO: switch to FTag2Payload
+  FTag2Payload payload;
   cv::Mat filteredTheta;
   std::vector<double> filteredThetaVariances;
 
@@ -98,7 +99,9 @@ public:
     }
     return filteredTheta;
   };
-
+  
+  void step() {}; // TODO: 000 ask David why he needs a default step
+  void step(FTag2Payload tag) {}; // TODO: 000 switch to FTag2Payload
 
   std::vector<double> getFilteredVars() {
     if (numObservations > 0) {

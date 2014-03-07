@@ -10,8 +10,12 @@
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 #include <nodelet/nodelet.h>
-#include "ftag2/FTag2ReaderConfig.h"
+#include <ftag2/CamTestbenchConfig.h>
 #include "ftag2/TagDetections.h"
+
+#include "common/FTag2Pose.hpp"
+#include "tracker/ParticleFilter.hpp"
+#include "std_msgs/Float64MultiArray.h"
 
 
 using namespace std;
@@ -19,16 +23,16 @@ using namespace cv;
 using namespace vc_math;
 
 
-typedef dynamic_reconfigure::Server<ftag2::FTag2ReaderConfig> ReconfigureServer;
+typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
 #define CV_SHOW_IMAGES
-
+#define PARTICLE_FILTER
 
 namespace ftag2 {
 
 
-class FTag2ReaderNodelet : public nodelet::Nodelet {
+class FTag2TrackerNodelet : public nodelet::Nodelet {
 protected:
   bool alive;
 
@@ -42,20 +46,28 @@ protected:
   image_transport::Publisher processedImagePub;
   image_transport::Publisher firstTagImagePub;
 
-  ftag2::FTag2ReaderConfig params;
+  ftag2::CamTestbenchConfig params;
 
   cv::Mat cameraIntrinsic, cameraDistortion;
 
   PhaseVariancePredictor phaseVariancePredictor;
+#ifdef PARTICLE_FILTER
+  bool tracking;
+  ParticleFilter PF;
+  std::vector<FTag2Pose> tag_observations;
+  ParticleFilter::time_point last_frame_time;
+  ParticleFilter::time_point starting_time;
+  ros::Publisher pubTrack;
+#endif
+
 
   // DEBUG VARIABLES
   Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
   ros::Time latestProfTime;
   double profilerDelaySec;
 
-
 public:
-  FTag2ReaderNodelet() : nodelet::Nodelet(),
+  FTag2TrackerNodelet() : nodelet::Nodelet(),
       alive(false),
       dynCfgServer(NULL),
       dynCfgSyncReq(false),
@@ -83,10 +95,18 @@ public:
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
     params.markerWidthM = 0.07;
+    params.numberOfParticles = 100;
+    params.position_std = 0.15;
+    params.orientation_std = 0.15;
+    params.position_noise_std = 0.15;
+    params.orientation_noise_std = 0.15;
+    params.velocity_noise_std = 0.05;
+    params.acceleration_noise_std = 0.01;
+    params.run_id = 1;
   };
 
 
-  ~FTag2ReaderNodelet() {
+  ~FTag2TrackerNodelet() {
     alive = false;
   };
 
@@ -116,7 +136,7 @@ public:
 
     // Setup and initialize dynamic reconfigure server
     dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
-    dynCfgServer->setCallback(bind(&FTag2ReaderNodelet::configCallback, this, _1, _2));
+    dynCfgServer->setCallback(bind(&FTag2TrackerNodelet::configCallback, this, _1, _2));
 
     // Parse static parameters and update dynamic reconfigure values
     #define GET_PARAM(v) \
@@ -142,8 +162,15 @@ public:
     GET_PARAM(phaseVarWeightFreq);
     GET_PARAM(phaseVarWeightBias);
     GET_PARAM(markerWidthM);
-    #undef GET_PARAM
+    GET_PARAM(numberOfParticles);
+    GET_PARAM(position_std);
+    GET_PARAM(orientation_std);
+    GET_PARAM(position_noise_std);
+    GET_PARAM(orientation_noise_std);
+    GET_PARAM(run_id);
+#undef GET_PARAM
     dynCfgSyncReq = true;
+    PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
@@ -162,8 +189,16 @@ public:
     tagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
-    imageSub = it.subscribe("image_in", 1, &FTag2ReaderNodelet::imageCallback, this);
-    cameraSub = it.subscribeCamera("camera_in", 1, &FTag2ReaderNodelet::cameraCallback, this);
+    imageSub = it.subscribe("image_in", 1, &FTag2TrackerNodelet::imageCallback, this);
+    cameraSub = it.subscribeCamera("camera_in", 1, &FTag2TrackerNodelet::cameraCallback, this);
+
+#ifdef PARTICLE_FILTER
+    tracking = false;
+    tag_observations = std::vector<FTag2Pose>();
+    starting_time = ParticleFilter::clock::now();
+    last_frame_time = ParticleFilter::clock::now();
+    pubTrack = local_nh.advertise<std_msgs::Float64MultiArray>("detected_and_tracked_pose", 1);
+#endif
 
     // Finish initialization
     alive = true;
@@ -171,9 +206,10 @@ public:
   };
 
 
-  void configCallback(ftag2::FTag2ReaderConfig& config, uint32_t level) {
+  void configCallback(ftag2::CamTestbenchConfig& config, uint32_t level) {
     if (!alive) return;
     params = config;
+    PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
@@ -301,7 +337,7 @@ public:
 
 
 
-/*
+
     // TODO: 5 remove notification
     if (tags.size() > 0) {
       NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
@@ -310,7 +346,7 @@ public:
     } else {
       NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     }
-*/
+
 
 
     // Post-process largest detected tag
@@ -370,7 +406,69 @@ public:
         tagsMsg.tags.push_back(tagMsg);
       }
       tagDetectionsPub.publish(tagsMsg);
+
+#ifdef PARTICLE_FILTER
+      for ( FTag2Marker tag: tags )
+    	  tag_observations.push_back(tag.pose);
+      if ( tracking == false )
+      {
+    	  tracking = true;
+    	  PF = ParticleFilter(params.numberOfParticles, tag_observations, ParticleFilter::clock::now() );
+//		  cv::waitKey();
+      }
+#endif
     }
+
+#ifdef PARTICLE_FILTER
+    if (tracking == true)
+    {
+    	PF.motionUpdate(ParticleFilter::clock::now());
+    	//cv::waitKey();
+    	PF.measurementUpdate(tag_observations);
+    	PF.normalizeWeights();
+    	//PF.computeMeanPose();
+    	FTag2Pose track = PF.computeModePose();
+    	//PF.displayParticles();
+    	PF.resample();
+
+    	tag_observations.clear();
+
+    	std_msgs::Float64MultiArray array;
+    	array.data.clear();
+
+    	cout << "RUN ID: " << params.run_id << endl;
+
+    	array.data.push_back(params.run_id);
+    	array.data.push_back(params.position_noise_std);
+    	array.data.push_back(params.velocity_noise_std);
+    	array.data.push_back(params.acceleration_noise_std);
+    	array.data.push_back(params.orientation_noise_std);
+    	array.data.push_back(params.position_std);
+    	array.data.push_back(params.orientation_noise_std);
+    	array.data.push_back(track.position_x);
+    	array.data.push_back(track.position_y);
+    	array.data.push_back(track.position_z);
+    	array.data.push_back(track.orientation_x);
+    	array.data.push_back(track.orientation_y);
+    	array.data.push_back(track.orientation_z);
+    	array.data.push_back(track.orientation_w);
+
+    	if (tag_observations.size()>0)
+    	{
+    		array.data.push_back(tag_observations[0].position_x);
+    		array.data.push_back(tag_observations[0].position_y);
+    		array.data.push_back(tag_observations[0].position_z);
+    		array.data.push_back(tag_observations[0].orientation_x);
+    		array.data.push_back(tag_observations[0].orientation_y);
+    		array.data.push_back(tag_observations[0].orientation_z);
+    		array.data.push_back(tag_observations[0].orientation_w);
+    	}
+    	pubTrack.publish(array);
+    //			  cout << "PUBLIQUE: " << track.position_x << endl;
+
+    }
+#endif
+
 
     // Update profiler
     durationP.toc();
@@ -404,4 +502,4 @@ public:
 
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_DECLARE_CLASS(ftag2, FTag2ReaderNodelet, ftag2::FTag2ReaderNodelet, nodelet::Nodelet)
+PLUGINLIB_DECLARE_CLASS(ftag2, FTag2TrackerNodelet, ftag2::FTag2TrackerNodelet, nodelet::Nodelet)
