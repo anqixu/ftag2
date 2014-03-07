@@ -108,7 +108,8 @@ bool FTag2Decoder::checkSignature(FTag2Marker* tag) {
   }
   const int colMax = 5;
 
-  unsigned long long sigKey = tag->payload.getSigKey();
+  unsigned long long sigKey = tag->payload.SIG_KEY;
+
   if ((tag->payload.signature = FTag2Decoder::_extractSigBits(tag->payload.horzPhases, false, 3)) == sigKey) {
     tag->imgRotDir = 0;
     tag->payload.mags = tag->payload.horzMags(cv::Range::all(), cv::Range(0, colMax)).clone();

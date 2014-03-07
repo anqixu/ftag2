@@ -6,6 +6,7 @@
 #include "common/FTag2Payload.hpp"
 
 
+// TODO: 0 test this class
 class PayloadFilter {
   // NOTE: all thetas are expressed in degrees
 
@@ -13,10 +14,6 @@ public:
   // TODO: 2 integrate with David's usage, and put into common header
   typedef std::chrono::system_clock clock;
   typedef std::chrono::time_point<std::chrono::system_clock> time_point;
-
-  // TODO: 2 take these consts from other places
-  constexpr static int NUM_RAYS = 6;
-  constexpr static int NUM_FREQS = 5;
 
 protected:
   double minTimeBetweenSteps;
@@ -27,20 +24,14 @@ protected:
   cv::Mat sumWeightedCosTheta;
   cv::Mat sumWeightedSinTheta;
 
-  // TODO: switch to FTag2Payload
-  FTag2Payload payload;
-  cv::Mat filteredTheta;
-  std::vector<double> filteredThetaVariances;
+  FTag2Payload filteredPayload;
 
 
 public:
   PayloadFilter(double _minTimeBetweenSteps = 0.0) :
       minTimeBetweenSteps(_minTimeBetweenSteps),
       lastStepTime(clock::now()),
-      numObservations(0),
-      sumInverseVars(NUM_FREQS, 0.0),
-      filteredThetaVariances(NUM_FREQS, -1.0) {
-    reset();
+      numObservations(0) {
   };
 
 
@@ -50,10 +41,7 @@ public:
   void reset() {
     numObservations = 0;
     for (double& v: sumInverseVars) { v = 0.0; }
-    for (double& v: filteredThetaVariances) { v = -1.0; }
-    sumWeightedCosTheta = cv::Mat::zeros(NUM_RAYS, NUM_FREQS, CV_64FC1);
-    sumWeightedSinTheta = cv::Mat::zeros(NUM_RAYS, NUM_FREQS, CV_64FC1);
-    filteredTheta = cv::Mat::zeros(NUM_RAYS, NUM_FREQS, CV_64FC1);
+    for (double& v: filteredPayload.phaseVariances) { v = -1.0; }
   };
 
 
@@ -62,7 +50,10 @@ public:
   };
 
 
-  void step(const cv::Mat thetaObs, const std::vector<double> thetaVarObs) {
+  void step() {};
+
+
+  void step(const FTag2Payload& tag) {
     // Check if we should update estimate based on time elapsed
     time_point now = clock::now();
     if (numObservations > 0 &&
@@ -70,16 +61,21 @@ public:
       return;
     }
 
+    // Initialize local storage based on tag information
+    const int numRays = tag.phases.rows;
+    const int numFreqs = tag.phases.cols;
+    if (numObservations == 0) { initializeMatrices(numRays, numFreqs); }
+
     // Integrate latest observations
-    for (int freq = 0; freq < NUM_FREQS; freq++) {
-      sumInverseVars[freq] += 1.0/thetaVarObs[freq];
+    for (int freq = 0; freq < numFreqs; freq++) {
+      sumInverseVars[freq] += 1.0/tag.phaseVariances[freq];
     }
     // TODO: 2 make following code more efficient
-    for (int ray = 0; ray < NUM_RAYS; ray++) {
-      for (int freq = 0; freq < NUM_FREQS; freq++) {
-        double currThetaObsRad = thetaObs.at<double>(ray, freq)*vc_math::degree;
-        sumWeightedCosTheta.at<double>(ray, freq) += 1.0/thetaVarObs[freq] * cos(currThetaObsRad);
-        sumWeightedSinTheta.at<double>(ray, freq) += 1.0/thetaVarObs[freq] * sin(currThetaObsRad);
+    for (int ray = 0; ray < numRays; ray++) {
+      for (int freq = 0; freq < numFreqs; freq++) {
+        double currThetaObsRad = tag.phases.at<double>(ray, freq)*vc_math::degree;
+        sumWeightedCosTheta.at<double>(ray, freq) += 1.0/tag.phaseVariances[freq] * std::cos(currThetaObsRad);
+        sumWeightedSinTheta.at<double>(ray, freq) += 1.0/tag.phaseVariances[freq] * std::sin(currThetaObsRad);
       }
     }
     numObservations += 1;
@@ -87,29 +83,34 @@ public:
   };
 
 
-  cv::Mat getFilteredTheta() {
+  FTag2Payload& getFilteredPayload() {
     if (numObservations > 0) {
-      for (int ray = 0; ray < NUM_RAYS; ray++) {
-        for (int freq = 0; freq < NUM_FREQS; freq++) {
-          filteredTheta.at<double>(ray, freq) = vc_math::radian *
+      const int numRays = filteredPayload.phases.rows;
+      const int numFreqs = filteredPayload.phases.cols;
+      for (int ray = 0; ray < numRays; ray++) {
+        for (int freq = 0; freq < numFreqs; freq++) {
+          filteredPayload.phases.at<double>(ray, freq) = vc_math::radian *
               atan2(sumWeightedSinTheta.at<double>(ray, freq)/sumInverseVars[freq],
                   sumWeightedCosTheta.at<double>(ray, freq)/sumInverseVars[freq]);
         }
       }
-    }
-    return filteredTheta;
-  };
-  
-  void step() {}; // TODO: 000 ask David why he needs a default step
-  void step(FTag2Payload tag) {}; // TODO: 000 switch to FTag2Payload
-
-  std::vector<double> getFilteredVars() {
-    if (numObservations > 0) {
-      for (int freq = 0; freq < NUM_FREQS; freq++) {
-        filteredThetaVariances[freq] = 1.0/sumInverseVars[freq];
+      for (int freq = 0; freq < numFreqs; freq++) {
+        filteredPayload.phaseVariances[freq] = 1.0/sumInverseVars[freq];
       }
     }
-    return filteredThetaVariances;
+    return filteredPayload;
+  };
+
+
+protected:
+  void initializeMatrices(int numRays, int numFreqs) {
+    sumWeightedCosTheta = cv::Mat::zeros(numRays, numFreqs, CV_64FC1);
+    sumWeightedSinTheta = cv::Mat::zeros(numRays, numFreqs, CV_64FC1);
+    sumInverseVars.clear();
+    for (int freq = 0; freq < numFreqs; freq++) sumInverseVars.push_back(0);
+    filteredPayload.phases = cv::Mat::zeros(numRays, numFreqs, CV_64FC1);
+    filteredPayload.phaseVariances.clear();
+    for (int freq = 0; freq < numFreqs; freq++) filteredPayload.phaseVariances.push_back(-1.0);
   };
 };
 

@@ -11,7 +11,6 @@
 #include "common/BaseCV.hpp"
 
 struct FTag2Payload {
-
 	constexpr static unsigned long long SIG_KEY = 0b00100011;
 	constexpr static unsigned int MAX_NUM_FREQS = 5;
 
@@ -57,9 +56,6 @@ struct FTag2Payload {
 	bool withinPhaseRange(FTag2Payload& marker);
 
 	virtual void decodeSignature() {};
-
-	virtual unsigned long long getSigKey() { return SIG_KEY; }
-
 };
 
 

@@ -17,10 +17,13 @@ ParticleFilter::~ParticleFilter() {
 	// TODO Auto-generated destructor stub
 }
 
+/*
+// TODO only gcc 4.7 supports delegating constructors; need to manually initialize (i.e. write initialize function, then have different constructors call it)
 ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
 		ParticleFilter::time_point starting_time_):
 				ParticleFilter(numP,observations,0.15,0.15,0.15,0.15,0.01,0.01, starting_time){
 }
+*/
 
 ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_,
 		double orientation_std_, double position_noise_std_, double orientation_noise_std_,
