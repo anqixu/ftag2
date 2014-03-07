@@ -1,5 +1,6 @@
 set(FTAG2_LIB_NAME "ftag2" CACHE STRING "FTag v2 API library name")
 set(FTAG2_READER_NODELET_NAME "ftag2_reader_nodelet")
+set(FTAG2_TRACKER_NODELET_NAME "ftag2_tracker_nodelet")
 
 cmake_minimum_required(VERSION 2.8.3)
 project(ftag2)
@@ -65,7 +66,7 @@ generate_dynamic_reconfigure_options(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME}
+  LIBRARIES ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME} ${FTAG2_TRACKER_NODELET_NAME}
   CATKIN_DEPENDS roscpp rospy nodelet dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf 
 #  DEPENDS system_lib
 )
@@ -115,6 +116,14 @@ target_link_libraries(${FTAG2_READER_NODELET_NAME}
 )
 add_dependencies(${FTAG2_READER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 
+add_library(${FTAG2_TRACKER_NODELET_NAME} src/ftag2_tracker_nodelet.cpp)
+target_link_libraries(${FTAG2_TRACKER_NODELET_NAME}
+  ${FTAG2_LIB_NAME}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(${FTAG2_TRACKER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
+
 #add_executable(ros_cam_testbench src/ros_cam_testbench.cpp)
 #target_link_libraries(ros_cam_testbench
 #  ${FTAG2_LIB_NAME}
@@ -146,6 +155,13 @@ add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_c
 
 ## Mark executables and/or libraries for installation
 install(TARGETS ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  )
+
+## Mark executables and/or libraries for installation
+install(TARGETS ${FTAG2_LIB_NAME} ${FTAG2_TRACKER_NODELET_NAME}
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

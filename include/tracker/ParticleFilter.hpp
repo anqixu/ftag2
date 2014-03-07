@@ -52,11 +52,12 @@ private:
 
 public:
 	ParticleFilter(){ number_of_particles = 100; disable_resampling = false; };
+	ParticleFilter(int numP, std::vector<FTag2Pose> observations, ParticleFilter::time_point starting_time_);
 	ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_, double orientation_std_,
 			double position_noise_std, double orientation_noise_std, double velocity_noise_std, double acceleration_noise_std_,
 			time_point starting_time_);
 	ParticleFilter(int numP, FTag2Pose observation, ParticleFilter::time_point starting_time_);
-	void setParameters(int numP, double position_std_, double orientation_std_,
+	void updateParameters(int numP, double position_std_, double orientation_std_,
 			double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std);
 	virtual ~ParticleFilter();
 	void step(FTag2Pose observation);

@@ -502,7 +502,7 @@ class RosFTag2Testbench
 #ifdef PARTICLE_FILTER
 		  if ( tracking == true )
 		  {
-			  PF.setParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
+			  PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 			  currentNumberOfParticles = params.numberOfParticles;
 			  current_position_std = params.position_std;
 			  current_orientation_std = params.orientation_std;

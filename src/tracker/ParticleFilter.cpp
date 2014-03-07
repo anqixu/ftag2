@@ -17,17 +17,18 @@ ParticleFilter::~ParticleFilter() {
 	// TODO Auto-generated destructor stub
 }
 
-ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_, double orientation_std_,
-		double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_,
-		ParticleFilter::time_point starting_time_){
+ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
+		ParticleFilter::time_point starting_time_):
+				ParticleFilter(numP,observations,0.15,0.15,0.15,0.15,0.01,0.01, starting_time){
+}
 
-	number_of_particles = numP;
-	position_std = position_std_;
-	orientation_std = orientation_std_;
-	position_noise_std = position_noise_std_;
-	orientation_noise_std = orientation_noise_std_;
-	velocity_noise_std = velocity_noise_std_;
-	acceleration_noise_std = acceleration_noise_std_;
+ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_,
+		double orientation_std_, double position_noise_std_, double orientation_noise_std_,
+		double velocity_noise_std_, double acceleration_noise_std_,
+		ParticleFilter::time_point starting_time_ ):
+				number_of_particles(numP), position_std(position_std_), orientation_std(orientation_std_),
+				position_noise_std(position_noise_std_), orientation_noise_std(orientation_noise_std_),
+				velocity_noise_std(velocity_noise_std_), acceleration_noise_std(acceleration_noise_std_) {
 
 	std::chrono::duration<int,std::milli> start_delay(50);
 
@@ -37,7 +38,7 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, do
 	starting_time = starting_time_ - std::chrono::milliseconds(100);
 	current_time = starting_time;
 
-//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
+	//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
 
 	number_of_particles = numP;
 
@@ -50,7 +51,7 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, do
 	weights.resize(number_of_particles);
 	particles.resize(number_of_particles);
 	srand(time(NULL));
-//	std::cout << "Particles: " << std::endl;
+	//	std::cout << "Particles: " << std::endl;
 	for ( unsigned int i=0; i < number_of_particles; i++ )
 	{
 		int k = i%numObservations;
@@ -110,7 +111,7 @@ ParticleFilter::ParticleFilter(int numP, FTag2Pose observation, ParticleFilter::
 	disable_resampling = false;
 }
 
-void ParticleFilter::setParameters(int numP, double position_std_, double orientation_std_,
+void ParticleFilter::updateParameters(int numP, double position_std_, double orientation_std_,
 		double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_ ){
 	number_of_particles = numP;
 	position_std = position_std_;
