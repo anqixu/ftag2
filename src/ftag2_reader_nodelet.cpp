@@ -301,7 +301,7 @@ public:
 
 
 
-
+/*
     // TODO: 5 remove notification
     if (tags.size() > 0) {
       NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
@@ -310,7 +310,7 @@ public:
     } else {
       NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     }
-
+*/
 
 
     // Post-process largest detected tag

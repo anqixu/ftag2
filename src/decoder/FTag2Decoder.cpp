@@ -228,3 +228,26 @@ void FTag2Decoder::flipPSK(const cv::Mat& pskSrc, cv::Mat& pskFlipped, unsigned 
     *pskFlippedPtr = (pskSize - (unsigned int) *pskFlippedPtr) % pskSize;
   }
 };
+
+
+// TODO: 0 test this fn
+cv::Mat FTag2Decoder::decodePhases(const cv::Mat phases,
+    const std::vector<double> phaseVars, const std::vector<int> bitsPerFreq,
+    double nStdThresh, bool grayCode) {
+  const int NUM_RAYS = phases.rows;
+  const int NUM_FREQS = phases.cols;
+  cv::Mat bitChunks = cv::Mat::ones(NUM_RAYS, NUM_FREQS, CV_8SC1) * -1;
+  // TODO: 2 make the following more efficient
+  for (int freq = 0; freq < NUM_FREQS; freq++) {
+    double maxBitValue = pow(2, bitsPerFreq[freq]);
+    double phaseBinDeg = 360.0/maxBitValue;
+    double phaseStdBinNormed = phaseVars[freq] / phaseBinDeg;
+    for (int ray = 0; ray < NUM_RAYS; ray++) {
+      double phaseBinNormed = phases.at<double>(ray, freq) / phaseBinDeg + 0.5;
+      if (floor(phaseBinNormed - nStdThresh*phaseStdBinNormed) == floor(phaseBinNormed + nStdThresh*phaseStdBinNormed)) {
+        bitChunks.at<char>(ray, freq) = phaseBinNormed;
+      }
+    }
+  }
+  return bitChunks;
+};

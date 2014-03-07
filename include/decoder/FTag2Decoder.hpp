@@ -32,6 +32,10 @@ public:
   static unsigned char gray2bin(unsigned char num);
 
   static unsigned char adjustPSK(double phaseDeg, unsigned int pskSize);
+
+  static cv::Mat decodePhases(const cv::Mat phases,
+      const std::vector<double> phaseVars, const std::vector<int> bitsPerFreq,
+      double nStdThresh, bool grayCode = false);
 };
 
 
