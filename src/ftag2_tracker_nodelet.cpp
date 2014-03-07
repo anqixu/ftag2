@@ -197,7 +197,7 @@ public:
     tag_observations = std::vector<FTag2Pose>();
     starting_time = ParticleFilter::clock::now();
     last_frame_time = ParticleFilter::clock::now();
-    pubTrack = local_nh.advertise<std_msgs::Float64MultiArray>("detected_and_tracked_pose", 0);
+    pubTrack = local_nh.advertise<std_msgs::Float64MultiArray>("detected_and_tracked_pose", 1);
 #endif
 
     // Finish initialization
@@ -407,7 +407,7 @@ public:
       }
       tagDetectionsPub.publish(tagsMsg);
 
-#ifndef PARTICLE_FILTER
+#ifdef PARTICLE_FILTER
       for ( FTag2Marker tag: tags )
     	  tag_observations.push_back(tag.pose);
       if ( tracking == false )
