@@ -7,5 +7,10 @@
 
 #include "tracker/PayloadFilter.hpp"
 
+void step(){
 
+}
 
+void step(FTag2Payload tag){
+
+}

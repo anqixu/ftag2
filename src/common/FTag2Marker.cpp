@@ -5,14 +5,6 @@
 
 using namespace std;
 
-/* TODO: Write the function */
-bool FTag2Marker::withinPhaseRange( FTag2Marker& marker ) {
-	if ( true )
-		return true;
-	return false;
-}
-
-
 /*
 void FTag2Marker6S5F3B::decodePayload() {
   int i;

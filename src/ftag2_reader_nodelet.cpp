@@ -269,8 +269,8 @@ public:
     // 3. Decode tags from quads
     int quadCount = 0;
     cv::Mat quadImg;
-    std::vector<FTag2Marker6S5F3B> tags;
-    FTag2Marker6S5F3B currTag;
+    std::vector<FTag2Marker> tags;
+    FTag2Marker currTag;
     for (const Quad& currQuad: quads) {
       // Check whether we have scanned enough quads
       quadCount++;
@@ -315,7 +315,7 @@ public:
 
     // Post-process largest detected tag
     if (tags.size() >= 1) {
-      const FTag2Marker6S5F3B& firstTag = tags[0];
+      const FTag2Marker& firstTag = tags[0];
 
       // Show cropped tag image
 #ifdef CV_SHOW_IMAGES
@@ -333,7 +333,7 @@ public:
 
     // Publish image overlaid with detected markers
     cv::Mat processedImg = sourceImg.clone();
-    for (const FTag2Marker6S5F3B& tag: tags) {
+    for (const FTag2Marker& tag: tags) {
       drawTag(processedImg, tag.corners);
     }
     cv_bridge::CvImage cvProcessedImg(std_msgs::Header(),
@@ -353,20 +353,20 @@ public:
       ftag2::TagDetections tagsMsg;
       tagsMsg.frameID = ID;
 
-      for (const FTag2Marker6S5F3B& tag: tags) {
+      for (const FTag2Marker& tag: tags) {
         ftag2::TagDetection tagMsg;
-        tagMsg.pose.position.x = tag.position_x;
-        tagMsg.pose.position.y = tag.position_y;
-        tagMsg.pose.position.z = tag.position_z;
-        tagMsg.pose.orientation.w = tag.orientation_w;
-        tagMsg.pose.orientation.x = tag.orientation_x;
-        tagMsg.pose.orientation.y = tag.orientation_y;
-        tagMsg.pose.orientation.z = tag.orientation_z;
+        tagMsg.pose.position.x = tag.pose.position_x;
+        tagMsg.pose.position.y = tag.pose.position_y;
+        tagMsg.pose.position.z = tag.pose.position_z;
+        tagMsg.pose.orientation.w = tag.pose.orientation_w;
+        tagMsg.pose.orientation.x = tag.pose.orientation_x;
+        tagMsg.pose.orientation.y = tag.pose.orientation_y;
+        tagMsg.pose.orientation.z = tag.pose.orientation_z;
         tagMsg.markerPixelWidth = tag.rectifiedWidth;
-        const double* magsPtr = (double*) tag.mags.data;
-        tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.mags.rows * tag.mags.cols);
-        const double* phasesPtr = (double*) tag.phases.data;
-        tagMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.phases.rows * tag.phases.cols);
+        const double* magsPtr = (double*) tag.payload.mags.data;
+        tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+        const double* phasesPtr = (double*) tag.payload.phases.data;
+        tagMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
         tagsMsg.tags.push_back(tagMsg);
       }
       tagDetectionsPub.publish(tagsMsg);

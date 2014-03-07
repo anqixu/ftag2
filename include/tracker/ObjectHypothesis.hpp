@@ -17,7 +17,7 @@
 #include <limits>
 #include <math.h>
 
-#include "common/FTag2Marker.hpp"
+#include "common/FTag2Pose.hpp"
 #include "tracker/utils.hpp"
 
 #ifndef OBJECTHYPOTHESIS_H_
@@ -35,8 +35,8 @@ using namespace std;
 class ObjectHypothesis {
 
 private:
-	FTag2Marker pose;
-	FTag2Marker pose_prev;
+	FTag2Pose pose;
+	FTag2Pose pose_prev;
 	double log_weight;
 	double vel_x;
 	double vel_y;
@@ -51,11 +51,11 @@ private:
 public:
 	ObjectHypothesis();
 //	ObjectHypothesis(float x, float y, float sx, float sy){centroid[0]=x,centroid[1]=y,size[0]=sx,size[1]=sy;};
-	ObjectHypothesis(FTag2Marker pose, bool addNoise = true);
+	ObjectHypothesis(FTag2Pose pose, bool addNoise = true);
 	virtual ~ObjectHypothesis();
 	void motionUpdate(double position_noise_std, double orientation_noise_std, double velocity_noise_std, double acceleration_noise_std, double current_time_step_ms);
-	double measurementUpdate(std::vector<FTag2Marker> detections, double position_std, double orientation_std);
-	FTag2Marker getPose(){return pose;}
+	double measurementUpdate(std::vector<FTag2Pose> detections, double position_std, double orientation_std);
+	FTag2Pose getPose(){return pose;}
 	double getLogWeight(){return log_weight;}
 	void setLogWeight(double log_weight){this->log_weight = log_weight;}
 };

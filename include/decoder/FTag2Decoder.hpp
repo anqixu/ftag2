@@ -9,7 +9,7 @@
 
 class FTag2Decoder {
 public:
-  static FTag2Marker6S5F3B decodeTag(const cv::Mat quadImg, const Quad& quad,
+  static FTag2Marker decodeTag(const cv::Mat quadImg, const Quad& quad,
       double markerWidthM,
       const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
       double quadMaxStripAvgDiff,

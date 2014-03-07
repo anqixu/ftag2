@@ -7,9 +7,16 @@
 
 #include "tracker/FTag2Tracker.hpp"
 
-bool compareMarkerFilters( MarkerFilter a, MarkerFilter b) { return a.getSumOfStds() < b.getSumOfStds(); }
+bool compareMarkerFilters( MarkerFilter a, MarkerFilter b) {
+	double sum_a = 0.0, sum_b = 0.0;
+	for ( double d : a.getHypothesis().payload.phaseVariances )
+		sum_a += sqrt(d);
+	for ( double d : b.getHypothesis().payload.phaseVariances )
+		sum_b += sqrt(d);
+	return sum_a < sum_b;
+}
 
-double markerDistance( FTag2Marker m1, FTag2Marker m2 ) {
+double markerDistance( FTag2Pose m1, FTag2Pose m2 ) {
 	return sqrt( ( m1.position_x - m2.position_x )*( m1.position_x - m2.position_x ) +
 			( m1.position_y - m2.position_y )*( m1.position_y - m2.position_y ) +
 			( m1.position_z - m2.position_z )*( m1.position_z - m2.position_z ) );
@@ -30,9 +37,9 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 		while ( it2 != detectedTags.end() )
 		{
 			FTag2Marker tag = *it2;
-			if (tag.withinPhaseRange(hypothesis))
+			if (tag.payload.withinPhaseRange(hypothesis.payload))
 			{
-				double d = markerDistance(tag,hypothesis);
+				double d = markerDistance(tag.pose,hypothesis.pose);
 				if ( d < min_dist )
 				{
 					min_dist = d;
@@ -72,7 +79,7 @@ void FTag2Tracker::director(std::vector<FTag2Marker> detectedTags)
 	/* UPDATE FILTERS: FILTERS WITH MATCHING DETECTED TAG */
 	while ( !filters_with_match.empty() && !detection_matches.empty() )
 	{
-		filters_with_match.end()->step(detection_matches.back());
+		filters_with_match.back().step(detection_matches.back());
 		filters.push_back( filters_with_match.back() );
 		filters_with_match.pop_back();
 		detection_matches.pop_back();

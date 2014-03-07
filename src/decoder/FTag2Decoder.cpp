@@ -2,7 +2,7 @@
 #include "detector/FTag2Detector.hpp"
 
 
-FTag2Marker6S5F3B FTag2Decoder::decodeTag(const cv::Mat quadImg,
+FTag2Marker FTag2Decoder::decodeTag(const cv::Mat quadImg,
     const Quad& quad,
     double markerWidthM,
     const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
@@ -13,7 +13,7 @@ FTag2Marker6S5F3B FTag2Decoder::decodeTag(const cv::Mat quadImg,
   cv::Mat croppedTagImg = cropFTag2Border(trimmedTagImg);
 
   // Initialize tag data structure
-  FTag2Marker6S5F3B tagBuffer(trimmedTagImg.rows);
+  FTag2Marker tagBuffer(trimmedTagImg.rows);
 
   // Extract rays, and decode frequency and phase spectra
   analyzeRays(croppedTagImg, &tagBuffer);
@@ -53,9 +53,9 @@ FTag2Marker6S5F3B FTag2Decoder::decodeTag(const cv::Mat quadImg,
   }
   solvePose(tagBuffer.corners, markerWidthM,
       cameraIntrinsic, cameraDistortion,
-      tagBuffer.position_x, tagBuffer.position_y, tagBuffer.position_z,
-      tagBuffer.orientation_w, tagBuffer.orientation_x, tagBuffer.orientation_y,
-      tagBuffer.orientation_z);
+      tagBuffer.pose.position_x, tagBuffer.pose.position_y, tagBuffer.pose.position_z,
+      tagBuffer.pose.orientation_w, tagBuffer.pose.orientation_x, tagBuffer.pose.orientation_y,
+      tagBuffer.pose.orientation_z);
 
   // Predict phase variances
   phaseVariancePredictor.predict(&tagBuffer);
@@ -70,66 +70,66 @@ void FTag2Decoder::analyzeRays(const cv::Mat& img, FTag2Marker* tag) {
   img.copyTo(tag->img);
 
   // Extract rays
-  tag->horzRays = extractHorzRays(tag->img);
-  tag->vertRays = extractVertRays(tag->img);
+  tag->payload.horzRays = extractHorzRays(tag->img);
+  tag->payload.vertRays = extractVertRays(tag->img);
 
   // Compute magnitude and phase spectra for both horizontal and vertical rays
   cv::Mat flippedRays;
   cv::Mat fft;
   cv::vector<cv::Mat> fftChannels(2);
 
-  cv::dft(tag->horzRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, tag->horzRays.rows);
+  cv::dft(tag->payload.horzRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, tag->payload.horzRays.rows);
   cv::split(fft, fftChannels);
-  cv::magnitude(fftChannels[0], fftChannels[1], tag->horzMagSpec);
-  cv::phase(fftChannels[0], fftChannels[1], tag->horzPhaseSpec, true);
+  cv::magnitude(fftChannels[0], fftChannels[1], tag->payload.horzMagSpec);
+  cv::phase(fftChannels[0], fftChannels[1], tag->payload.horzPhaseSpec, true);
 
-  cv::flip(tag->vertRays, flippedRays, 1);
+  cv::flip(tag->payload.vertRays, flippedRays, 1);
   cv::dft(flippedRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, flippedRays.rows);
   cv::split(fft, fftChannels);
-  cv::magnitude(fftChannels[0], fftChannels[1], tag->vertMagSpec);
-  cv::phase(fftChannels[0], fftChannels[1], tag->vertPhaseSpec, true);
+  cv::magnitude(fftChannels[0], fftChannels[1], tag->payload.vertMagSpec);
+  cv::phase(fftChannels[0], fftChannels[1], tag->payload.vertPhaseSpec, true);
 
   // Extract spectra responses at relevant frequencies
-  int colMax = std::min(int(1+FTag2Marker::MAX_NUM_FREQS), tag->horzMagSpec.cols/2);
-  tag->horzMags = tag->horzMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-  tag->vertMags = tag->vertMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-  tag->horzPhases = tag->horzPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-  tag->vertPhases = tag->vertPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
+  int colMax = std::min(int(1+FTag2Payload::MAX_NUM_FREQS), tag->payload.horzMagSpec.cols/2);
+  tag->payload.horzMags = tag->payload.horzMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
+  tag->payload.vertMags = tag->payload.vertMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
+  tag->payload.horzPhases = tag->payload.horzPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
+  tag->payload.vertPhases = tag->payload.vertPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
 };
 
 
 bool FTag2Decoder::checkSignature(FTag2Marker* tag) {
-  tag->hasSignature = false;
+  tag->payload.hasSignature = false;
 
   // Extract and validate phase signature, and determine orientation
-  if (tag->horzMags.cols < 5 || tag->vertMags.cols < 5) {
+  if (tag->payload.horzMags.cols < 5 || tag->payload.vertMags.cols < 5) {
     throw std::string("Insufficient number of frequencies in tag spectra");
     return false;
   }
   const int colMax = 5;
 
-  unsigned long long sigKey = tag->getSigKey();
-  if ((tag->signature = FTag2Decoder::_extractSigBits(tag->horzPhases, false, 3)) == sigKey) {
+  unsigned long long sigKey = tag->payload.getSigKey();
+  if ((tag->payload.signature = FTag2Decoder::_extractSigBits(tag->payload.horzPhases, false, 3)) == sigKey) {
     tag->imgRotDir = 0;
-    tag->mags = tag->horzMags(cv::Range::all(), cv::Range(0, colMax)).clone();
-    tag->phases = tag->horzPhases(cv::Range::all(), cv::Range(0, colMax)).clone();
-  } else if ((tag->signature = FTag2Decoder::_extractSigBits(tag->vertPhases, false, 3)) == sigKey) {
+    tag->payload.mags = tag->payload.horzMags(cv::Range::all(), cv::Range(0, colMax)).clone();
+    tag->payload.phases = tag->payload.horzPhases(cv::Range::all(), cv::Range(0, colMax)).clone();
+  } else if ((tag->payload.signature = FTag2Decoder::_extractSigBits(tag->payload.vertPhases, false, 3)) == sigKey) {
     tag->imgRotDir = 270;
-    tag->mags = tag->vertMags(cv::Range::all(), cv::Range(0, colMax)).clone();
-    tag->phases = tag->vertPhases(cv::Range::all(), cv::Range(0, colMax)).clone();
-  } else if ((tag->signature = FTag2Decoder::_extractSigBits(tag->horzPhases, true, 3)) == sigKey) {
+    tag->payload.mags = tag->payload.vertMags(cv::Range::all(), cv::Range(0, colMax)).clone();
+    tag->payload.phases = tag->payload.vertPhases(cv::Range::all(), cv::Range(0, colMax)).clone();
+  } else if ((tag->payload.signature = FTag2Decoder::_extractSigBits(tag->payload.horzPhases, true, 3)) == sigKey) {
     tag->imgRotDir = 180;
-    cv::flip(tag->horzMags(cv::Range::all(), cv::Range(0, colMax)), tag->mags, 0);
-    FTag2Decoder::flipPhases(tag->horzPhases(cv::Range::all(), cv::Range(0, colMax)), tag->phases);
-  } else if ((tag->signature = FTag2Decoder::_extractSigBits(tag->vertPhases, true, 3)) == sigKey) {
+    cv::flip(tag->payload.horzMags(cv::Range::all(), cv::Range(0, colMax)), tag->payload.mags, 0);
+    FTag2Decoder::flipPhases(tag->payload.horzPhases(cv::Range::all(), cv::Range(0, colMax)), tag->payload.phases);
+  } else if ((tag->payload.signature = FTag2Decoder::_extractSigBits(tag->payload.vertPhases, true, 3)) == sigKey) {
     tag->imgRotDir = 90;
-    cv::flip(tag->vertMags(cv::Range::all(), cv::Range(0, colMax)), tag->mags, 0);
-    FTag2Decoder::flipPhases(tag->vertPhases(cv::Range::all(), cv::Range(0, colMax)), tag->phases);
+    cv::flip(tag->payload.vertMags(cv::Range::all(), cv::Range(0, colMax)), tag->payload.mags, 0);
+    FTag2Decoder::flipPhases(tag->payload.vertPhases(cv::Range::all(), cv::Range(0, colMax)), tag->payload.phases);
   } else { // No signatures matched
     return false;
   }
 
-  tag->hasSignature = true;
+  tag->payload.hasSignature = true;
   return true;
 };
 

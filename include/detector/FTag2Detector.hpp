@@ -205,12 +205,12 @@ public:
   };
 
   void predict(FTag2Marker* tag) {
-    double r = sqrt(tag->position_x*tag->position_x + tag->position_y*tag->position_y);
-    double z = tag->position_z;
-    double angle = tag->getAngleFromCamera()*vc_math::radian;
+    double r = sqrt(tag->pose.position_x*tag->pose.position_x + tag->pose.position_y*tag->pose.position_y);
+    double z = tag->pose.position_z;
+    double angle = tag->pose.getAngleFromCamera()*vc_math::radian;
     paramsMutex.lock();
-    for (unsigned int freq = 1; freq <= tag->phaseVariances.size(); freq++) {
-      tag->phaseVariances[freq-1]= weight_bias + weight_r*r + weight_z*z +
+    for (unsigned int freq = 1; freq <= tag->payload.phaseVariances.size(); freq++) {
+      tag->payload.phaseVariances[freq-1]= weight_bias + weight_r*r + weight_z*z +
           weight_angle*angle + weight_freq*freq;
     }
     paramsMutex.unlock();
