@@ -25,6 +25,51 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
 }
 */
 
+ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
+		ParticleFilter::time_point starting_time_):
+				number_of_particles(numP), position_std(0.15), orientation_std(0.15),
+				position_noise_std(0.15), orientation_noise_std(0.15),
+				velocity_noise_std(0.01), acceleration_noise_std(0.01) {
+	std::chrono::duration<int,std::milli> start_delay(50);
+
+	std::chrono::milliseconds ms_(100);
+	unsigned long long ms = ms_.count();
+
+	starting_time = starting_time_ - std::chrono::milliseconds(100);
+	current_time = starting_time;
+
+	//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
+
+	number_of_particles = numP;
+
+	int numObservations = observations.size();
+
+	log_max_weight = 0.0;
+
+	std::cout << "Creating PF" << std::endl;
+
+	weights.resize(number_of_particles);
+	particles.resize(number_of_particles);
+	srand(time(NULL));
+		//	std::cout << "Particles: " << std::endl;
+	for ( unsigned int i=0; i < number_of_particles; i++ )
+	{
+		int k = i%numObservations;
+		weights[i] = 1.0/number_of_particles;
+		particles[i] = ObjectHypothesis(observations.at(k), true);
+		//std::cout <<  "Pose_x: " << observations[k].position_x << std::endl;
+		//std::cout <<  "Pose_y: " << observations[k].position_y << std::endl;
+		//std::cout <<  "Pose_z: " << observations[k].position_z << std::endl;
+		//std::cout <<  "Part Pose_x: " << particles[i].getPose().position_x << std::endl;
+		//std::cout <<  "Part Pose_y: " << particles[i].getPose().position_y << std::endl;
+		//std::cout <<  "Part Pose_z: " << particles[i].getPose().position_z << std::endl;
+	}
+	std::cout << "Cloud created" << std::endl;
+	//cv::waitKey();
+
+	disable_resampling = false;
+}
+
 ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_,
 		double orientation_std_, double position_noise_std_, double orientation_noise_std_,
 		double velocity_noise_std_, double acceleration_noise_std_,

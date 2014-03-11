@@ -7,6 +7,8 @@
 
 #include "tracker/FTag2Tracker.hpp"
 
+using namespace std;
+
 bool compareMarkerFilters( MarkerFilter a, MarkerFilter b) {
 	double sum_a = 0.0, sum_b = 0.0;
 	for ( double d : a.getHypothesis().payload.phaseVariances )
@@ -24,6 +26,11 @@ double markerDistance( FTag2Pose m1, FTag2Pose m2 ) {
 
 void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 	std::sort(filters.begin(), filters.end(), compareMarkerFilters);
+
+//	int i=0;
+//	for ( FTag2Marker &tag: detectedTags) {
+//		std::cout << "Tag " << i << " payload std: " << tag.payload.sumOfStds() << endl;
+//	}
 
 	vector <MarkerFilter>::iterator it1 = filters.begin();
 	while( it1 != filters.end() )
@@ -76,6 +83,22 @@ void FTag2Tracker::director(std::vector<FTag2Marker> detectedTags)
 {
 	correspondence( detectedTags );
 
+	unsigned int i=0;
+	for ( MarkerFilter f: filters_with_match )
+		std::cout << "Fiter with match " << i << ": Sum of std: " << f.getHypothesis().payload.sumOfStds() << endl;
+
+	i=0;
+	for ( FTag2Marker f: to_be_spawned )
+		std::cout << "To be spawned " << i << ": Sum of std: " << f.payload.sumOfStds() << endl;
+
+	i=0;
+	for ( MarkerFilter f: not_matched )
+		std::cout << "Not matched " << i << ": Sum of std: " << f.getHypothesis().payload.sumOfStds() << endl;
+
+	i=0;
+	for ( MarkerFilter f: ready_to_be_killed )
+		std::cout << "To be killed " << i << ": Sum of std: " << f.getHypothesis().payload.sumOfStds() << endl;
+
 	/* UPDATE FILTERS: FILTERS WITH MATCHING DETECTED TAG */
 	while ( !filters_with_match.empty() && !detection_matches.empty() )
 	{
@@ -108,5 +131,6 @@ void FTag2Tracker::director(std::vector<FTag2Marker> detectedTags)
 		/* TODO: Propperly kill the filters */
 		ready_to_be_killed.clear();
 	}
+	std::cout << "After 1 iter, " << filters.size() << " filters exist." << endl;
 }
 
