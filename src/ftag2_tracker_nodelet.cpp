@@ -91,8 +91,10 @@ public:
     params.quadMaxCornerGapEndptDistRatio = 0.2;
     params.quadMaxEdgeGapDistRatio = 0.5;
     params.quadMaxEdgeGapAlignAngle = 10.0;
-    params.quadMaxStripAvgDiff = 15.0;
-    params.maxQuadsToScan = 10;
+    params.quadMaxScans = 10;
+    params.tagMaxStripAvgDiff = 15.0;
+    params.tagBorderMeanMaxThresh = 80.0;
+    params.tagBorderStdMaxThresh = 30.0;
     params.phaseVarWeightR = 0;
     params.phaseVarWeightZ = 0;
     params.phaseVarWeightAngle = 0;
@@ -158,8 +160,10 @@ public:
     GET_PARAM(quadMaxCornerGapEndptDistRatio);
     GET_PARAM(quadMaxEdgeGapDistRatio);
     GET_PARAM(quadMaxEdgeGapAlignAngle);
-    GET_PARAM(quadMaxStripAvgDiff);
-    GET_PARAM(maxQuadsToScan);
+    GET_PARAM(quadMaxScans);
+    GET_PARAM(tagMaxStripAvgDiff);
+    GET_PARAM(tagBorderMeanMaxThresh);
+    GET_PARAM(tagBorderStdMaxThresh);
     GET_PARAM(phaseVarWeightR);
     GET_PARAM(phaseVarWeightZ);
     GET_PARAM(phaseVarWeightAngle);
@@ -315,29 +319,42 @@ public:
     std::vector<FTag2Marker> tags;
     FTag2Marker currTag;
     for (const Quad& currQuad: quads) {
-    	// Check whether we have scanned enough quads
-    	quadCount++;
-    	if (quadCount > params.maxQuadsToScan) break;
+      // Reject quads that overlap with already-detected tags (which have larger area than current quad)
+      bool overlap = false;
+      for (const FTag2Marker& prevTag: tags) {
+        if (vc_math::checkPolygonOverlap(prevTag.corners, currQuad.corners)) {
+          overlap = true;
+          break;
+        }
+      }
+      if (overlap) continue;
 
-    	// Extract rectified quad image from frame
-    	quadExtractorP.tic();
-    	quadImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth*(8/6));
-    	quadExtractorP.toc();
-    	if (quadImg.empty()) { continue; }
+      // Check whether we have scanned enough quads
+      quadCount++;
+      if (quadCount > params.quadMaxScans) break;
 
-    	// Decode tag
-    	decoderP.tic();
-    	try {
-    		currTag = FTag2Decoder::decodeTag(quadImg, currQuad,
-    				params.markerWidthM, cameraIntrinsic, cameraDistortion,
-    				params.quadMaxStripAvgDiff, phaseVariancePredictor);
-    	} catch (const std::string& err) {
-    		continue;
-    	}
-    	decoderP.toc();
+      // Extract rectified quad image from frame
+      quadExtractorP.tic();
+      quadImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth*(8/6));
+      quadExtractorP.toc();
+      if (quadImg.empty()) { continue; }
 
-    	// Store tag in list
-    	tags.push_back(currTag);
+      // Decode tag
+      decoderP.tic();
+      try {
+        currTag = FTag2Decoder::decodeTag(quadImg, currQuad,
+            params.markerWidthM,
+            cameraIntrinsic, cameraDistortion,
+            params.tagMaxStripAvgDiff,
+            params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
+            phaseVariancePredictor);
+      } catch (const std::string& err) {
+        continue;
+      }
+      decoderP.toc();
+
+      // Store tag in list
+      tags.push_back(currTag);
     } // Scan through all detected quads
 
 

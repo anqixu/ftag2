@@ -624,6 +624,61 @@ inline cv::Mat str2mat(const std::string& s, int rows,
 };
 
 
+/**
+ * Check if 2 (convex) polygons overlap, using the dividing axis algorithm:
+ * - if 2 convex polygons do not intersect, then there exists a line that passes between them
+ * - such a line only exists if formed by one of the polygons' sides
+ *
+ * Note that two polygons sharing an edge, or whose one's endpoint intersects
+ * the other's edge, are considered to be overlapping.
+ */
+inline bool checkPolygonOverlap(const std::vector<cv::Point2f>& cornersA, const std::vector<cv::Point2f>& cornersB) {
+  // Compute angles perpendicular to each of the polygons' sides
+  std::vector<double> projectionAngles;
+  unsigned int i, j;
+  cv::Point2f vec;
+  for (i = 0; i < cornersA.size(); i++) {
+    j = (i == 0) ? cornersA.size() - 1 : i - 1;
+    vec = cornersA[i] - cornersA[j];
+    if (vec.x == 0 && vec.y == 0) continue;
+    projectionAngles.push_back(atan2(vec.x, vec.y)); // NOTE: (x, y) arguments swapped to compute perpendicular angle
+  }
+  for (i = 0; i < cornersB.size(); i++) {
+    j = (i == 0) ? cornersB.size() - 1 : i - 1;
+    vec = cornersB[i] - cornersB[j];
+    if (vec.x == 0 && vec.y == 0) continue;
+    projectionAngles.push_back(atan2(vec.x, vec.y));
+  }
+
+  // Scan for dividing axis line
+  bool overlap = true;
+  for (const double& angle: projectionAngles) {
+    double projAMin = std::numeric_limits<double>::infinity();
+    double projAMax = -std::numeric_limits<double>::infinity();
+    double projBMin = std::numeric_limits<double>::infinity();
+    double projBMax = -std::numeric_limits<double>::infinity();
+    double cosAngle = cos(angle);
+    double sinAngle = sin(angle);
+    for (const cv::Point2f& pt: cornersA) {
+      double proj = cosAngle * pt.x - sinAngle * pt.y;
+      if (proj < projAMin) projAMin = proj;
+      if (proj > projAMax) projAMax = proj;
+    }
+    for (const cv::Point2f& pt: cornersB) {
+      double proj = cosAngle * pt.x - sinAngle * pt.y;
+      if (proj < projBMin) projBMin = proj;
+      if (proj > projBMax) projBMax = proj;
+    }
+    if ((projAMax < projBMin) || (projAMin > projBMax)) {
+      overlap = false;
+      break;
+    }
+  }
+
+  return overlap;
+};
+
+
 };
 
 

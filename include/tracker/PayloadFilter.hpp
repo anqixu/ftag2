@@ -69,6 +69,7 @@ public:
     // Integrate latest observations
     for (int freq = 0; freq < numFreqs; freq++) {
       sumInverseVars[freq] += 1.0/tag.phaseVariances[freq];
+      filteredPayload.phaseVariances[freq] = 1.0/sumInverseVars[freq];
     }
     // TODO: 2 make following code more efficient
     for (int ray = 0; ray < numRays; ray++) {
@@ -76,6 +77,9 @@ public:
         double currThetaObsRad = tag.phases.at<double>(ray, freq)*vc_math::degree;
         sumWeightedCosTheta.at<double>(ray, freq) += 1.0/tag.phaseVariances[freq] * std::cos(currThetaObsRad);
         sumWeightedSinTheta.at<double>(ray, freq) += 1.0/tag.phaseVariances[freq] * std::sin(currThetaObsRad);
+        filteredPayload.phases.at<double>(ray, freq) = vc_math::radian *
+            atan2(sumWeightedSinTheta.at<double>(ray, freq)/sumInverseVars[freq],
+                sumWeightedCosTheta.at<double>(ray, freq)/sumInverseVars[freq]);
       }
     }
     numObservations += 1;
@@ -83,23 +87,7 @@ public:
   };
 
 
-  FTag2Payload& getFilteredPayload() {
-    if (numObservations > 0) {
-      const int numRays = filteredPayload.phases.rows;
-      const int numFreqs = filteredPayload.phases.cols;
-      for (int ray = 0; ray < numRays; ray++) {
-        for (int freq = 0; freq < numFreqs; freq++) {
-          filteredPayload.phases.at<double>(ray, freq) = vc_math::radian *
-              atan2(sumWeightedSinTheta.at<double>(ray, freq)/sumInverseVars[freq],
-                  sumWeightedCosTheta.at<double>(ray, freq)/sumInverseVars[freq]);
-        }
-      }
-      for (int freq = 0; freq < numFreqs; freq++) {
-        filteredPayload.phaseVariances[freq] = 1.0/sumInverseVars[freq];
-      }
-    }
-    return filteredPayload;
-  };
+  FTag2Payload& getFilteredPayload() { return filteredPayload; };
 
 
 protected:
