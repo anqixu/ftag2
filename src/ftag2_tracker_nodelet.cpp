@@ -315,33 +315,30 @@ public:
     std::vector<FTag2Marker> tags;
     FTag2Marker currTag;
     for (const Quad& currQuad: quads) {
-      // Check whether we have scanned enough quads
-      quadCount++;
-      if (quadCount > params.maxQuadsToScan) break;
+    	// Check whether we have scanned enough quads
+    	quadCount++;
+    	if (quadCount > params.maxQuadsToScan) break;
 
-      // Extract rectified quad image from frame
-      quadExtractorP.tic();
-      quadImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth*(8/6));
-      quadExtractorP.toc();
-      if (quadImg.empty()) { continue; }
+    	// Extract rectified quad image from frame
+    	quadExtractorP.tic();
+    	quadImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth*(8/6));
+    	quadExtractorP.toc();
+    	if (quadImg.empty()) { continue; }
 
-      // Decode tag
-      decoderP.tic();
-      try {
-        currTag = FTag2Decoder::decodeTag(quadImg, currQuad,
-            params.markerWidthM,
-            cameraIntrinsic, cameraDistortion,
-            params.quadMaxStripAvgDiff,
-            phaseVariancePredictor);
-      } catch (const std::string& err) {
-        continue;
-      }
-      decoderP.toc();
+    	// Decode tag
+    	decoderP.tic();
+    	try {
+    		currTag = FTag2Decoder::decodeTag(quadImg, currQuad,
+    				params.markerWidthM, cameraIntrinsic, cameraDistortion,
+    				params.quadMaxStripAvgDiff, phaseVariancePredictor);
+    	} catch (const std::string& err) {
+    		continue;
+    	}
+    	decoderP.toc();
 
-      // Store tag in list
-      tags.push_back(currTag);
+    	// Store tag in list
+    	tags.push_back(currTag);
     } // Scan through all detected quads
-
 
 
 
@@ -416,18 +413,17 @@ public:
       tagDetectionsPub.publish(tagsMsg);
 
 
-      /* DELETEME */
+  /*
       for (int i=0; i<tags.size(); i++)
       {
     	  tags[i].payload.phaseVariances.push_back(k);
     	  k--;
       }
-      /* ........ */
+       ........ */
 
 
       FTag2Tracker FT;
-      FT.director(tags);
-
+      FT.step(tags);
 
 #ifdef PARTICLE_FILTER
       for ( FTag2Marker tag: tags )

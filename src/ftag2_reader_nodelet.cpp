@@ -4,6 +4,8 @@
 #include "common/Profiler.hpp"
 #include "common/VectorAndCircularMath.hpp"
 
+#include "tracker/FTag2Tracker.hpp"
+
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
 #include <image_transport/image_transport.h>
@@ -30,6 +32,9 @@ namespace ftag2 {
 
 class FTag2ReaderNodelet : public nodelet::Nodelet {
 protected:
+
+  FTag2Tracker FT;
+
   bool alive;
 
   ReconfigureServer* dynCfgServer;
@@ -371,6 +376,8 @@ public:
       }
       tagDetectionsPub.publish(tagsMsg);
     }
+
+    FT.step(tags);
 
     // Update profiler
     durationP.toc();

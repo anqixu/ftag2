@@ -9,6 +9,7 @@
 #define FTAG2PAYLOAD_HPP_
 
 #include "common/BaseCV.hpp"
+#include <opencv2/core/core.hpp>
 
 struct FTag2Payload {
 	constexpr static unsigned long long SIG_KEY = 0b00100011;
@@ -53,7 +54,7 @@ struct FTag2Payload {
 	};
 
 	virtual ~FTag2Payload() {};
-	bool withinPhaseRange(FTag2Payload& marker);
+	bool withinPhaseRange(const FTag2Payload& marker);
 
 	double sumOfStds() {
 		double sum = 0.0;

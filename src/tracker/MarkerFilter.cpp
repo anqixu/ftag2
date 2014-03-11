@@ -8,17 +8,26 @@
 #include "tracker/MarkerFilter.hpp"
 
 MarkerFilter::MarkerFilter( FTag2Marker detection ) {
-	PF = ParticleFilter(100, detection.pose, ParticleFilter::clock::now() );
+	std::vector<FTag2Pose> observations;
+	observations.push_back(detection.pose);
+	PF = ParticleFilter(100, observations, ParticleFilter::clock::now() );
 	IF = PayloadFilter();
+	frames_without_detection = 0;
 }
 
 void MarkerFilter::step( FTag2Marker detection ) {
 	PF.step(detection.pose);
-	//IF.step(detection.payload);
+	IF.step(detection.payload);
+	hypothesis.pose = PF.computeModePose();
+	hypothesis.payload = IF.getFilteredPayload();
+	frames_without_detection = 0;
 };
 
 void MarkerFilter::step() {
 	PF.step();
-	//IF.step();
+	IF.step();
+	hypothesis.pose = PF.computeModePose();
+	hypothesis.payload = IF.getFilteredPayload();
+	frames_without_detection++;
 };
 
