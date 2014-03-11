@@ -14,6 +14,8 @@
 #include "ftag2/TagDetections.h"
 
 
+#include "tracker/PayloadFilter.hpp" // TODO: 0 remove debug
+
 using namespace std;
 using namespace cv;
 using namespace vc_math;
@@ -47,6 +49,8 @@ protected:
   cv::Mat cameraIntrinsic, cameraDistortion;
 
   PhaseVariancePredictor phaseVariancePredictor;
+
+  PayloadFilter filter;
 
   // DEBUG VARIABLES
   Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
@@ -151,6 +155,8 @@ public:
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
+
+    filter.setParams(1.0); // TODO: 0 remove debug
 
 #ifdef CV_SHOW_IMAGES
     // Configure windows
@@ -387,6 +393,16 @@ public:
       tagDetectionsPub.publish(tagsMsg);
     }
 
+    // TODO: 0 remove debug
+    if (tags.size() > 0) {
+      cv::Mat phaseVars(tags[0].payload.phaseVariances, false);
+      NODELET_INFO_STREAM("payload:\n" << cv::format(tags[0].payload.phases/45.0, "matlab") << "\n" << cv::format(phaseVars, "matlab"));
+      filter.step(tags[0].payload);
+      FTag2Payload& filteredPayload = filter.getFilteredPayload();
+      cv::Mat filteredPhaseVars(filteredPayload.phaseVariances, false);
+      NODELET_WARN_STREAM("filter:\n" << cv::format(filteredPayload.phases/45.0, "matlab") << "\n" << cv::format(filteredPhaseVars, "matlab"));
+    }
+
     // Update profiler
     durationP.toc();
     if (profilerDelaySec > 0) {
@@ -405,7 +421,7 @@ public:
 
     // Allow OpenCV HighGUI events to process
 #ifdef CV_SHOW_IMAGES
-    char c = waitKey(1);
+    char c = waitKey(0); // TODO: 0 revert to waitKey(1)
     if (c == 'x' || c == 'X') {
       ros::shutdown();
     }

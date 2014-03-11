@@ -1,10 +1,3 @@
-/*
- * FTag2Payload.hpp
- *
- *  Created on: Mar 6, 2014
- *      Author: dacocp
- */
-
 #ifndef FTAG2PAYLOAD_HPP_
 #define FTAG2PAYLOAD_HPP_
 
@@ -17,17 +10,13 @@ struct FTag2Payload {
 	std::vector<double> phaseVariances;
 
 	bool hasSignature;
-	bool hasValidXORs;
 
 	std::string payloadOct;
 	std::string payloadBin;
-	std::string xorBin; // == same data as XORExpected
 
-	cv::Mat XORExpected;
-	cv::Mat XORDecoded;
 	cv::Mat payloadChunks;
 
-	// TEMP VARS
+	// TODO: 2 remove TEMP VARS
 	unsigned long long signature;
 
 	cv::Mat horzRays;
@@ -44,15 +33,58 @@ struct FTag2Payload {
 
 	cv::Mat mags;
 	cv::Mat phases;
-	cv::Mat bitChunks;
+	cv::Mat bitChunks; // TEMP: 2 bitChunks == graycoded phases; payloadChunks = de-graycoded phases
 
-	FTag2Payload (): phaseVariances(), hasSignature(false), hasValidXORs(false),
-			payloadOct(""), payloadBin(""), xorBin(""), signature(0) {
+	FTag2Payload (): phaseVariances(), hasSignature(false),
+			payloadOct(""), payloadBin(""), signature(0) {
 		for (int i = 0; i < 5; i++) { phaseVariances.push_back(0); }
 		    payloadChunks = cv::Mat::ones(6, 5, CV_8SC1) * -1;
 	};
+	~FTag2Payload() {};
 
-	virtual ~FTag2Payload() {};
+	FTag2Payload(const FTag2Payload& other) :
+	  phaseVariances(other.phaseVariances),
+	  hasSignature(other.hasSignature),
+    payloadOct(other.payloadOct),
+    payloadBin(other.payloadBin),
+    payloadChunks(other.payloadChunks.clone()),
+    signature(other.signature),
+    horzRays(other.horzRays.clone()),
+    vertRays(other.vertRays.clone()),
+    horzMagSpec(other.horzMagSpec.clone()),
+    vertMagSpec(other.vertMagSpec.clone()),
+    horzPhaseSpec(other.horzPhaseSpec.clone()),
+    vertPhaseSpec(other.vertPhaseSpec.clone()),
+    horzMags(other.horzMags.clone()),
+    vertMags(other.vertMags.clone()),
+    horzPhases(other.horzPhases.clone()),
+    vertPhases(other.vertPhases.clone()),
+    mags(other.mags.clone()),
+    phases(other.phases.clone()),
+    bitChunks(other.bitChunks.clone()) {};
+
+	void operator=(const FTag2Payload& other) {
+	  phaseVariances = other.phaseVariances;
+    hasSignature = other.hasSignature;
+    payloadOct = other.payloadOct;
+    payloadBin = other.payloadBin;
+    payloadChunks = other.payloadChunks.clone();
+    signature = other.signature;
+    horzRays = other.horzRays.clone();
+    vertRays = other.vertRays.clone();
+    horzMagSpec = other.horzMagSpec.clone();
+    vertMagSpec = other.vertMagSpec.clone();
+    horzPhaseSpec = other.horzPhaseSpec.clone();
+    vertPhaseSpec = other.vertPhaseSpec.clone();
+    horzMags = other.horzMags.clone();
+    vertMags = other.vertMags.clone();
+    horzPhases = other.horzPhases.clone();
+    vertPhases = other.vertPhases.clone();
+    mags = other.mags.clone();
+    phases = other.phases.clone();
+    bitChunks = other.bitChunks.clone();
+	};
+
 	bool withinPhaseRange(FTag2Payload& marker);
 
 	double sumOfStds() {

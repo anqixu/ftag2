@@ -6,7 +6,6 @@
 #include "common/FTag2Payload.hpp"
 
 
-// TODO: 0 test this class
 class PayloadFilter {
   // NOTE: all thetas are expressed in degrees
 
@@ -56,8 +55,8 @@ public:
   void step(const FTag2Payload& tag) {
     // Check if we should update estimate based on time elapsed
     time_point now = clock::now();
-    if (numObservations > 0 &&
-        (now - lastStepTime).count() < minTimeBetweenSteps) {
+    std::chrono::duration<double> elapsedSec = now - lastStepTime;
+    if (numObservations > 0 && elapsedSec.count() < minTimeBetweenSteps) {
       return;
     }
 
@@ -65,6 +64,19 @@ public:
     const int numRays = tag.phases.rows;
     const int numFreqs = tag.phases.cols;
     if (numObservations == 0) { initializeMatrices(numRays, numFreqs); }
+    assert(sumWeightedCosTheta.rows == numRays &&
+        sumWeightedSinTheta.rows == numRays &&
+        filteredPayload.phases.rows == numRays &&
+        sumWeightedCosTheta.cols == numFreqs &&
+        sumWeightedSinTheta.cols == numFreqs &&
+        filteredPayload.phases.cols == numFreqs &&
+        tag.phaseVariances.size() == (unsigned int) numFreqs &&
+        sumInverseVars.size() == (unsigned int) numFreqs &&
+        filteredPayload.phaseVariances.size() == (unsigned int) numFreqs &&
+        tag.phases.isContinuous() &&
+        sumWeightedCosTheta.isContinuous() &&
+        sumWeightedSinTheta.isContinuous() &&
+        filteredPayload.phases.isContinuous());
 
     // Integrate latest observations
     for (int freq = 0; freq < numFreqs; freq++) {
@@ -72,6 +84,23 @@ public:
       filteredPayload.phaseVariances[freq] = 1.0/sumInverseVars[freq];
     }
     // TODO: 2 make following code more efficient
+    /*
+    double* tagPhasesPtr = (double*) tag.phases.data;
+    double* sumWeightedCosThetaPtr = (double*) sumWeightedCosTheta.data;
+    double* sumWeightedSinThetaPtr = (double*) sumWeightedSinTheta.data;
+    double* filteredPhasesPtr = (double*) filteredPayload.phases.data;
+    for (int i = 0; i < numRays*numFreqs; i++) {
+      double currThetaObsRad = *tagPhasesPtr * vc_math::degree;
+      *sumWeightedCosThetaPtr += 1.0/tag.phaseVariances[i % numFreqs] * std::cos(currThetaObsRad);
+      *sumWeightedSinThetaPtr += 1.0/tag.phaseVariances[i % numFreqs] * std::sin(currThetaObsRad);
+      *filteredPhasesPtr = vc_math::radian * atan2(*sumWeightedSinThetaPtr/sumInverseVars[freq],
+        *sumWeightedCosThetaPtr/sumInverseVars[i % numFreqs]);
+      tagPhasesPtr++;
+      sumWeightedCosThetaPtr++;
+      sumWeightedSinThetaPtr++;
+      filteredPhasesPtr++;
+    }
+    */
     for (int ray = 0; ray < numRays; ray++) {
       for (int freq = 0; freq < numFreqs; freq++) {
         double currThetaObsRad = tag.phases.at<double>(ray, freq)*vc_math::degree;

@@ -398,10 +398,10 @@ public:
           const double* phasesPtr = (double*) tag.payload.phases.data;
           markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
           markerInfoMsg.hasSignature = tag.payload.hasSignature;
-          markerInfoMsg.hasValidXORs = tag.payload.hasValidXORs;
+          markerInfoMsg.hasValidXORs = false;
           markerInfoMsg.hasValidCRC = false;
           markerInfoMsg.payloadOct = tag.payload.payloadOct;
-          markerInfoMsg.xorBin = tag.payload.xorBin;
+          markerInfoMsg.xorBin = "";
           markerInfoMsg.signature = tag.payload.signature;
           markerInfoMsg.CRC12Expected = 0;
           markerInfoMsg.CRC12Decoded = 0;
@@ -483,15 +483,9 @@ public:
 
             phaseStatsPub.publish(phaseStatsMsg);
           } else {
-            if (tag.payload.hasValidXORs) {
-              cout << "=> RECOG  : ";
-            } else {
-              cout << "x> BAD XOR: ";
-            }
-            cout << tag.payload.payloadOct << "; XOR: " << tag.payload.xorBin << "; Rot=" << tag.imgRotDir << "'";
-            if (tag.payload.hasValidXORs) {
-              cout << "\tID: " << tag.payload.payloadBin;
-            }
+            cout << "=> RECOG  : ";
+            cout << tag.payload.payloadOct << "; Rot=" << tag.imgRotDir << "'";
+            cout << "\tID: " << tag.payload.payloadBin;
             cout << endl;
           }
         }
