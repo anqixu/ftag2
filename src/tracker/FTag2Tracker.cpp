@@ -82,12 +82,7 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 
 void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 {
-	cout << "BEFORE correspondence: " << endl;
-	cout << "Filters: " << filters.size() << endl;
-	cout << filters_with_match.size() << " filters matched" << endl;
-	cout << to_be_spawned.size() << " filters spawned" << endl;
-	cout << not_matched.size() << " filters not matched" << endl;
-	cout << ready_to_be_killed.size() << " to be killed" << endl;
+	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
 
 	unsigned int i=0;
 	for ( FTag2Marker f: detectedTags )

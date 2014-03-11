@@ -319,7 +319,8 @@ public:
       tags.push_back(currTag);
     } // Scan through all detected quads
 
-
+    /* UNCOMMENT TO ENABLE TRACKING (UNTESTED) */
+//    FT.step(tags);
 
     // TODO: 5 remove notification
     if (false) {
