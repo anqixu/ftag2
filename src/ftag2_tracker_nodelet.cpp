@@ -359,7 +359,6 @@ public:
 
 
 
-
     if (tags.size() > 0) {
       NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     } else if (quads.size() > 0) {
@@ -430,18 +429,17 @@ public:
       tagDetectionsPub.publish(tagsMsg);
 
 
-      /* DELETEME */
+  /*
       for (int i=0; i<tags.size(); i++)
       {
     	  tags[i].payload.phaseVariances.push_back(k);
     	  k--;
       }
-      /* ........ */
+       ........ */
 
 
       FTag2Tracker FT;
-      FT.director(tags);
-
+      FT.step(tags);
 
 #ifdef PARTICLE_FILTER
       for ( FTag2Marker tag: tags )

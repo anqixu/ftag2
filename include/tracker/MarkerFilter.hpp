@@ -24,7 +24,7 @@ private:
 	PayloadFilter IF;
 
 public:
-	MarkerFilter(){};
+	MarkerFilter(){ frames_without_detection = 0;};
 	MarkerFilter(FTag2Marker detection);
 	virtual ~MarkerFilter() {};
 	FTag2Marker getHypothesis() { return hypothesis; }

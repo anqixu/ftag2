@@ -4,6 +4,8 @@
 #include "common/Profiler.hpp"
 #include "common/VectorAndCircularMath.hpp"
 
+#include "tracker/FTag2Tracker.hpp"
+
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
 #include <image_transport/image_transport.h>
@@ -32,6 +34,8 @@ namespace ftag2 {
 
 class FTag2ReaderNodelet : public nodelet::Nodelet {
 protected:
+  //FTag2Tracker FT;
+
   bool alive;
 
   ReconfigureServer* dynCfgServer;
@@ -402,6 +406,8 @@ public:
       cv::Mat filteredPhaseVars(filteredPayload.phaseVariances, false);
       NODELET_WARN_STREAM("filter:\n" << cv::format(filteredPayload.phases/45.0, "matlab") << "\n" << cv::format(filteredPhaseVars, "matlab"));
     }
+
+    //FT.step(tags);
 
     // Update profiler
     durationP.toc();
