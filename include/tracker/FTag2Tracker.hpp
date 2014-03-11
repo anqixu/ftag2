@@ -26,8 +26,8 @@ private:
 	constexpr static int MAX_FRAMES_NO_DETECTION = 10;
 
 public:
-	FTag2Tracker();
-	virtual ~FTag2Tracker();
+	FTag2Tracker() {};
+	virtual ~FTag2Tracker() {};
 	void director(std::vector<FTag2Marker> detectedTags);
 	void correspondence(std::vector<FTag2Marker> detectedTags);
 	void spawnFilters();

@@ -55,6 +55,14 @@ struct FTag2Payload {
 	virtual ~FTag2Payload() {};
 	bool withinPhaseRange(FTag2Payload& marker);
 
+	double sumOfStds() {
+		double sum = 0.0;
+		for ( double d : phaseVariances )
+			sum += sqrt(d);
+		return sum;
+	}
+
+
 	virtual void decodeSignature() {};
 };
 

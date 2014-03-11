@@ -4,17 +4,20 @@
 
 using namespace std;
 
-/* TODO: Write the function */
+/* TODO: Check the function */
 bool FTag2Payload::withinPhaseRange( FTag2Payload& marker ) {
 	bool is_within = true;
-	for ( int i=0 ; i<phases.cols; i++ )
+	for ( int r=0 ; r<phases.rows; r++ )
 	{
-		double phObs = phases.at<double>(i);
-		double phFilt = marker.phases.at<double>(i);
-		if ( phFilt < phObs-N_SIGMA*phaseVariances[i%5] || phFilt > phObs+N_SIGMA*phaseVariances[i%5] )
+		for ( int c=0 ; c<phases.cols; c++ )
 		{
-			is_within = false;
-			break;
+			double phObs = phases.at<double>(r,c);
+			double phFilt = marker.phases.at<double>(r,c);
+			if ( phFilt < phObs-N_SIGMA*phaseVariances[c] || phFilt > phObs+N_SIGMA*phaseVariances[c] )
+			{
+				is_within = false;
+				break;
+			}
 		}
 	}
 	return is_within;

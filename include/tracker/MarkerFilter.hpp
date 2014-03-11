@@ -31,6 +31,7 @@ public:
 	int get_frames_without_detection() { return frames_without_detection; }
 	void step( FTag2Marker detection );
 	void step( );
+	double sumOfStds();
 };
 
 #endif /* MARKERFILTER_HPP_ */

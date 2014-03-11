@@ -3,6 +3,9 @@
 
 #include "common/Profiler.hpp"
 #include "common/VectorAndCircularMath.hpp"
+#include "common/FTag2Payload.hpp"
+
+#include "tracker/FTag2Tracker.hpp"
 
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
@@ -27,7 +30,7 @@ typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer
 
 
 #define CV_SHOW_IMAGES
-#define PARTICLE_FILTER
+#undef PARTICLE_FILTER
 
 namespace ftag2 {
 
@@ -51,10 +54,11 @@ protected:
   cv::Mat cameraIntrinsic, cameraDistortion;
 
   PhaseVariancePredictor phaseVariancePredictor;
+
 #ifdef PARTICLE_FILTER
+  std::vector<FTag2Pose> tag_observations;
   bool tracking;
   ParticleFilter PF;
-  std::vector<FTag2Pose> tag_observations;
   ParticleFilter::time_point last_frame_time;
   ParticleFilter::time_point starting_time;
   ros::Publisher pubTrack;
@@ -174,11 +178,12 @@ public:
     GET_PARAM(run_id);
 #undef GET_PARAM
     dynCfgSyncReq = true;
+#ifdef PARTICLE_FILTER
     PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
-
+#endif
 #ifdef CV_SHOW_IMAGES
     // Configure windows
     namedWindow("quad_1", CV_GUI_EXPANDED);
@@ -197,8 +202,8 @@ public:
     cameraSub = it.subscribeCamera("camera_in", 1, &FTag2TrackerNodelet::cameraCallback, this);
 
 #ifdef PARTICLE_FILTER
-    tracking = false;
     tag_observations = std::vector<FTag2Pose>();
+    tracking = false;
     starting_time = ParticleFilter::clock::now();
     last_frame_time = ParticleFilter::clock::now();
     pubTrack = local_nh.advertise<std_msgs::Float64MultiArray>("detected_and_tracked_pose", 1);
@@ -213,10 +218,12 @@ public:
   void configCallback(ftag2::CamTestbenchConfig& config, uint32_t level) {
     if (!alive) return;
     params = config;
+#ifdef PARTICLE_FILTER
     PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
+#endif
   };
 
 
@@ -354,14 +361,12 @@ public:
 
 
     // TODO: 5 remove notification
-    if (true) {
-      if (tags.size() > 0) {
-        NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
-      } else if (quads.size() > 0) {
-        NODELET_WARN_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
-      } else {
-        NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
-      }
+    if (tags.size() > 0) {
+      NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+    } else if (quads.size() > 0) {
+      NODELET_WARN_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+    } else {
+//      NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     }
 
 
@@ -406,6 +411,7 @@ public:
       ftag2::TagDetections tagsMsg;
       tagsMsg.frameID = ID;
 
+      double k=10.0;
       for (const FTag2Marker& tag: tags) {
         ftag2::TagDetection tagMsg;
         tagMsg.pose.position.x = tag.pose.position_x;
@@ -424,6 +430,20 @@ public:
       }
       tagDetectionsPub.publish(tagsMsg);
 
+
+      /* DELETEME */
+      for (int i=0; i<tags.size(); i++)
+      {
+    	  tags[i].payload.phaseVariances.push_back(k);
+    	  k--;
+      }
+      /* ........ */
+
+
+      FTag2Tracker FT;
+      FT.director(tags);
+
+
 #ifdef PARTICLE_FILTER
       for ( FTag2Marker tag: tags )
     	  tag_observations.push_back(tag.pose);
@@ -431,7 +451,7 @@ public:
       {
     	  tracking = true;
     	  PF = ParticleFilter(params.numberOfParticles, tag_observations, ParticleFilter::clock::now() );
-//		  cv::waitKey();
+//    	  cv::waitKey();
       }
 #endif
     }
