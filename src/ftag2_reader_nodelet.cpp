@@ -93,6 +93,9 @@ public:
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
     params.markerWidthM = 0.07;
+    phaseVariancePredictor.updateParams(params.phaseVarWeightR,
+        params.phaseVarWeightZ, params.phaseVarWeightAngle,
+        params.phaseVarWeightFreq, params.phaseVarWeightBias);
   };
 
 
@@ -160,7 +163,7 @@ public:
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
 
-    filter.setParams(1.0); // TODO: 0 remove debug
+    //filter.setParams(0.0); // TODO: 0 remove debug
 
 #ifdef CV_SHOW_IMAGES
     // Configure windows
