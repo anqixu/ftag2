@@ -174,6 +174,10 @@ void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
                 int aperture_size, cv::Mat& dx, cv::Mat& dy, bool L2gradient = false );
 
 
+bool validateTagBorder(cv::Mat tag, double meanPxMaxThresh = 80.0, double stdPxMaxThresh = 30.0,
+    unsigned int numRays = 6, unsigned int borderBlocks = 1);
+
+
 /**
  * This class predicts the variance of encoded phases (in degrees) inside a
  * FTag2 marker, using a linear regression model incorporating a constant bias,

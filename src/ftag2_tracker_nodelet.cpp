@@ -87,8 +87,10 @@ public:
     params.quadMaxCornerGapEndptDistRatio = 0.2;
     params.quadMaxEdgeGapDistRatio = 0.5;
     params.quadMaxEdgeGapAlignAngle = 10.0;
-    params.quadMaxStripAvgDiff = 15.0;
-    params.maxQuadsToScan = 10;
+    params.quadMaxScans = 10;
+    params.tagMaxStripAvgDiff = 15.0;
+    params.tagBorderMeanMaxThresh = 80.0;
+    params.tagBorderStdMaxThresh = 30.0;
     params.phaseVarWeightR = 0;
     params.phaseVarWeightZ = 0;
     params.phaseVarWeightAngle = 0;
@@ -154,8 +156,10 @@ public:
     GET_PARAM(quadMaxCornerGapEndptDistRatio);
     GET_PARAM(quadMaxEdgeGapDistRatio);
     GET_PARAM(quadMaxEdgeGapAlignAngle);
-    GET_PARAM(quadMaxStripAvgDiff);
-    GET_PARAM(maxQuadsToScan);
+    GET_PARAM(quadMaxScans);
+    GET_PARAM(tagMaxStripAvgDiff);
+    GET_PARAM(tagBorderMeanMaxThresh);
+    GET_PARAM(tagBorderStdMaxThresh);
     GET_PARAM(phaseVarWeightR);
     GET_PARAM(phaseVarWeightZ);
     GET_PARAM(phaseVarWeightAngle);
@@ -308,9 +312,19 @@ public:
     std::vector<FTag2Marker> tags;
     FTag2Marker currTag;
     for (const Quad& currQuad: quads) {
+      // Reject quads that overlap with already-detected tags (which have larger area than current quad)
+      bool overlap = false;
+      for (const FTag2Marker& prevTag: tags) {
+        if (vc_math::checkPolygonOverlap(prevTag.corners, currQuad.corners)) {
+          overlap = true;
+          break;
+        }
+      }
+      if (overlap) continue;
+
       // Check whether we have scanned enough quads
       quadCount++;
-      if (quadCount > params.maxQuadsToScan) break;
+      if (quadCount > params.quadMaxScans) break;
 
       // Extract rectified quad image from frame
       quadExtractorP.tic();
@@ -324,7 +338,8 @@ public:
         currTag = FTag2Decoder::decodeTag(quadImg, currQuad,
             params.markerWidthM,
             cameraIntrinsic, cameraDistortion,
-            params.quadMaxStripAvgDiff,
+            params.tagMaxStripAvgDiff,
+            params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
             phaseVariancePredictor);
       } catch (const std::string& err) {
         continue;
@@ -339,12 +354,14 @@ public:
 
 
     // TODO: 5 remove notification
-    if (tags.size() > 0) {
-      NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
-    } else if (quads.size() > 0) {
-      NODELET_WARN_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
-    } else {
-      NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+    if (true) {
+      if (tags.size() > 0) {
+        NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+      } else if (quads.size() > 0) {
+        NODELET_WARN_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+      } else {
+        NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+      }
     }
 
 

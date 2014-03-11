@@ -13,6 +13,7 @@ public:
       double markerWidthM,
       const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
       double quadMaxStripAvgDiff,
+      double tagBorderMeanMaxThresh, double tagBorderStdMaxThresh,
       PhaseVariancePredictor& phaseVariancePredictor);
 
   static void analyzeRays(const cv::Mat& img, FTag2Marker* tag);

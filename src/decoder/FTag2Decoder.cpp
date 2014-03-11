@@ -7,9 +7,17 @@ FTag2Marker FTag2Decoder::decodeTag(const cv::Mat quadImg,
     double markerWidthM,
     const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
     double quadMaxStripAvgDiff,
+    double tagBorderMeanMaxThresh, double tagBorderStdMaxThresh,
     PhaseVariancePredictor& phaseVariancePredictor) {
-  // Trim tag borders, then crop central payload image
+  // Trim tag borders
   cv::Mat trimmedTagImg = trimFTag2Quad(quadImg, quadMaxStripAvgDiff);
+
+  // Validate marker borders
+  if (!validateTagBorder(trimmedTagImg, tagBorderMeanMaxThresh, tagBorderStdMaxThresh)) {
+    throw std::string("tag border not sufficiently dark and/or uniform");
+  }
+
+  // Crop payload portion of marker
   cv::Mat croppedTagImg = cropFTag2Border(trimmedTagImg);
 
   // Initialize tag data structure
