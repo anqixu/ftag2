@@ -37,6 +37,9 @@ namespace ftag2 {
 
 class FTag2TrackerNodelet : public nodelet::Nodelet {
 protected:
+
+  FTag2Tracker FT;
+
   bool alive;
 
   ReconfigureServer* dynCfgServer;
@@ -437,8 +440,6 @@ public:
       }
        ........ */
 
-
-      FTag2Tracker FT;
       FT.step(tags);
 
 #ifdef PARTICLE_FILTER
