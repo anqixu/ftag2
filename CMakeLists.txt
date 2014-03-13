@@ -139,7 +139,7 @@ target_link_libraries(freq_testbench
   ${OpenCV_LIBRARIES}
   ${catkin_LIBRARIES}
 )
-add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ftag2_generate_messages_cpp)
+add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_generate_messages_cpp)
 
 
 #############
