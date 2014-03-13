@@ -10,6 +10,7 @@ set(CMAKE_CXX_FLAGS "-std=c++0x ${CMAKE_CXX_FLAGS} -g -Wall -O2")
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
+  message_generation
   nodelet
   dynamic_reconfigure
   image_transport
@@ -67,7 +68,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME} ${FTAG2_TRACKER_NODELET_NAME}
-  CATKIN_DEPENDS roscpp rospy nodelet dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf 
+  CATKIN_DEPENDS roscpp rospy message_runtime nodelet dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf
 #  DEPENDS system_lib
 )
 
@@ -161,11 +162,11 @@ install(TARGETS ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME}
   )
 
 ## Mark cpp header files for installation
-# install(DIRECTORY include/${PROJECT_NAME}/
-#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-#   FILES_MATCHING PATTERN "*.h"
-#   PATTERN ".svn" EXCLUDE
-# )
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN ".svn" EXCLUDE
+  )
 
 install(FILES nodelet_plugins.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
