@@ -112,6 +112,9 @@ public:
     params.velocity_noise_std = 0.05;
     params.acceleration_noise_std = 0.01;
     params.run_id = 1;
+    phaseVariancePredictor.updateParams(params.phaseVarWeightR,
+        params.phaseVarWeightZ, params.phaseVarWeightAngle,
+        params.phaseVarWeightFreq, params.phaseVarWeightBias);
   };
 
 
@@ -181,11 +184,11 @@ public:
     GET_PARAM(run_id);
 #undef GET_PARAM
     dynCfgSyncReq = true;
-#ifdef PARTICLE_FILTER
-    PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
+#ifdef PARTICLE_FILTER
+    PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 #endif
 #ifdef CV_SHOW_IMAGES
     // Configure windows
@@ -221,11 +224,11 @@ public:
   void configCallback(ftag2::CamTestbenchConfig& config, uint32_t level) {
     if (!alive) return;
     params = config;
-#ifdef PARTICLE_FILTER
-    PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
+#ifdef PARTICLE_FILTER
+    PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 #endif
   };
 

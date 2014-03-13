@@ -1,6 +1,7 @@
 #include "decoder/FTag2Decoder.hpp"
 #include "detector/FTag2Detector.hpp"
 
+#include <iostream>
 
 FTag2Marker FTag2Decoder::decodeTag(const cv::Mat quadImg,
     const Quad& quad,
