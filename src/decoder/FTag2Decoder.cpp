@@ -251,9 +251,9 @@ cv::Mat FTag2Decoder::decodePhases(const cv::Mat phases,
   for (int freq = 0; freq < NUM_FREQS; freq++) {
     double maxBitValue = pow(2, bitsPerFreq[freq]);
     double phaseBinDeg = 360.0/maxBitValue;
-    double phaseStdBinNormed = phaseVars[freq] / phaseBinDeg;
+    double phaseStdBinNormed = sqrt(phaseVars[freq]) / phaseBinDeg;
     for (int ray = 0; ray < NUM_RAYS; ray++) {
-      double phaseBinNormed = phases.at<double>(ray, freq) / phaseBinDeg + 0.5;
+      double phaseBinNormed = vc_math::wrapAngle(phases.at<double>(ray, freq), 360) / phaseBinDeg + 0.5;
       if (floor(phaseBinNormed - nStdThresh*phaseStdBinNormed) == floor(phaseBinNormed + nStdThresh*phaseStdBinNormed)) {
         bitChunks.at<char>(ray, freq) = phaseBinNormed;
       }

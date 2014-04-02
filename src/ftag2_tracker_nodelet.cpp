@@ -20,6 +20,7 @@
 #include "tracker/ParticleFilter.hpp"
 #include "std_msgs/Float64MultiArray.h"
 
+#include <ftag2/FreqTBMarkerInfo.h>
 
 using namespace std;
 using namespace cv;
@@ -52,6 +53,9 @@ protected:
   image_transport::Publisher processedImagePub;
   image_transport::Publisher firstTagImagePub;
 
+  ros::Publisher markerInfoPub;
+  int frameID;
+
   ftag2::CamTestbenchConfig params;
 
   cv::Mat cameraIntrinsic, cameraDistortion;
@@ -77,7 +81,7 @@ public:
   FTag2TrackerNodelet() : nodelet::Nodelet(),
       alive(false),
       dynCfgServer(NULL),
-      dynCfgSyncReq(false),
+dynCfgSyncReq(false),
       latestProfTime(ros::Time::now()),
       profilerDelaySec(0) {
     // Set default parameter values
@@ -96,14 +100,14 @@ public:
     params.quadMaxEdgeGapAlignAngle = 10.0;
     params.quadMaxScans = 10;
     params.tagMaxStripAvgDiff = 15.0;
-    params.tagBorderMeanMaxThresh = 80.0;
+    params.tagBorderMeanMaxThresh = 150.0;
     params.tagBorderStdMaxThresh = 30.0;
     params.phaseVarWeightR = 0;
     params.phaseVarWeightZ = 0;
     params.phaseVarWeightAngle = 0;
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
-    params.markerWidthM = 0.07;
+    params.markerWidthM = 0.7;
     params.numberOfParticles = 100;
     params.position_std = 0.15;
     params.orientation_std = 0.15;
@@ -124,6 +128,8 @@ public:
 
 
   virtual void onInit() {
+
+	frameID = 0;
     // Obtain node handles
     //ros::NodeHandle& nh = getNodeHandle();
     ros::NodeHandle& local_nh = getPrivateNodeHandle();
@@ -192,11 +198,12 @@ public:
 #endif
 #ifdef CV_SHOW_IMAGES
     // Configure windows
-    namedWindow("quad_1", CV_GUI_EXPANDED);
+//    namedWindow("quad_1", CV_GUI_EXPANDED); // TODO: I commented out this line because it doesn't seem to be used anywhere else.
     namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
     namedWindow("segments", CV_GUI_EXPANDED);
     namedWindow("quads", CV_GUI_EXPANDED);
     namedWindow("tags", CV_GUI_EXPANDED);
+    namedWindow("hypotheses", CV_GUI_EXPANDED);
 #endif
 
     // Setup ROS communication links
@@ -214,6 +221,8 @@ public:
     last_frame_time = ParticleFilter::clock::now();
     pubTrack = local_nh.advertise<std_msgs::Float64MultiArray>("detected_and_tracked_pose", 1);
 #endif
+
+    markerInfoPub = local_nh.advertise<ftag2::FreqTBMarkerInfo>("marker_info", 1);
 
     // Finish initialization
     alive = true;
@@ -250,6 +259,8 @@ public:
 
     cv_bridge::CvImageConstPtr img = cv_bridge::toCvShare(msg);
     processImage(img->image, msg->header.seq);
+
+    frameID++;
   };
 
 
@@ -366,9 +377,9 @@ public:
 
 
     if (tags.size() > 0) {
-      NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+//      NODELET_INFO_STREAM('\n' << ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     } else if (quads.size() > 0) {
-      NODELET_WARN_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+//      NODELET_WARN_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     } else {
 //      NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
     }
@@ -415,7 +426,7 @@ public:
       ftag2::TagDetections tagsMsg;
       tagsMsg.frameID = ID;
 
-      double k=10.0;
+//      double k=10.0;
       for (const FTag2Marker& tag: tags) {
         ftag2::TagDetection tagMsg;
         tagMsg.pose.position.x = tag.pose.position_x;
@@ -434,6 +445,41 @@ public:
       }
       tagDetectionsPub.publish(tagsMsg);
 
+      FTag2Marker tag = tags[0];
+      ftag2::FreqTBMarkerInfo markerInfoMsg;
+      markerInfoMsg.frameID = frameID;
+      markerInfoMsg.radius = sqrt(tag.pose.position_x*tag.pose.position_x + tag.pose.position_y*tag.pose.position_y);
+      markerInfoMsg.z = tag.pose.position_z;
+      markerInfoMsg.oop_rotation = tag.pose.getAngleFromCamera()*vc_math::radian;
+      markerInfoMsg.pose.position.x = tag.pose.position_x;
+      markerInfoMsg.pose.position.y = tag.pose.position_y;
+      markerInfoMsg.pose.position.z = tag.pose.position_z;
+      markerInfoMsg.pose.orientation.w = tag.pose.orientation_w;
+      markerInfoMsg.pose.orientation.x = tag.pose.orientation_x;
+      markerInfoMsg.pose.orientation.y = tag.pose.orientation_y;
+      markerInfoMsg.pose.orientation.z = tag.pose.orientation_z;
+      markerInfoMsg.markerPixelWidth = quadImg.rows;
+      const double* magsPtr = (double*) tag.payload.mags.data;
+      markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+      const double* phasesPtr = (double*) tag.payload.phases.data;
+      markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+      markerInfoMsg.hasSignature = tag.payload.hasSignature;
+      markerInfoMsg.hasValidXORs = false;
+      markerInfoMsg.hasValidCRC = false;
+      markerInfoMsg.payloadOct = tag.payload.payloadOct;
+      markerInfoMsg.xorBin = "";
+      markerInfoMsg.signature = tag.payload.signature;
+      markerInfoMsg.CRC12Expected = 0;
+      markerInfoMsg.CRC12Decoded = 0;
+      markerInfoPub.publish(markerInfoMsg);
+
+      tf::Quaternion rMat(tags[0].pose.orientation_x,tags[0].pose.orientation_y,tags[0].pose.orientation_z,tags[0].pose.orientation_w);
+      static tf::TransformBroadcaster br;
+      tf::Transform transform;
+      transform.setOrigin( tf::Vector3( tags[0].pose.position_x, tags[0].pose.position_y, tags[0].pose.position_z ) );
+      transform.setRotation( rMat );
+      br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "aqua_base" ) );
+
 
   /*
       for (int i=0; i<tags.size(); i++)
@@ -444,6 +490,71 @@ public:
        ........ */
 
       FT.step(tags);
+
+
+
+      cv::Mat hypothesisOverlaidImg;
+      cv::cvtColor(processedImg, hypothesisOverlaidImg, CV_RGB2GRAY);
+      cv::cvtColor(hypothesisOverlaidImg, hypothesisOverlaidImg, CV_GRAY2BGR);
+
+      int fontFace = FONT_HERSHEY_SCRIPT_SIMPLEX;
+      double fontScale = 0.4;
+      int thickness = 1;
+
+      double nStdThresh = 3.5;
+      std::vector<int> bitsPerFreq = {3, 3, 3, 3, 3};
+      for (MarkerFilter& tracked_tag: FT.filters) {
+        FTag2Payload& tracked_payload = tracked_tag.hypothesis.payload;
+        cv::Mat decodedPhases = FTag2Decoder::decodePhases(tracked_payload.phases,
+            tracked_payload.phaseVariances, bitsPerFreq, nStdThresh, false);
+        std::ostringstream phaseBin;
+        uchar* decodedPhasesPtr = decodedPhases.data;
+        unsigned int num_decoded_phases = 0;
+        for (int i = 0; i < decodedPhases.rows * decodedPhases.cols; i++, decodedPhasesPtr++) {
+          if(i%5==0 && i!=0)
+        	phaseBin << "_";
+          if (*decodedPhasesPtr == 255) {
+            phaseBin << "?";
+          } else {
+            phaseBin << (unsigned short) (*decodedPhasesPtr)%8;
+            num_decoded_phases += 1;
+          }
+        }
+        tracked_payload.payloadOct = phaseBin.str();
+
+        if (num_decoded_phases >= 10) {
+        	assert(tracked_tag.hypothesis.corners.size() == 4);
+
+        	drawTag(hypothesisOverlaidImg, tracked_tag.hypothesis.corners);
+
+        	double mx=0, my=0;
+        	for (cv::Point2f& pt: tracked_tag.hypothesis.corners) {
+        		mx += pt.x;
+        		my += pt.y;
+        	}
+        	mx /= tracked_tag.hypothesis.corners.size();
+        	my /= tracked_tag.hypothesis.corners.size();
+
+            int baseline=0;
+
+        	cv::Size textSize = cv::getTextSize(tracked_payload.payloadOct, fontFace,
+        	                                        fontScale, thickness, &baseline);
+
+        	cv::Point textOrg(mx-textSize.width/2, my);
+
+            // draw the box
+            rectangle(hypothesisOverlaidImg, textOrg + Point(0, baseline),
+                      textOrg + Point(textSize.width, -textSize.height),
+                      Scalar(0,255,255), CV_FILLED);
+
+            // then put the text itself
+            putText(hypothesisOverlaidImg, tracked_payload.payloadOct, textOrg, fontFace, fontScale,
+                    Scalar(0, 0, 255), thickness, 8);
+
+        }
+      }
+
+      cv::imshow("hypotheses", hypothesisOverlaidImg);
 
 #ifdef PARTICLE_FILTER
       for ( FTag2Marker tag: tags )
@@ -474,8 +585,6 @@ public:
     	std_msgs::Float64MultiArray array;
     	array.data.clear();
 
-    	cout << "RUN ID: " << params.run_id << endl;
-
     	array.data.push_back(params.run_id);
     	array.data.push_back(params.position_noise_std);
     	array.data.push_back(params.velocity_noise_std);
@@ -502,7 +611,6 @@ public:
     		array.data.push_back(tag_observations[0].orientation_w);
     	}
     	pubTrack.publish(array);
-    //			  cout << "PUBLIQUE: " << track.position_x << endl;
 
     }
 #endif

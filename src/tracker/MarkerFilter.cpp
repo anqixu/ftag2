@@ -13,11 +13,12 @@ MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 	PF = ParticleFilter(100, observations, ParticleFilter::clock::now() );
 	IF = PayloadFilter();
 	frames_without_detection = 0;
-}
+};
 
 void MarkerFilter::step( FTag2Marker detection ) {
 	PF.step(detection.pose);
 	IF.step(detection.payload);
+	hypothesis.corners = detection.corners;
 	hypothesis.pose = PF.computeModePose();
 	hypothesis.payload = IF.getFilteredPayload();
 	frames_without_detection = 0;
@@ -30,4 +31,3 @@ void MarkerFilter::step() {
 	hypothesis.payload = IF.getFilteredPayload();
 	frames_without_detection++;
 };
-

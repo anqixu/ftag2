@@ -7,6 +7,10 @@ float64 markerPixelWidth
 float64[] mags
 float64[] phases
 
+float64 radius
+float64 z
+float64 oop_rotation
+
 bool hasSignature
 bool hasValidXORs
 bool hasValidCRC

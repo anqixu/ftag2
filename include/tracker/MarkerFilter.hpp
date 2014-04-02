@@ -17,13 +17,13 @@ using namespace std;
 class MarkerFilter {
 
 private:
-	FTag2Marker hypothesis;
 	FTag2Marker detectedTag;
 	int frames_without_detection;
 	ParticleFilter PF;
 	PayloadFilter IF;
 
 public:
+	FTag2Marker hypothesis;
 	MarkerFilter(){ frames_without_detection = 0;};
 	MarkerFilter(FTag2Marker detection);
 	virtual ~MarkerFilter() {};
@@ -31,7 +31,6 @@ public:
 	int get_frames_without_detection() { return frames_without_detection; }
 	void step( FTag2Marker detection );
 	void step( );
-	double sumOfStds();
 };
 
 #endif /* MARKERFILTER_HPP_ */

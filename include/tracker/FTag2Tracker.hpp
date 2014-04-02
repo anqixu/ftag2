@@ -17,15 +17,15 @@ using namespace std;
 class FTag2Tracker {
 
 private:
-	std::vector<MarkerFilter> filters;
 	std::vector<MarkerFilter> filters_with_match;
 	std::vector<MarkerFilter> not_matched;
 	std::vector<MarkerFilter> ready_to_be_killed;
 	std::vector<FTag2Marker> detection_matches;
 	std::vector<FTag2Marker> to_be_spawned;
-	constexpr static int MAX_FRAMES_NO_DETECTION = 10;
+	constexpr static int MAX_FRAMES_NO_DETECTION = 50;
 
 public:
+	std::vector<MarkerFilter> filters;
 	FTag2Tracker() {};
 	virtual ~FTag2Tracker() {};
 	void step(std::vector<FTag2Marker> detectedTags);

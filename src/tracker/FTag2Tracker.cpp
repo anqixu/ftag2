@@ -157,6 +157,6 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 		/* TODO: Properly kill the filters */
 		ready_to_be_killed.clear();
 	}
-	std::cout << "After 1 iter, " << filters.size() << " filters exist." << endl;
+	std::cout << "After current iteration, " << filters.size() << " filters exist." << endl;
 }
 

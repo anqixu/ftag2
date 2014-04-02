@@ -194,17 +194,18 @@ protected:
   double weight_freq; // encoding frequency of phase
   double weight_bias; // constant bias
 
+
 public:
-  PhaseVariancePredictor() : weight_r(0), weight_z(0), weight_angle(0),
-      weight_freq(0), weight_bias(0) {};
+  PhaseVariancePredictor() : weight_r(-0.433233403141656), weight_z(1.178509836433552), weight_angle(0.225729455615220),
+      weight_freq(3.364693352246631), weight_bias(-4.412137643426274) {};
 
   void updateParams(double w_r, double w_z, double w_a, double w_f, double w_b) {
     paramsMutex.lock();
-    weight_r = w_r;
-    weight_z = w_z;
-    weight_angle = w_a;
-    weight_freq = w_f;
-    weight_bias = w_b;
+//    weight_r = w_r;
+//    weight_z = w_z;
+//    weight_angle = w_a;
+//    weight_freq = w_f;
+//    weight_bias = w_b;
     paramsMutex.unlock();
   };
 
@@ -214,8 +215,8 @@ public:
     double angle = tag->pose.getAngleFromCamera()*vc_math::radian;
     paramsMutex.lock();
     for (unsigned int freq = 1; freq <= tag->payload.phaseVariances.size(); freq++) {
-      tag->payload.phaseVariances[freq-1]= weight_bias + weight_r*r + weight_z*z +
-          weight_angle*angle + weight_freq*freq;
+      tag->payload.phaseVariances[freq-1]= pow(weight_bias + weight_r*r + weight_z*z +
+          weight_angle*angle + weight_freq*freq,2);
     }
     paramsMutex.unlock();
   };
