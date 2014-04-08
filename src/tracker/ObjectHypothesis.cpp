@@ -269,11 +269,11 @@ double ObjectHypothesis::measurementUpdate(std::vector<FTag2Pose> detections, do
 		stateDetection->as<ompl::base::SO3StateSpace::StateType>()->w = detections[i].orientation_w;
 
 		double rotation_dist = space->as<ompl::base::SO3StateSpace>()->distance(stateDetection->as<ompl::base::SO3StateSpace::StateType>(),stateParticle->as<ompl::base::SO3StateSpace::StateType>());
-		double rotation_log_prob = vc_math::log_normal_pdf(rotation_dist, 0, orientation_std);
+		double rotation_log_prob = log_normal_pdf(rotation_dist, 0, orientation_std);
 		//double rotation_prob = 2*phi( (-1.0*rotation_dist) / rotation_std );
 
 		double position_dist = sqrt( (pose.position_x - detections[i].position_x)*(pose.position_x - detections[i].position_x) + (pose.position_y - detections[i].position_y)*(pose.position_y - detections[i].position_y) + (pose.position_z - detections[i].position_z)*(pose.position_z - detections[i].position_z));
-		double position_log_prob = vc_math::log_normal_pdf(position_dist, 0, position_std);
+		double position_log_prob = log_normal_pdf(position_dist, 0, position_std);
 		//double position_prob = 2*phi( (-1.0*position_dist) / position_std );
 
 		double log_prob = position_log_prob+rotation_log_prob;

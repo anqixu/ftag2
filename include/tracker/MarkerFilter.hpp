@@ -8,7 +8,7 @@
 #ifndef MARKERFILTER_HPP_
 #define MARKERFILTER_HPP_
 
-#include "common/FTag2.hpp"
+#include "common/FTag2Marker.hpp"
 #include "tracker/ParticleFilter.hpp"
 #include "tracker/PayloadFilter.hpp"
 

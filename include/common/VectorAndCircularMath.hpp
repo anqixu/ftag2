@@ -2,6 +2,7 @@
 #define VECTORANDCIRCULARMATH_HPP_
 
 
+#include "common/CircularStatistics.hpp"
 #include <boost/math/constants/constants.hpp>
 #include <opencv2/opencv.hpp>
 #include <utility>
@@ -48,20 +49,7 @@ constexpr double radian = 180.0/3.1415926535897932384626433832795;
 constexpr double pi = 3.1415926535897932384626433832795;
 constexpr double two_pi = 3.1415926535897932384626433832795*2;
 constexpr double half_pi = 3.1415926535897932384626433832795/2;
-constexpr double inv_sqrt_2pi = 0.3989422804014327;
 constexpr double INVALID_ANGLE = 361.0;
-
-
-inline double normal_pdf(double x, double m, double s) {
-  double a = (x - m) / s;
-  return (inv_sqrt_2pi / s) * exp(-0.5 * a * a);
-};
-
-
-inline double log_normal_pdf(double x, double m, double s) {
-  double a = (x - m) / s;
-  return log(inv_sqrt_2pi) - log(s) -0.5 * a * a;
-};
 
 
 /**

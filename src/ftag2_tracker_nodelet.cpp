@@ -3,7 +3,7 @@
 
 #include "common/Profiler.hpp"
 #include "common/VectorAndCircularMath.hpp"
-#include "common/FTag2.hpp"
+#include "common/FTag2Payload.hpp"
 
 #include "tracker/FTag2Tracker.hpp"
 
@@ -16,6 +16,7 @@
 #include <ftag2/CamTestbenchConfig.h>
 #include "ftag2/TagDetections.h"
 
+#include "common/FTag2Pose.hpp"
 #include "tracker/ParticleFilter.hpp"
 #include "std_msgs/Float64MultiArray.h"
 
@@ -30,12 +31,9 @@ typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer
 
 
 #define CV_SHOW_IMAGES
-//#define DISPLAY_DECODED_TAG_PAYLOADS
+#define DISPLAY_DECODED_TAG_PAYLOADS
 
 #undef PARTICLE_FILTER
-
-#define DECODE_PAYLOAD_N_STD_THRESH (3)
-
 
 
 namespace ftag2 {
@@ -379,6 +377,17 @@ public:
     } // Scan through all detected quads
 
 
+
+    if (tags.size() > 0) {
+      //      NODELET_INFO_STREAM('\n' << ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+    } else if (quads.size() > 0) {
+      //      NODELET_WARN_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+    } else {
+      //      NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
+    }
+
+
+
     // Post-process largest detected tag
     if (tags.size() >= 1) {
       const FTag2Marker& firstTag = tags[0];
@@ -456,13 +465,14 @@ public:
       markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
       const double* phasesPtr = (double*) tag.payload.phases.data;
       markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
-      markerInfoMsg.phaseVars = tag.payload.phaseVariances;
       markerInfoMsg.hasSignature = tag.payload.hasSignature;
-      markerInfoMsg.hasValidXORs = tag.payload.hasValidXORs;
-      markerInfoMsg.bitChunksStr = tag.payload.bitChunksStr;
-      markerInfoMsg.decodedPayloadStr = tag.payload.decodedPayloadStr;
-      markerInfoMsg.numDecodedPhases = tag.payload.numDecodedPhases;
-      markerInfoMsg.numDecodedSections = tag.payload.numDecodedSections;
+      markerInfoMsg.hasValidXORs = false;
+      markerInfoMsg.hasValidCRC = false;
+      markerInfoMsg.payloadOct = tag.payload.bitChunksStr;
+      markerInfoMsg.xorBin = "";
+      markerInfoMsg.signature = tag.payload.signature;
+      markerInfoMsg.CRC12Expected = 0;
+      markerInfoMsg.CRC12Decoded = 0;
       markerInfoPub.publish(markerInfoMsg);
 
       tf::Quaternion rMat(tags[0].pose.orientation_x,tags[0].pose.orientation_y,tags[0].pose.orientation_z,tags[0].pose.orientation_w);
@@ -485,12 +495,16 @@ public:
     }
 
     // Udpate marker filter (with or without new tags)
-    FT.step(tags);
+    FT.step(tags); // @DAVID: IS THIS CORRECT?
 
     // Decode tracked payloads
+    double nStdThresh = 3; // TODO: 1 push to #define or cfg param
     for (MarkerFilter& tracked_tag: FT.filters) {
-      FTag2Decoder::decodePayload(tracked_tag.hypothesis.payload, DECODE_PAYLOAD_N_STD_THRESH);
+      FTag2Decoder::decodePayload(tracked_tag.hypothesis.payload, nStdThresh);
     }
+
+
+
 
 #ifdef PARTICLE_FILTER
     if (tracking == true)
@@ -569,7 +583,7 @@ public:
 #else
       if (trackedPayload.numDecodedPhases >= 8) {
         drawDecodedMarker(overlaidImg, trackedTag.hypothesis.corners,
-            trackedPayload.bitChunksStr,
+            trackedTag.hypothesis.payload.bitChunksStr,
             cv::FONT_HERSHEY_SCRIPT_SIMPLEX, 1, 0.4,
             CV_RGB(0, 255, 255), CV_RGB(0, 0, 255),
             CV_RGB(255, 0, 0), CV_RGB(0, 255, 255),

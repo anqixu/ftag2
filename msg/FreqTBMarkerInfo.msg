@@ -7,17 +7,17 @@ float64 markerPixelWidth
 float64[] mags
 float64[] phases
 
-float64[] phaseVars
-
 float64 radius
 float64 z
 float64 oop_rotation
 
 bool hasSignature
 bool hasValidXORs
+bool hasValidCRC
 
-string bitChunksStr
-string decodedPayloadStr
+string payloadOct
+string xorBin
 
-uint64 numDecodedPhases
-uint64 numDecodedSections
+uint64 signature
+uint64 CRC12Expected
+uint64 CRC12Decoded

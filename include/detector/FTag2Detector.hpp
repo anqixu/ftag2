@@ -9,7 +9,7 @@
 #include <cmath>
 #include "common/VectorAndCircularMath.hpp"
 #include "common/BaseCV.hpp"
-#include "common/FTag2.hpp"
+#include "common/FTag2Marker.hpp"
 
 
 struct Quad {

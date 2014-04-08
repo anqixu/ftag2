@@ -9,8 +9,8 @@
 #define FTAG2TRACKER_HPP_
 
 #include "tracker/MarkerFilter.hpp"
-#include "common/FTag2.hpp"
-#include <cmath>
+#include "common/FTag2Marker.hpp"
+#include <math.h>
 
 using namespace std;
 
