@@ -288,7 +288,8 @@ bool isFiveConnQuad(const PartialQuadDFTParams& data,
 };
 
 
-std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
+#ifdef DEPRECATED
+std::list<Quad> detectQuadsOld(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle, double maxEndptDist) {
   std::list<Quad> quads;
 
@@ -403,9 +404,10 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
 
   return quads;
 };
+#endif
 
 
-std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
+std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle, double maxTIntDistRatio, double maxEndptDistRatio,
     double maxCornerGapEndptDistRatio,
     double maxEdgeGapDistRatio, double maxEdgeGapAlignAngle,

@@ -263,7 +263,7 @@ public:
 
     // 2. Detect quadrilaterals
     quadP.tic();
-    std::list<Quad> quads = detectQuadsNew(segments,
+    std::list<Quad> quads = detectQuads(segments,
         params.quadMinAngleIntercept*degree,
         params.quadMaxTIntDistRatio,
         params.quadMaxEndptDistRatio,
@@ -313,7 +313,7 @@ public:
       // Decode tag
       decoderP.tic();
       try {
-        currTag = FTag2Decoder::decodeTag(quadImg, currQuad,
+        currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
             params.markerWidthM,
             cameraIntrinsic, cameraDistortion,
             params.tagMaxStripAvgDiff,
@@ -364,7 +364,7 @@ public:
     // Publish image overlaid with detected markers
     cv::Mat processedImg = sourceImg.clone();
     for (const FTag2Marker& tag: tags) {
-      drawTag(processedImg, tag.corners);
+      drawQuadWithCorner(processedImg, tag.corners);
     }
     cv_bridge::CvImage cvProcessedImg(std_msgs::Header(),
         sensor_msgs::image_encodings::RGB8, processedImg);
@@ -423,7 +423,7 @@ public:
         cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
         cout << "detectQuads: " << quadP.getStatsString() << endl;
         cout << "extractTags: " << quadExtractorP.getStatsString() << endl;
-        cout << "decodeTag: " << decoderP.getStatsString() << endl;
+        cout << "decodeQuad: " << decoderP.getStatsString() << endl;
         cout << "Pipeline Duration: " << durationP.getStatsString() << endl;
         cout << "Pipeline Rate: " << rateP.getStatsString() << endl;
         latestProfTime = currTime;

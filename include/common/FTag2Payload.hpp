@@ -12,8 +12,13 @@ struct FTag2Payload {
 
 	bool hasSignature;
 
-	std::string payloadOct;
-	std::string payloadBin;
+	bool hasValidXORs;
+
+	std::string bitChunksStr;
+	std::string decodedPayloadStr;
+
+	unsigned int numDecodedPhases;
+	unsigned int numDecodedSections;
 
 	cv::Mat payloadChunks;
 
@@ -34,10 +39,11 @@ struct FTag2Payload {
 
 	cv::Mat mags;
 	cv::Mat phases;
-	cv::Mat bitChunks; // TEMP: 2 bitChunks == graycoded phases; payloadChunks = de-graycoded phases
+	cv::Mat bitChunks; // TODO: 1 remove bitChunks and payloadChunks (since it's confusing whether they are storing decodedPayload contents, or single-tag contents)
 
 	FTag2Payload (): phaseVariances(), hasSignature(false),
-			payloadOct(""), payloadBin(""), signature(0) {
+	    hasValidXORs(false), bitChunksStr(""), decodedPayloadStr(""),
+	    numDecodedPhases(0), numDecodedSections(0), signature(0) {
 		for (int i = 0; i < 5; i++) { phaseVariances.push_back(0); }
 		    payloadChunks = cv::Mat::ones(6, 5, CV_8SC1) * -1;
 	};
@@ -46,8 +52,11 @@ struct FTag2Payload {
 	FTag2Payload(const FTag2Payload& other) :
 	  phaseVariances(other.phaseVariances),
 	  hasSignature(other.hasSignature),
-    payloadOct(other.payloadOct),
-    payloadBin(other.payloadBin),
+	  hasValidXORs(other.hasValidXORs),
+	  bitChunksStr(other.bitChunksStr),
+	  decodedPayloadStr(other.decodedPayloadStr),
+	  numDecodedPhases(other.numDecodedPhases),
+	  numDecodedSections(other.numDecodedSections),
     payloadChunks(other.payloadChunks.clone()),
     signature(other.signature),
     horzRays(other.horzRays.clone()),
@@ -67,8 +76,11 @@ struct FTag2Payload {
 	void operator=(const FTag2Payload& other) {
 	  phaseVariances = other.phaseVariances;
     hasSignature = other.hasSignature;
-    payloadOct = other.payloadOct;
-    payloadBin = other.payloadBin;
+    hasValidXORs = other.hasValidXORs;
+    bitChunksStr = other.bitChunksStr;
+    decodedPayloadStr = other.decodedPayloadStr;
+    numDecodedPhases = other.numDecodedPhases;
+    numDecodedSections = other.numDecodedSections;
     payloadChunks = other.payloadChunks.clone();
     signature = other.signature;
     horzRays = other.horzRays.clone();
@@ -88,15 +100,13 @@ struct FTag2Payload {
 
 	bool withinPhaseRange(const FTag2Payload& marker);
 
+
 	double sumOfStds() {
 		double sum = 0.0;
 		for ( double d : phaseVariances )
 			sum += sqrt(d);
 		return sum;
-	}
-
-
-	virtual void decodeSignature() {};
+	};
 };
 
 

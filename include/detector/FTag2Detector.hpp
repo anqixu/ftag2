@@ -77,11 +77,6 @@ std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
 
 std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle = 30.0*vc_math::degree,
-    double maxEndptDist = 6.0);
-
-
-std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
-    double intSegMinAngle = 30.0*vc_math::degree,
     double maxTIntDistRatio = 0.25,
     double maxEndptDistRatio = 0.1,
     double maxCornerGapEndptDistRatio = 0.2,
@@ -90,33 +85,65 @@ std::list<Quad> detectQuadsNew(const std::vector<cv::Vec4i>& segments,
     double minQuadWidth = 15.0);
 
 
-inline void drawQuad(cv::Mat img, const std::vector<cv::Point2f>& corners) {
-  cv::line(img, corners[0], corners[1], CV_RGB(0, 255, 0), 3);
-  cv::line(img, corners[0], corners[1], CV_RGB(255, 0, 255), 1);
-  cv::line(img, corners[1], corners[2], CV_RGB(0, 255, 0), 3);
-  cv::line(img, corners[1], corners[2], CV_RGB(255, 0, 255), 1);
-  cv::line(img, corners[2], corners[3], CV_RGB(0, 255, 0), 3);
-  cv::line(img, corners[2], corners[3], CV_RGB(255, 0, 255), 1);
-  cv::line(img, corners[3], corners[0], CV_RGB(0, 255, 0), 3);
-  cv::line(img, corners[3], corners[0], CV_RGB(255, 0, 255), 1);
+inline void drawQuad(cv::Mat img, const std::vector<cv::Point2f>& corners,
+    CvScalar edgeColor = CV_RGB(0, 255, 0), CvScalar fillColor = CV_RGB(255, 0, 255)) {
+  cv::line(img, corners[0], corners[1], edgeColor, 3);
+  cv::line(img, corners[0], corners[1], fillColor, 1);
+  cv::line(img, corners[1], corners[2], edgeColor, 3);
+  cv::line(img, corners[1], corners[2], fillColor, 1);
+  cv::line(img, corners[2], corners[3], edgeColor, 3);
+  cv::line(img, corners[2], corners[3], fillColor, 1);
+  cv::line(img, corners[3], corners[0], edgeColor, 3);
+  cv::line(img, corners[3], corners[0], fillColor, 1);
 };
 
 
-inline void drawTag(cv::Mat img, const std::vector<cv::Point2f>& corners) {
-  cv::line(img, corners[0], corners[1], CV_RGB(0, 0, 255), 3);
-  cv::line(img, corners[0], corners[1], CV_RGB(255, 255, 0), 1);
-  cv::line(img, corners[1], corners[2], CV_RGB(0, 0, 255), 3);
-  cv::line(img, corners[1], corners[2], CV_RGB(255, 255, 0), 1);
-  cv::line(img, corners[2], corners[3], CV_RGB(0, 0, 255), 3);
-  cv::line(img, corners[2], corners[3], CV_RGB(255, 255, 0), 1);
-  cv::line(img, corners[3], corners[0], CV_RGB(0, 0, 255), 3);
-  cv::line(img, corners[3], corners[0], CV_RGB(255, 255, 0), 1);
-  cv::circle(img, corners[0], 5, CV_RGB(255, 0, 0));
-  cv::circle(img, corners[0], 3, CV_RGB(0, 255, 255));
+inline void drawQuadWithCorner(cv::Mat img, const std::vector<cv::Point2f>& corners,
+    CvScalar lineEdgeColor = CV_RGB(64, 64, 255), CvScalar lineFillColor = CV_RGB(255, 255, 64),
+    CvScalar cornerEdgeColor = CV_RGB(255, 0, 0), CvScalar cornerFillColor = CV_RGB(0, 255, 255)) {
+  cv::line(img, corners[0], corners[1], cornerEdgeColor, 3);
+  cv::line(img, corners[0], corners[1], cornerFillColor, 1);
+  cv::line(img, corners[1], corners[2], cornerEdgeColor, 3);
+  cv::line(img, corners[1], corners[2], cornerFillColor, 1);
+  cv::line(img, corners[2], corners[3], cornerEdgeColor, 3);
+  cv::line(img, corners[2], corners[3], cornerFillColor, 1);
+  cv::line(img, corners[3], corners[0], cornerEdgeColor, 3);
+  cv::line(img, corners[3], corners[0], cornerFillColor, 1);
+  cv::circle(img, corners[0], 5, cornerEdgeColor);
+  cv::circle(img, corners[0], 3, cornerFillColor);
 };
 
 
-inline void drawQuads(cv::Mat img, std::list<Quad> quads) {
+inline void drawDecodedMarker(cv::Mat img, const std::vector<cv::Point2f>& corners, std::string str,
+    int fontFace = cv::FONT_HERSHEY_SCRIPT_SIMPLEX, int fontThickness = 1, double fontScale = 0.4,
+    CvScalar textBoxColor = CV_RGB(0, 0, 255), CvScalar textColor = CV_RGB(0, 255, 255),
+    CvScalar lineEdgeColor = CV_RGB(0, 0, 255), CvScalar lineFillColor = CV_RGB(0, 255, 255),
+    CvScalar cornerEdgeColor = CV_RGB(255, 0, 0), CvScalar cornerFillColor = CV_RGB(0, 255, 255)) {
+  drawQuadWithCorner(img, corners, lineEdgeColor, lineFillColor, cornerEdgeColor, cornerFillColor);
+
+  // Compute text size and position
+  double mx = 0, my = 0;
+  for (const cv::Point2f& pt: corners) {
+    mx += pt.x;
+    my += pt.y;
+  }
+  mx /= corners.size();
+  my /= corners.size();
+
+  int baseline = 0;
+  cv::Size textSize = cv::getTextSize(str, fontFace, fontScale, fontThickness, &baseline);
+  cv::Point textCenter(mx - textSize.width/2, my);
+
+  // Draw filled text box and then text
+  cv::rectangle(img, textCenter + cv::Point(0, baseline),
+      textCenter + cv::Point(textSize.width, -textSize.height),
+      textBoxColor, CV_FILLED);
+  cv::putText(img, str, textCenter, fontFace, fontScale,
+      textColor, fontThickness, 8);
+};
+
+
+inline void drawQuads(cv::Mat img, std::list<Quad> quads) { // TODO: 0 refactor out
   for (Quad& quad: quads) {
     cv::line(img, quad.corners[0], quad.corners[1], CV_RGB(0, 255, 0), 3);
     cv::line(img, quad.corners[0], quad.corners[1], CV_RGB(255, 0, 255), 1);

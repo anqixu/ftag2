@@ -9,7 +9,7 @@
 
 class FTag2Decoder {
 public:
-  static FTag2Marker decodeTag(const cv::Mat quadImg, const Quad& quad,
+  static FTag2Marker decodeQuad(const cv::Mat quadImg, const Quad& quad,
       double markerWidthM,
       const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
       double quadMaxStripAvgDiff,
@@ -34,9 +34,7 @@ public:
 
   static unsigned char adjustPSK(double phaseDeg, unsigned int pskSize);
 
-  static cv::Mat decodePhases(const cv::Mat phases,
-      const std::vector<double> phaseVars, const std::vector<int> bitsPerFreq,
-      double nStdThresh, bool grayCode = false);
+  static void decodePayload(FTag2Payload& tag, double nStdThresh);
 };
 
 

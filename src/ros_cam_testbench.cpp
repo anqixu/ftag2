@@ -1,3 +1,5 @@
+#ifdef DEPRECATED_SINCE_DETECTQUADS_REMOVED
+
 #include "detector/FTag2Detector.hpp"
 #include "decoder/FTag2Decoder.hpp"
 #include "tracker/ParticleFilter.hpp"
@@ -701,3 +703,4 @@ int main(int argc, char** argv)
   image_pub_.publish(cv_ptr->toImageMsg());
 }*/
 
+#endif
