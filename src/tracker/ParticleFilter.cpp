@@ -25,35 +25,31 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
 }
 */
 
-ParticleFilter::ParticleFilter(): number_of_particles(100), disable_resampling(false), position_std(0.15), orientation_std(0.15),
-		position_noise_std(0.15), orientation_noise_std(0.15),
-		velocity_noise_std(0.01), acceleration_noise_std(0.01),
-		log_sum_of_weights(0.0), log_max_weight(0.0),
-		current_time_step_ms(0) { };
+ParticleFilter::ParticleFilter():
+				number_of_particles(100), disable_resampling(false), position_std(0.1), orientation_std(0.1),
+				position_noise_std(0.2), orientation_noise_std(0.2),
+				velocity_noise_std(0.01), acceleration_noise_std(0.01),
+				log_sum_of_weights(0.0), log_max_weight(0.0),
+				current_time_step_ms(0) { };
 
 ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations):
-				number_of_particles(numP), position_std(0.15), orientation_std(0.15),
-				position_noise_std(0.15), orientation_noise_std(0.15),
-				velocity_noise_std(0.01), acceleration_noise_std(0.01) {
-
-	log_sum_of_weights = 0;
-	current_time_step_ms = 0;
+				number_of_particles(numP), position_std(0.1), orientation_std(0.1),
+				position_noise_std(0.2), orientation_noise_std(0.2),
+				velocity_noise_std(0.01), acceleration_noise_std(0.01),
+				log_sum_of_weights(0.0), log_max_weight(0.0),
+				current_time_step_ms(0) {
 
 	std::chrono::duration<int,std::milli> start_delay(50);
 
-	std::chrono::milliseconds ms_(100);
-	unsigned long long ms = ms_.count();
+	//std::chrono::milliseconds ms_(100);
+	//unsigned long long ms = ms_.count();
 
 	starting_time = ParticleFilter::clock::now() - std::chrono::milliseconds(100);
 	current_time = starting_time;
 
 	//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
 
-	number_of_particles = numP;
-
 	int numObservations = observations.size();
-
-	log_max_weight = 0.0;
 
 //	std::cout << "Creating PF" << std::endl;
 
@@ -79,31 +75,28 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations):
 	disable_resampling = false;
 }
 
+
 ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_,
 		double orientation_std_, double position_noise_std_, double orientation_noise_std_,
 		double velocity_noise_std_, double acceleration_noise_std_ ):
 				number_of_particles(numP), position_std(position_std_), orientation_std(orientation_std_),
 				position_noise_std(position_noise_std_), orientation_noise_std(orientation_noise_std_),
-				velocity_noise_std(velocity_noise_std_), acceleration_noise_std(acceleration_noise_std_) {
-
-	current_time_step_ms = 0;
-	log_sum_of_weights = 0;
+				velocity_noise_std(velocity_noise_std_), acceleration_noise_std(acceleration_noise_std_),
+				log_sum_of_weights(0.0), log_max_weight(0.0),
+				current_time_step_ms(0) {
 
 	std::chrono::duration<int,std::milli> start_delay(50);
 
-	std::chrono::milliseconds ms_(100);
-	unsigned long long ms = ms_.count();
+//	std::chrono::milliseconds ms_(100);
+//	unsigned long long ms = ms_.count();
 
 	starting_time = ParticleFilter::clock::now() - std::chrono::milliseconds(100);
 	current_time = starting_time;
 
 	//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
 
-	number_of_particles = numP;
 
 	int numObservations = observations.size();
-
-	log_max_weight = 0.0;
 
 	std::cout << "Creating PF" << std::endl;
 
@@ -130,25 +123,21 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, do
 }
 
 ParticleFilter::ParticleFilter(int numP, FTag2Pose observation) :
-		number_of_particles(numP), position_std(0.15), orientation_std(0.15),
-		position_noise_std(0.15), orientation_noise_std(0.15),
-		velocity_noise_std(0.01), acceleration_noise_std(0.01) {
+				number_of_particles(numP), position_std(0.1), orientation_std(0.1),
+				position_noise_std(0.2), orientation_noise_std(0.2),
+				velocity_noise_std(0.01), acceleration_noise_std(0.01),
+				log_sum_of_weights(0.0), log_max_weight(0.0),
+				current_time_step_ms(0){
 
-	log_sum_of_weights = 0;
-	current_time_step_ms = 0;
 	std::chrono::duration<int,std::milli> start_delay(50);
 
 	std::chrono::milliseconds ms_(100);
-	unsigned long long ms = ms_.count();
+	//unsigned long long ms = ms_.count();
 
 	starting_time = ParticleFilter::clock::now() - std::chrono::milliseconds(100);
 	current_time = starting_time;
 
 //	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
-
-	number_of_particles = numP;
-
-	log_max_weight = 0.0;
 
 	std::cout << "Creating PF" << std::endl;
 
@@ -189,11 +178,12 @@ void ParticleFilter::updateParameters(int numP, double position_std_, double ori
 	std::cout << "Orientation STD: " << orientation_std << std::endl;
 	std::cout << "Position noise STD: " << position_noise_std << std::endl;
 	std::cout << "Orientation noise STD: " << orientation_noise_std << std::endl;
-#endif
+	#endif
 }
 
 void ParticleFilter::step(FTag2Pose observation)
 {
+	new_observations.clear();
 	new_observations.push_back(observation);
 	step();
 }
@@ -230,6 +220,7 @@ void ParticleFilter::measurementUpdate(std::vector<FTag2Pose> observations) {
 	}
 	disable_resampling = false;
 
+	cout << "Obs. update. Stds: ( " << position_std << ", " << orientation_std << " )" << endl;
 	for (ObjectHypothesis& particle: particles) {
 		particle.measurementUpdate(observations,position_std,orientation_std);
 	}
@@ -280,15 +271,16 @@ void ParticleFilter::normalizeWeights(){
 		sum_squared_w += w_ * w_;
 	}
 	double mean_weight = sum_w/number_of_particles;
+#ifndef SILENT
 	double Neff = 1.0 / sum_squared_w;
-
+#endif
 	double sum_square_diffs = 0.0;
 	for ( ObjectHypothesis& particle: particles )
 	{
 		sum_square_diffs += (exp(particle.getLogWeight()) - mean_weight) * (exp(particle.getLogWeight()) - mean_weight);
 	}
-	double weights_std = sqrt(sum_square_diffs / number_of_particles);
 #ifndef SILENT
+	double weights_std = sqrt(sum_square_diffs / number_of_particles);
 	std::cout << "REAL SUM OF WEIGHTS: " << sum_w << std::endl;
 	std::cout << "MEAN WEIGHT: " << mean_weight << std::endl;
 	std::cout << "WEIGHT STD: " << weights_std << std::endl;

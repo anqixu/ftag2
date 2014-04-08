@@ -33,6 +33,7 @@ public:
 	int get_frames_without_detection() { return frames_without_detection; }
 	void step( FTag2Marker detection );
 	void step( );
+	void updateParameters(int numberOfParticles_, double position_std_, double orientation_std_, double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_);
 };
 
 #endif /* MARKERFILTER_HPP_ */

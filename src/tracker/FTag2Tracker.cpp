@@ -84,16 +84,15 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 {
 //	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
 
-	unsigned int i=0;
-	for ( FTag2Marker f: detectedTags )
-	{
+//	for ( FTag2Marker f: detectedTags )
+//	{
 //		std::cout << "Detected tags " << i << ": Variances: ";
-		for ( double d: f.payload.phaseVariances )
-		{
+//		for ( double d: f.payload.phaseVariances )
+//		{
 //			cout << d << " ,";
-		}
+//		}
 //		cout << endl;
-	}
+//	}
 	correspondence( detectedTags );
 
 //	cout << "*** After correspondence:  ***" << endl;
@@ -141,5 +140,12 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 		ready_to_be_killed.clear();
 	}
 //	std::cout << "After current iteration, " << filters.size() << " filters exist." << endl;
+}
+
+void FTag2Tracker::updateParameters(int numberOfParticles_, double position_std_, double orientation_std_, double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_)
+{
+	std::cout << "UPDATING PARAMETERS IN FTAG2TRACKER" << std::endl;
+	for ( MarkerFilter f: filters )
+		f.updateParameters(numberOfParticles_, position_std_, orientation_std_, position_noise_std_, orientation_noise_std_, velocity_noise_std_, acceleration_noise_std_);
 }
 

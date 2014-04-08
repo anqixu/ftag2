@@ -1,6 +1,6 @@
 #include "common/FTag2Payload.hpp"
 
-#define N_SIGMA 3
+#define N_SIGMA 2
 #define ALLOWED_MISSMATCHES 10
 
 using namespace std;

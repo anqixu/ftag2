@@ -30,11 +30,11 @@ public:
   typedef std::chrono::system_clock::time_point time_point;
 
 private:
-	unsigned int number_of_particles;
 	std::vector< ObjectHypothesis > particles;
 	std::vector<double> weights;
 	static double sampling_percent;
 	bool disable_resampling;
+	unsigned int number_of_particles;
 	double position_std;
 	double orientation_std;
 	double position_noise_std;

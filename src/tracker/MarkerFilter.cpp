@@ -14,7 +14,7 @@ MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 	marker_id = num_Markers;
 	std::vector<FTag2Pose> observations;
 	observations.push_back(detection.pose);
-	PF = ParticleFilter(50, observations);
+	PF = ParticleFilter(100, observations);
 	IF = PayloadFilter();
 	frames_without_detection = 0;
 };
@@ -44,3 +44,7 @@ void MarkerFilter::step() {
 
 	frames_without_detection++;
 };
+
+void MarkerFilter::updateParameters(int numberOfParticles_, double position_std_, double orientation_std_, double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_) {
+	PF.updateParameters(numberOfParticles_, position_std_, orientation_std_, position_noise_std_, orientation_noise_std_, velocity_noise_std_, acceleration_noise_std_);
+}
