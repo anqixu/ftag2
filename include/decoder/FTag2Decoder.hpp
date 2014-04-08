@@ -3,7 +3,7 @@
 
 
 #include <opencv2/core/core.hpp>
-#include "common/FTag2Marker.hpp"
+#include "common/FTag2.hpp"
 #include "detector/FTag2Detector.hpp"
 
 
