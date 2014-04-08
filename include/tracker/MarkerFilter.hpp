@@ -21,6 +21,8 @@ private:
 	int frames_without_detection;
 	ParticleFilter PF;
 	PayloadFilter IF;
+	static int num_Markers;
+	int marker_id;
 
 public:
 	FTag2Marker hypothesis;

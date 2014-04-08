@@ -96,7 +96,7 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 	}
 	correspondence( detectedTags );
 
-	cout << "After correspondence: " << endl;
+	cout << "*** After correspondence:  ***" << endl;
 	cout << "Filters: " << filters.size() << endl;
 	cout << filters_with_match.size() << " filters matched" << endl;
 	cout << to_be_spawned.size() << " filters spawned" << endl;
@@ -124,7 +124,7 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 	/* UPDATE FILTERS: FILTERS WITH MATCHING DETECTED TAG */
 	while ( !filters_with_match.empty() && !detection_matches.empty() )
 	{
-//		cout << "UPDATING MATCHED FILTERS" << endl;
+		cout << "UPDATING MATCHED FILTERS" << endl;
 		filters_with_match.back().step(detection_matches.back());
 		filters.push_back( filters_with_match.back() );
 		filters_with_match.pop_back();
@@ -144,7 +144,7 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 	/* UPDATE FILTERS: FILTERS WITH NO MATCHING DETECTED TAGS */
 	while ( !not_matched.empty() )
 	{
-//		cout << "UPDATING NOT MATCHED FILTER" << endl;
+		cout << "UPDATING NOT MATCHED FILTER" << endl;
 		not_matched.back().step();
 		filters.push_back(not_matched.back());
 		not_matched.pop_back();

@@ -130,9 +130,9 @@ void ObjectHypothesis::motionUpdate(double position_noise_std, double orientatio
 	double accel_noise_y = distribution_accel(generator);
 	double accel_noise_z = distribution_accel(generator);
 
-	pose.position_x += position_noise_x + (vel_x + vel_noise_x)*current_time_step_ms/1000 + (1.0/2.0)*(accel_x + accel_noise_x)*(current_time_step_ms/1000)*(current_time_step_ms/1000);
-	pose.position_y += position_noise_y + (vel_y + vel_noise_y)*current_time_step_ms/1000 + (1.0/2.0)*(accel_y + accel_noise_y)*(current_time_step_ms/1000)*(current_time_step_ms/1000);
-	pose.position_z += position_noise_z + (vel_z + vel_noise_z)*current_time_step_ms/1000 + (1.0/2.0)*(accel_z + accel_noise_z)*(current_time_step_ms/1000)*(current_time_step_ms/1000);
+	pose.position_x += position_noise_x;// + (vel_x + vel_noise_x)*current_time_step_ms/1000;// + (1.0/2.0)*(accel_x + accel_noise_x)*(current_time_step_ms/1000)*(current_time_step_ms/1000);
+	pose.position_y += position_noise_y;// + (vel_y + vel_noise_y)*current_time_step_ms/1000;// + (1.0/2.0)*(accel_y + accel_noise_y)*(current_time_step_ms/1000)*(current_time_step_ms/1000);
+	pose.position_z += position_noise_z;// + (vel_z + vel_noise_z)*current_time_step_ms/1000;// + (1.0/2.0)*(accel_z + accel_noise_z)*(current_time_step_ms/1000)*(current_time_step_ms/1000);
 
 	vel_x = (pose.position_x - pose_prev.position_x)/(current_time_step_ms/1000);
 	vel_y = (pose.position_y - pose_prev.position_y)/(current_time_step_ms/1000);

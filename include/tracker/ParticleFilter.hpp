@@ -33,8 +33,6 @@ private:
 	unsigned int number_of_particles;
 	std::vector< ObjectHypothesis > particles;
 	std::vector<double> weights;
-	double log_max_weight;
-	double log_sum_of_weights;
 	static double sampling_percent;
 	bool disable_resampling;
 	double position_std;
@@ -43,6 +41,8 @@ private:
 	double orientation_noise_std;
 	double velocity_noise_std;
 	double acceleration_noise_std;
+	double log_max_weight;
+	double log_sum_of_weights;
 	time_point starting_time;
 	time_point current_time;
 	time_point last_observation_time;
@@ -51,22 +51,21 @@ private:
 	vector<FTag2Pose> new_observations;
 
 public:
-	ParticleFilter(){ number_of_particles = 100; disable_resampling = false; };
-	ParticleFilter(int numP, std::vector<FTag2Pose> observations, ParticleFilter::time_point starting_time_);
+	ParticleFilter();
+	ParticleFilter(int numP, std::vector<FTag2Pose> observations);
 	ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_, double orientation_std_,
-			double position_noise_std, double orientation_noise_std, double velocity_noise_std, double acceleration_noise_std_,
-			time_point starting_time_);
-	ParticleFilter(int numP, FTag2Pose observation, ParticleFilter::time_point starting_time_);
+			double position_noise_std, double orientation_noise_std, double velocity_noise_std, double acceleration_noise_std_);
+	ParticleFilter(int numP, FTag2Pose observation);
 	void updateParameters(int numP, double position_std_, double orientation_std_,
 			double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std);
 	virtual ~ParticleFilter();
 	void step(FTag2Pose observation);
 	void step();
-	void motionUpdate(time_point new_time);
+	void motionUpdate( );
 	void normalizeWeights();
 	void resample();
 	void measurementUpdate(std::vector<FTag2Pose> observations);
-	void displayParticles();
+	void displayParticles(int frame_id);
 	FTag2Pose computeMeanPose();
 	FTag2Pose computeModePose();
 };

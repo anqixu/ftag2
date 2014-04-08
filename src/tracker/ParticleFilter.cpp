@@ -7,9 +7,9 @@
 
 #include "tracker/ParticleFilter.hpp"
 
-#ifndef SILENT
-	#define SILENT
-#endif
+//#ifndef SILENT
+//	#define SILENT
+//#endif
 
 double ParticleFilter::sampling_percent = 0.9;
 
@@ -25,17 +25,26 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
 }
 */
 
-ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
-		ParticleFilter::time_point starting_time_):
+ParticleFilter::ParticleFilter(): number_of_particles(100), disable_resampling(false), position_std(0.15), orientation_std(0.15),
+		position_noise_std(0.15), orientation_noise_std(0.15),
+		velocity_noise_std(0.01), acceleration_noise_std(0.01),
+		log_sum_of_weights(0.0), log_max_weight(0.0),
+		current_time_step_ms(0) { };
+
+ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations):
 				number_of_particles(numP), position_std(0.15), orientation_std(0.15),
 				position_noise_std(0.15), orientation_noise_std(0.15),
 				velocity_noise_std(0.01), acceleration_noise_std(0.01) {
+
+	log_sum_of_weights = 0;
+	current_time_step_ms = 0;
+
 	std::chrono::duration<int,std::milli> start_delay(50);
 
 	std::chrono::milliseconds ms_(100);
 	unsigned long long ms = ms_.count();
 
-	starting_time = starting_time_ - std::chrono::milliseconds(100);
+	starting_time = ParticleFilter::clock::now() - std::chrono::milliseconds(100);
 	current_time = starting_time;
 
 	//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
@@ -72,18 +81,20 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
 
 ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_,
 		double orientation_std_, double position_noise_std_, double orientation_noise_std_,
-		double velocity_noise_std_, double acceleration_noise_std_,
-		ParticleFilter::time_point starting_time_ ):
+		double velocity_noise_std_, double acceleration_noise_std_ ):
 				number_of_particles(numP), position_std(position_std_), orientation_std(orientation_std_),
 				position_noise_std(position_noise_std_), orientation_noise_std(orientation_noise_std_),
 				velocity_noise_std(velocity_noise_std_), acceleration_noise_std(acceleration_noise_std_) {
+
+	current_time_step_ms = 0;
+	log_sum_of_weights = 0;
 
 	std::chrono::duration<int,std::milli> start_delay(50);
 
 	std::chrono::milliseconds ms_(100);
 	unsigned long long ms = ms_.count();
 
-	starting_time = starting_time_ - std::chrono::milliseconds(100);
+	starting_time = ParticleFilter::clock::now() - std::chrono::milliseconds(100);
 	current_time = starting_time;
 
 	//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
@@ -118,16 +129,19 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, do
 	disable_resampling = false;
 }
 
-ParticleFilter::ParticleFilter(int numP, FTag2Pose observation, ParticleFilter::time_point starting_time_) :
+ParticleFilter::ParticleFilter(int numP, FTag2Pose observation) :
 		number_of_particles(numP), position_std(0.15), orientation_std(0.15),
-		position_noise_std(0.15), orientation_noise_std(0.15) {
+		position_noise_std(0.15), orientation_noise_std(0.15),
+		velocity_noise_std(0.01), acceleration_noise_std(0.01) {
 
+	log_sum_of_weights = 0;
+	current_time_step_ms = 0;
 	std::chrono::duration<int,std::milli> start_delay(50);
 
 	std::chrono::milliseconds ms_(100);
 	unsigned long long ms = ms_.count();
 
-	starting_time = starting_time_ - std::chrono::milliseconds(100);
+	starting_time = ParticleFilter::clock::now() - std::chrono::milliseconds(100);
 	current_time = starting_time;
 
 //	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
@@ -186,7 +200,7 @@ void ParticleFilter::step(FTag2Pose observation)
 
 void ParticleFilter::step()
 {
-	motionUpdate(ParticleFilter::clock::now());
+	motionUpdate();
 	measurementUpdate(new_observations);
 	normalizeWeights();
 	estimated_pose = computeModePose();
@@ -196,9 +210,11 @@ void ParticleFilter::step()
 	new_observations.clear();
 }
 
-void ParticleFilter::motionUpdate( ParticleFilter::time_point new_time ) {
+void ParticleFilter::motionUpdate( ) {
+	time_point new_time = ParticleFilter::clock::now();
 	std::chrono::milliseconds current_time_step_ = std::chrono::duration_cast<std::chrono::milliseconds>(new_time - current_time);
 	unsigned long long current_time_step_ms = current_time_step_.count();
+
 	current_time = new_time;
 	for( unsigned int i=0; i < number_of_particles; i++ )
 	{
@@ -395,7 +411,8 @@ FTag2Pose ParticleFilter::computeModePose(){
 }
 
 
-void ParticleFilter::displayParticles(){
+void ParticleFilter::displayParticles(int frame_id){
+	cout << "PUBLISHING PARTICLES OF TAG " << frame_id << endl;
 	for ( unsigned int i=0; i<number_of_particles; i++ )
 	{
 		tf::Quaternion rMat(particles[i].getPose().orientation_x,particles[i].getPose().orientation_y,particles[i].getPose().orientation_z,particles[i].getPose().orientation_w);
@@ -404,7 +421,7 @@ void ParticleFilter::displayParticles(){
 		transform.setOrigin( tf::Vector3( particles[i].getPose().position_x, particles[i].getPose().position_y, particles[i].getPose().position_z ) );
 		transform.setRotation( rMat );
 		std::ostringstream frameName;
-		frameName << "Particle_" << i;
+		frameName << "T" << frame_id << "P" << i;
 		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
 //		std::vector<cv::Vec2i> corners = particles[i].getCorners();
 

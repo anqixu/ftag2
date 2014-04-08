@@ -107,7 +107,7 @@ dynCfgSyncReq(false),
     params.phaseVarWeightAngle = 0;
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
-    params.markerWidthM = 0.7;
+    params.markerWidthM = 0.07;
     params.numberOfParticles = 100;
     params.position_std = 0.15;
     params.orientation_std = 0.15;
@@ -562,7 +562,7 @@ dynCfgSyncReq(false),
       if ( tracking == false )
       {
     	  tracking = true;
-    	  PF = ParticleFilter(params.numberOfParticles, tag_observations, ParticleFilter::clock::now() );
+    	  PF = ParticleFilter(params.numberOfParticles, tag_observations );
 //    	  cv::waitKey();
       }
 #endif
@@ -571,7 +571,7 @@ dynCfgSyncReq(false),
 #ifdef PARTICLE_FILTER
     if (tracking == true)
     {
-    	PF.motionUpdate(ParticleFilter::clock::now());
+    	PF.motionUpdate();
     	//cv::waitKey();
     	PF.measurementUpdate(tag_observations);
     	PF.normalizeWeights();

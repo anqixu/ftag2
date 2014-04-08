@@ -229,6 +229,7 @@ public:
       double* cameraIntrinsicPtr = (double*) cameraIntrinsic.data;
       for (int i = 0; i < 9; i++, cameraIntrinsicPtr++) *cameraIntrinsicPtr = cam_info->K[i];
     }
+    std::cout << "Camera Intrinsic Matrix: " << cameraIntrinsic << endl;
     cv_bridge::CvImageConstPtr img = cv_bridge::toCvShare(msg);
     processImage(img->image, msg->header.seq);
   };
