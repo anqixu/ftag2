@@ -17,18 +17,16 @@
 #include <limits>
 #include <math.h>
 
-#include "common/FTag2Pose.hpp"
-#include "tracker/utils.hpp"
+#include "common/FTag2.hpp"
+#include "common/VectorAndCircularMath.hpp"
 
 #ifndef OBJECTHYPOTHESIS_H_
 #define OBJECTHYPOTHESIS_H_
 
-#define PI 3.141592653589793238462643383279502884
-
 #define MS_PER_FRAME 100.0
 
 #define sigma_init_pos 0.1
-#define sigma_init_rot PI/16
+#define sigma_init_rot vc_math::pi/16
 
 using namespace std;
 

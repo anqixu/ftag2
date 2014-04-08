@@ -397,13 +397,11 @@ public:
           const double* phasesPtr = (double*) tag.payload.phases.data;
           markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
           markerInfoMsg.hasSignature = tag.payload.hasSignature;
-          markerInfoMsg.hasValidXORs = false;
-          markerInfoMsg.hasValidCRC = false;
-          markerInfoMsg.payloadOct = tag.payload.bitChunksStr;
-          markerInfoMsg.xorBin = "";
-          markerInfoMsg.signature = tag.payload.signature;
-          markerInfoMsg.CRC12Expected = 0;
-          markerInfoMsg.CRC12Decoded = 0;
+          markerInfoMsg.hasValidXORs = tag.payload.hasValidXORs;
+          markerInfoMsg.bitChunksStr = tag.payload.bitChunksStr;
+          markerInfoMsg.decodedPayloadStr = tag.payload.decodedPayloadStr;
+          markerInfoMsg.numDecodedPhases = tag.payload.numDecodedPhases;
+          markerInfoMsg.numDecodedSections = tag.payload.numDecodedSections;
           markerInfoPub.publish(markerInfoMsg);
 
           // Compute and publish stats
