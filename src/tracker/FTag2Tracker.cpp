@@ -82,49 +82,32 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 
 void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 {
-	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
+//	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
 
 	unsigned int i=0;
 	for ( FTag2Marker f: detectedTags )
 	{
-		std::cout << "Detected tags " << i << ": Variances: ";
+//		std::cout << "Detected tags " << i << ": Variances: ";
 		for ( double d: f.payload.phaseVariances )
 		{
-			cout << d << " ,";
+//			cout << d << " ,";
 		}
-		cout << endl;
+//		cout << endl;
 	}
 	correspondence( detectedTags );
 
-	cout << "*** After correspondence:  ***" << endl;
-	cout << "Filters: " << filters.size() << endl;
-	cout << filters_with_match.size() << " filters matched" << endl;
-	cout << to_be_spawned.size() << " filters spawned" << endl;
-	cout << not_matched.size() << " filters not matched" << endl;
-	cout << ready_to_be_killed.size() << " to be killed" << endl;
+//	cout << "*** After correspondence:  ***" << endl;
+//	cout << "Filters: " << filters.size() << endl;
+//	cout << filters_with_match.size() << " filters matched" << endl;
+//	cout << to_be_spawned.size() << " filters spawned" << endl;
+//	cout << not_matched.size() << " filters not matched" << endl;
+//	cout << ready_to_be_killed.size() << " to be killed" << endl;
 
-
-/*	i=0;
-	for ( MarkerFilter f: filters_with_match )
-		std::cout << "Fiter with match " << i << ": Sum of std: " << f.getHypothesis().payload.sumOfStds() << endl;
-
-	i=0;
-	for ( FTag2Marker f: to_be_spawned )
-		std::cout << "To be spawned " << i << ": Sum of std: " << f.payload.sumOfStds() << endl;
-
-	i=0;
-	for ( MarkerFilter f: not_matched )
-		std::cout << "Not matched " << i << ": Sum of std: " << f.getHypothesis().payload.sumOfStds() << endl;
-
-	i=0;
-	for ( MarkerFilter f: ready_to_be_killed )
-		std::cout << "To be killed " << i << ": Sum of std: " << f.getHypothesis().payload.sumOfStds() << endl;
-*/
 
 	/* UPDATE FILTERS: FILTERS WITH MATCHING DETECTED TAG */
 	while ( !filters_with_match.empty() && !detection_matches.empty() )
 	{
-		cout << "UPDATING MATCHED FILTERS" << endl;
+//		cout << "UPDATING MATCHED FILTERS" << endl;
 		filters_with_match.back().step(detection_matches.back());
 		filters.push_back( filters_with_match.back() );
 		filters_with_match.pop_back();
@@ -144,7 +127,7 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 	/* UPDATE FILTERS: FILTERS WITH NO MATCHING DETECTED TAGS */
 	while ( !not_matched.empty() )
 	{
-		cout << "UPDATING NOT MATCHED FILTER" << endl;
+//		cout << "UPDATING NOT MATCHED FILTER" << endl;
 		not_matched.back().step();
 		filters.push_back(not_matched.back());
 		not_matched.pop_back();
@@ -157,6 +140,6 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags)
 		/* TODO: Properly kill the filters */
 		ready_to_be_killed.clear();
 	}
-	std::cout << "After current iteration, " << filters.size() << " filters exist." << endl;
+//	std::cout << "After current iteration, " << filters.size() << " filters exist." << endl;
 }
 

@@ -7,9 +7,9 @@
 
 #include "tracker/ParticleFilter.hpp"
 
-//#ifndef SILENT
-//	#define SILENT
-//#endif
+#ifndef SILENT
+	#define SILENT
+#endif
 
 double ParticleFilter::sampling_percent = 0.9;
 
@@ -55,7 +55,7 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations):
 
 	log_max_weight = 0.0;
 
-	std::cout << "Creating PF" << std::endl;
+//	std::cout << "Creating PF" << std::endl;
 
 	weights.resize(number_of_particles);
 	particles.resize(number_of_particles);
@@ -73,7 +73,7 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations):
 		//std::cout <<  "Part Pose_y: " << particles[i].getPose().position_y << std::endl;
 		//std::cout <<  "Part Pose_z: " << particles[i].getPose().position_z << std::endl;
 	}
-	std::cout << "Cloud created" << std::endl;
+//	std::cout << "Cloud created" << std::endl;
 	//cv::waitKey();
 
 	disable_resampling = false;

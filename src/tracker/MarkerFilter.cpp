@@ -24,7 +24,7 @@ void MarkerFilter::step( FTag2Marker detection ) {
 	PF.step(detection.pose);
 	hypothesis.corners = detection.corners;
 	hypothesis.pose = PF.computeModePose();
-	PF.displayParticles(marker_id);
+//	PF.displayParticles(marker_id);
 
 	IF.step(detection.payload);
 	IF.getFilteredPayload();
@@ -37,7 +37,7 @@ void MarkerFilter::step() {
 	//std::cout << "MarkerFilter: stepping without detection" << std::endl;
 	PF.step();
 	hypothesis.pose = PF.computeModePose();
-	PF.displayParticles(marker_id);
+//	PF.displayParticles(marker_id);
 
 	IF.step();
 	hypothesis.payload = IF.getFilteredPayload();
