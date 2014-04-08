@@ -33,6 +33,7 @@ public:
 	void spawnFilters();
 	void updateFilters();
 	void killFilters();
+	void updateParameters(int numberOfParticles_, double position_std_, double orientation_std_, double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_);
 };
 
 #endif /* FTAG2TRACKER_HPP_ */

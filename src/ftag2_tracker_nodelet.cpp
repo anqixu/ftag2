@@ -117,10 +117,10 @@ public:
     params.phaseVarWeightBias = 10*10;
     params.markerWidthM = 0.07;
     params.numberOfParticles = 100;
-    params.position_std = 0.15;
-    params.orientation_std = 0.15;
-    params.position_noise_std = 0.15;
-    params.orientation_noise_std = 0.15;
+    params.position_std = 0.1;
+    params.orientation_std = 0.1;
+    params.position_noise_std = 0.2;
+    params.orientation_noise_std = 0.2;
     params.velocity_noise_std = 0.05;
     params.acceleration_noise_std = 0.01;
     params.run_id = 1;
@@ -204,6 +204,7 @@ public:
 #ifdef PARTICLE_FILTER
     PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 #endif
+    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 #ifdef CV_SHOW_IMAGES
     // Configure windows
     namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
@@ -246,6 +247,7 @@ public:
 #ifdef PARTICLE_FILTER
     PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 #endif
+    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
   };
 
 
@@ -488,7 +490,8 @@ public:
     }
 
     // Udpate marker filter (with or without new tags)
-    FT.step(tags);
+    //FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
+    FT.step(tags); // @DAVID: IS THIS CORRECT?
 
     // Decode tracked payloads
     decodePayloadP.tic();
