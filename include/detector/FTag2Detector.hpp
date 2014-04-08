@@ -139,20 +139,6 @@ inline void drawMarkerLabel(cv::Mat img, const std::vector<cv::Point2f>& corners
 };
 
 
-inline void drawQuads(cv::Mat img, std::list<Quad> quads) { // TODO: 0 refactor out
-  for (Quad& quad: quads) {
-    cv::line(img, quad.corners[0], quad.corners[1], CV_RGB(0, 255, 0), 3);
-    cv::line(img, quad.corners[0], quad.corners[1], CV_RGB(255, 0, 255), 1);
-    cv::line(img, quad.corners[1], quad.corners[2], CV_RGB(0, 255, 0), 3);
-    cv::line(img, quad.corners[1], quad.corners[2], CV_RGB(255, 0, 255), 1);
-    cv::line(img, quad.corners[2], quad.corners[3], CV_RGB(0, 255, 0), 3);
-    cv::line(img, quad.corners[2], quad.corners[3], CV_RGB(255, 0, 255), 1);
-    cv::line(img, quad.corners[3], quad.corners[0], CV_RGB(0, 255, 0), 3);
-    cv::line(img, quad.corners[3], quad.corners[0], CV_RGB(255, 0, 255), 1);
-  }
-};
-
-
 /**
  * oversample: extract approximately 1 pixel more from each of the sides
  */
