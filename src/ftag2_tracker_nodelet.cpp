@@ -35,6 +35,8 @@ typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer
 #undef PARTICLE_FILTER
 
 #define DECODE_PAYLOAD_N_STD_THRESH (3)
+#define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES (8)
+#define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS (2)
 
 
 
@@ -78,7 +80,7 @@ protected:
 
 
   // DEBUG VARIABLES
-  Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
+  Profiler lineSegP, quadP, quadExtractorP, decodeQuadP, decodePayloadP, durationP, rateP;
   ros::Time latestProfTime;
   double profilerDelaySec;
 
@@ -87,6 +89,7 @@ public:
   alive(false),
   dynCfgServer(NULL),
   dynCfgSyncReq(false),
+  frameID(0),
   latestProfTime(ros::Time::now()),
   profilerDelaySec(0) {
     // Set default parameter values
@@ -133,8 +136,8 @@ public:
 
 
   virtual void onInit() {
-
     frameID = 0;
+
     // Obtain node handles
     //ros::NodeHandle& nh = getNodeHandle();
     ros::NodeHandle& local_nh = getPrivateNodeHandle();
@@ -361,7 +364,7 @@ public:
       if (quadImg.empty()) { continue; }
 
       // Decode tag
-      decoderP.tic();
+      decodeQuadP.tic();
       try {
         currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
             params.markerWidthM,
@@ -372,7 +375,7 @@ public:
       } catch (const std::string& err) {
         continue;
       }
-      decoderP.toc();
+      decodeQuadP.toc();
 
       // Store tag in list
       tags.push_back(currTag);
@@ -488,9 +491,11 @@ public:
     FT.step(tags);
 
     // Decode tracked payloads
+    decodePayloadP.tic();
     for (MarkerFilter& tracked_tag: FT.filters) {
       FTag2Decoder::decodePayload(tracked_tag.hypothesis.payload, DECODE_PAYLOAD_N_STD_THRESH);
     }
+    decodePayloadP.toc();
 
 #ifdef PARTICLE_FILTER
     if (tracking == true)
@@ -553,29 +558,43 @@ public:
       }
 
       // Draw matched tag hypotheses: blue border, cyan-on-blue text
+#ifdef DISPLAY_DECODED_TAG_PAYLOADS
+      // TODO: 1 passive tag hypotheses: grey border, grey-on-white text (and also for #else clause)
       for (const MarkerFilter& trackedTag: FT.filters) {
         const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
-
-#ifdef DISPLAY_DECODED_TAG_PAYLOADS
-        if (trackedPayload.numDecodedSections >= 2) {
-          drawDecodedMarker(overlaidImg, trackedTag.hypothesis.corners,
-              trackedTag.hypothesis.payload.decodedPayloadStr,
-              cv::FONT_HERSHEY_SCRIPT_SIMPLEX, 1, 0.4,
-              CV_RGB(0, 255, 255), CV_RGB(0, 0, 255),
+        if (trackedPayload.numDecodedSections >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS) {
+          drawQuadWithCorner(overlaidImg, trackedTag.hypothesis.corners,
               CV_RGB(255, 0, 0), CV_RGB(0, 255, 255),
               CV_RGB(0, 255, 255), CV_RGB(255, 0, 0));
-        } // TODO: 1 passive tag hypotheses: grey border, grey-on-white text (and also for #else clause)
+        }
+      }
+      for (const MarkerFilter& trackedTag: FT.filters) {
+        const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
+        if (trackedPayload.numDecodedSections >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS) {
+          drawMarkerLabel(overlaidImg, trackedTag.hypothesis.corners,
+              trackedPayload.decodedPayloadStr,
+              cv::FONT_HERSHEY_SIMPLEX, 1, 0.4,
+              CV_RGB(0, 255, 255), CV_RGB(0, 0, 255));
+        }
       }
 #else
-      if (trackedPayload.numDecodedPhases >= 8) {
-        drawDecodedMarker(overlaidImg, trackedTag.hypothesis.corners,
-            trackedPayload.bitChunksStr,
-            cv::FONT_HERSHEY_SCRIPT_SIMPLEX, 1, 0.4,
-            CV_RGB(0, 255, 255), CV_RGB(0, 0, 255),
-            CV_RGB(255, 0, 0), CV_RGB(0, 255, 255),
-            CV_RGB(0, 255, 255), CV_RGB(255, 0, 0));
+      for (const MarkerFilter& trackedTag: FT.filters) {
+        const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
+        if (trackedPayload.numDecodedPhases >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES) {
+          drawQuadWithCorner(overlaidImg, trackedTag.hypothesis.corners,
+              CV_RGB(255, 0, 0), CV_RGB(0, 255, 255),
+              CV_RGB(0, 255, 255), CV_RGB(255, 0, 0));
+        }
       }
-    }
+      for (const MarkerFilter& trackedTag: FT.filters) {
+        const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
+        if (trackedPayload.numDecodedPhases >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES) {
+          drawMarkerLabel(overlaidImg, trackedTag.hypothesis.corners,
+              trackedPayload.bitChunksStr,
+              cv::FONT_HERSHEY_SIMPLEX, 1, 0.4,
+              CV_RGB(0, 255, 255), CV_RGB(0, 0, 255));
+        }
+      }
 #endif
 
       cv::imshow("hypotheses", overlaidImg);
@@ -591,7 +610,8 @@ public:
         cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
         cout << "detectQuads: " << quadP.getStatsString() << endl;
         cout << "extractTags: " << quadExtractorP.getStatsString() << endl;
-        cout << "decodeQuad: " << decoderP.getStatsString() << endl;
+        cout << "decodeQuad: " << decodeQuadP.getStatsString() << endl;
+        cout << "decodePayload: " << decodePayloadP.getStatsString() << endl;
 
         cout << "Pipeline Duration: " << durationP.getStatsString() << endl;
         cout << "Pipeline Rate: " << rateP.getStatsString() << endl;

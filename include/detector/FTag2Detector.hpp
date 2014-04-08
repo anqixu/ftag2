@@ -114,13 +114,9 @@ inline void drawQuadWithCorner(cv::Mat img, const std::vector<cv::Point2f>& corn
 };
 
 
-inline void drawDecodedMarker(cv::Mat img, const std::vector<cv::Point2f>& corners, std::string str,
-    int fontFace = cv::FONT_HERSHEY_SCRIPT_SIMPLEX, int fontThickness = 1, double fontScale = 0.4,
-    CvScalar textBoxColor = CV_RGB(0, 0, 255), CvScalar textColor = CV_RGB(0, 255, 255),
-    CvScalar lineEdgeColor = CV_RGB(0, 0, 255), CvScalar lineFillColor = CV_RGB(0, 255, 255),
-    CvScalar cornerEdgeColor = CV_RGB(255, 0, 0), CvScalar cornerFillColor = CV_RGB(0, 255, 255)) {
-  drawQuadWithCorner(img, corners, lineEdgeColor, lineFillColor, cornerEdgeColor, cornerFillColor);
-
+inline void drawMarkerLabel(cv::Mat img, const std::vector<cv::Point2f>& corners, std::string str,
+    int fontFace = cv::FONT_HERSHEY_SIMPLEX, int fontThickness = 1, double fontScale = 0.4,
+    CvScalar textBoxColor = CV_RGB(0, 0, 255), CvScalar textColor = CV_RGB(0, 255, 255)) {
   // Compute text size and position
   double mx = 0, my = 0;
   for (const cv::Point2f& pt: corners) {
