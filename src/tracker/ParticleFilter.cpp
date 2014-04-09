@@ -220,7 +220,7 @@ void ParticleFilter::measurementUpdate(std::vector<FTag2Pose> observations) {
 	}
 	disable_resampling = false;
 
-	cout << "Obs. update. Stds: ( " << position_std << ", " << orientation_std << " )" << endl;
+//	cout << "Obs. update. Stds: ( " << position_std << ", " << orientation_std << " )" << endl;
 	for (ObjectHypothesis& particle: particles) {
 		particle.measurementUpdate(observations,position_std,orientation_std);
 	}

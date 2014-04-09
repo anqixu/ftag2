@@ -2,12 +2,10 @@
 #include "common/BaseCV.hpp"
 
 
-#define WITHIN_PHASE_RANGE_N_SIGMA 3
+#define WITHIN_PHASE_RANGE_N_SIGMA 2
 #define WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES 10
 
-
 using namespace std;
-
 
 double FTag2Pose::getAngleFromCamera() {
   cv::Mat rotMat = vc_math::quat2RotMat(orientation_w, orientation_x, orientation_y, orientation_z);
