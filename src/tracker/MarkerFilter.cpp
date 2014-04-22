@@ -12,9 +12,6 @@
 
 int MarkerFilter::num_Markers = 0;
 
-cv::Mat cornersInCamSpace_;
-
-
 MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 	num_Markers++;
 	marker_id = num_Markers;

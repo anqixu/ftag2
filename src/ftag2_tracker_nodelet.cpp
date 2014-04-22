@@ -168,10 +168,6 @@ public:
       cameraDistortion = cv::Mat::zeros(1, 5, CV_64FC1); // prepare buffer for camera_info
     }
 
-    MarkerFilter::cameraIntrinsic_ = cameraIntrinsic.clone();
-    MarkerFilter::cameraDistortion_ = cameraDistortion.clone();
-    MarkerFilter::quadSizeM_ = 0.055;
-
     // Setup and initialize dynamic reconfigure server
     dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
     dynCfgServer->setCallback(bind(&FTag2TrackerNodelet::configCallback, this, _1, _2));

@@ -44,8 +44,8 @@ private:
 	static double orientation_noise_std;
 	static double velocity_noise_std;
 	static double acceleration_noise_std;
-	double log_max_weight;
 	double log_sum_of_weights;
+	double log_max_weight;
 	time_point starting_time;
 	time_point current_time;
 	time_point last_observation_time;

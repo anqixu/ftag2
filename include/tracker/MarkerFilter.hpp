@@ -15,8 +15,6 @@
 
 using namespace std;
 
-extern cv::Mat cornersInCamSpace;
-
 class MarkerFilter {
 
 private:
@@ -28,10 +26,6 @@ private:
 	int marker_id;
 
 public:
-	static cv::Mat cameraIntrinsic_;
-	static cv::Mat cameraDistortion_;
-	static cv::Mat last_image;
-	static double quadSizeM_;
 	FTag2Marker hypothesis;
 	MarkerFilter(){ frames_without_detection = 0;};
 	MarkerFilter(FTag2Marker detection);
