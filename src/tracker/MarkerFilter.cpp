@@ -15,9 +15,11 @@ int MarkerFilter::num_Markers = 0;
 MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 	num_Markers++;
 	marker_id = num_Markers;
-	std::vector<FTag2Pose> observations;
-	observations.push_back(detection.pose);
-	PF = ParticleFilter(observations);
+//	std::vector<FTag2Pose> observations;
+//	observations.push_back(detection.pose);
+//	KF = KalmanTrack();
+
+	PF = ParticleFilter(detection.pose);
 	IF = PayloadFilter();
 	frames_without_detection = 0;
 };
@@ -25,7 +27,7 @@ MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 void MarkerFilter::step( FTag2Marker detection, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion ) {
 	PF.step(detection.pose);
 	hypothesis.corners = detection.corners;
-//	hypothesis.pose = detection.pose;
+	hypothesis.pose = detection.pose;
 	hypothesis.pose = PF.getEstimatedPose();
 
 	hypothesis.back_proj_corners = backProjectQuad( hypothesis.pose.position_x,
@@ -34,7 +36,7 @@ void MarkerFilter::step( FTag2Marker detection, double quadSizeM, cv::Mat camera
 			hypothesis.pose.orientation_y, hypothesis.pose.orientation_z,
 			quadSizeM, cameraIntrinsic, cameraDistortion );
 
-	PF.publishTrackedPose(marker_id);
+//	PF.publishTrackedPose(marker_id);
 //	PF.displayParticles(marker_id);
 
 	IF.step(detection.payload);
@@ -53,7 +55,7 @@ void MarkerFilter::step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat came
 				hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,
 				hypothesis.pose.orientation_y, hypothesis.pose.orientation_z,
 				quadSizeM, cameraIntrinsic, cameraDistortion );
-	PF.publishTrackedPose(marker_id);
+//	PF.publishTrackedPose(marker_id);
 //	PF.displayParticles(marker_id);
 
 	IF.step();

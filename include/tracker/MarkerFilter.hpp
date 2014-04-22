@@ -12,6 +12,7 @@
 #include "tracker/ParticleFilter.hpp"
 #include "tracker/PayloadFilter.hpp"
 #include "detector/FTag2Detector.hpp"
+//#include "tracker/KalmanTrack.hpp"
 
 using namespace std;
 
@@ -22,6 +23,7 @@ private:
 	int frames_without_detection;
 	ParticleFilter PF;
 	PayloadFilter IF;
+//	KalmanTrack KF;
 	static int num_Markers;
 	int marker_id;
 

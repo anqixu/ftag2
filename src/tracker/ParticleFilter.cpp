@@ -11,7 +11,7 @@
 
 double ParticleFilter::sampling_percent = 0.9;
 
-unsigned int ParticleFilter::number_of_particles = 10000;
+unsigned int ParticleFilter::number_of_particles = 1000;
 double ParticleFilter::position_std = 0.2;
 double ParticleFilter::orientation_std = 0.2;
 double ParticleFilter::position_noise_std = 0.2;
@@ -36,89 +36,6 @@ ParticleFilter::ParticleFilter():
 				log_sum_of_weights(0.0), log_max_weight(0.0),
 				current_time_step_ms(0) { };
 
-ParticleFilter::ParticleFilter(std::vector<FTag2Pose> observations):
-				log_sum_of_weights(0.0), log_max_weight(0.0),
-				current_time_step_ms(0) {
-
-	std::chrono::duration<int,std::milli> start_delay(50);
-
-	//std::chrono::milliseconds ms_(100);
-	//unsigned long long ms = ms_.count();
-
-	starting_time = ParticleFilter::clock::now() - std::chrono::milliseconds(100);
-	current_time = starting_time;
-
-	//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
-
-	int numObservations = observations.size();
-
-//	std::cout << "Creating PF" << std::endl;
-
-	weights.resize(number_of_particles);
-	particles.resize(number_of_particles);
-	srand(time(NULL));
-		//	std::cout << "Particles: " << std::endl;
-	for ( unsigned int i=0; i < number_of_particles; i++ )
-	{
-		int k = i%numObservations;
-		weights[i] = 1.0/number_of_particles;
-		particles[i] = ObjectHypothesis(observations.at(k), true);
-		//std::cout <<  "Pose_x: " << observations[k].position_x << std::endl;
-		//std::cout <<  "Pose_y: " << observations[k].position_y << std::endl;
-		//std::cout <<  "Pose_z: " << observations[k].position_z << std::endl;
-		//std::cout <<  "Part Pose_x: " << particles[i].getPose().position_x << std::endl;
-		//std::cout <<  "Part Pose_y: " << particles[i].getPose().position_y << std::endl;
-		//std::cout <<  "Part Pose_z: " << particles[i].getPose().position_z << std::endl;
-	}
-//	std::cout << "Cloud created" << std::endl;
-	//cv::waitKey();
-
-	disable_resampling = false;
-}
-
-
-ParticleFilter::ParticleFilter(std::vector<FTag2Pose> observations, double position_std_,
-		double orientation_std_, double position_noise_std_, double orientation_noise_std_,
-		double velocity_noise_std_, double acceleration_noise_std_ ):
-				log_sum_of_weights(0.0), log_max_weight(0.0),
-				current_time_step_ms(0) {
-
-	std::chrono::duration<int,std::milli> start_delay(50);
-
-//	std::chrono::milliseconds ms_(100);
-//	unsigned long long ms = ms_.count();
-
-	starting_time = ParticleFilter::clock::now() - std::chrono::milliseconds(100);
-	current_time = starting_time;
-
-	//	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
-
-
-	int numObservations = observations.size();
-
-	std::cout << "Creating PF" << std::endl;
-
-	weights.resize(number_of_particles);
-	particles.resize(number_of_particles);
-	srand(time(NULL));
-	//	std::cout << "Particles: " << std::endl;
-	for ( unsigned int i=0; i < number_of_particles; i++ )
-	{
-		int k = i%numObservations;
-		weights[i] = 1.0/number_of_particles;
-		particles[i] = ObjectHypothesis(observations.at(k), true);
-		//std::cout <<  "Pose_x: " << observations[k].position_x << std::endl;
-		//std::cout <<  "Pose_y: " << observations[k].position_y << std::endl;
-		//std::cout <<  "Pose_z: " << observations[k].position_z << std::endl;
-		//std::cout <<  "Part Pose_x: " << particles[i].getPose().position_x << std::endl;
-		//std::cout <<  "Part Pose_y: " << particles[i].getPose().position_y << std::endl;
-		//std::cout <<  "Part Pose_z: " << particles[i].getPose().position_z << std::endl;
-	}
-	std::cout << "Cloud created" << std::endl;
-	//cv::waitKey();
-
-	disable_resampling = false;
-}
 
 ParticleFilter::ParticleFilter(FTag2Pose observation) :
 				log_sum_of_weights(0.0), log_max_weight(0.0),
@@ -134,7 +51,7 @@ ParticleFilter::ParticleFilter(FTag2Pose observation) :
 
 //	std::chrono::milliseconds st_ = std::chrono::duration_cast<std::chrono::milliseconds>(starting_time - starting_time_);
 
-	std::cout << "Creating PF" << std::endl;
+//	std::cout << "Creating PF (NP = " << number_of_particles << ")" << std::endl;
 
 	weights.resize(number_of_particles);
 	particles.resize(number_of_particles);
@@ -151,7 +68,7 @@ ParticleFilter::ParticleFilter(FTag2Pose observation) :
 		//std::cout <<  "Part Pose_y: " << particles[i].getPose().position_y << std::endl;
 		//std::cout <<  "Part Pose_z: " << particles[i].getPose().position_z << std::endl;
 	}
-	std::cout << "Cloud created" << std::endl;
+//	std::cout << "Cloud created" << std::endl;
 	//cv::waitKey();
 
 	disable_resampling = false;

@@ -55,9 +55,6 @@ private:
 
 public:
 	ParticleFilter();
-	ParticleFilter(std::vector<FTag2Pose> observations);
-	ParticleFilter(std::vector<FTag2Pose> observations, double position_std_, double orientation_std_,
-			double position_noise_std, double orientation_noise_std, double velocity_noise_std, double acceleration_noise_std_);
 	ParticleFilter(FTag2Pose observation);
 	void updateParameters(int numP, double position_std_, double orientation_std_,
 			double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std);

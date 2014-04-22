@@ -90,13 +90,14 @@ FILE ( GLOB DETECTOR_HEADERS "include/detector/*.h*" )
 FILE ( GLOB DECODER_HEADERS  "include/decoder/*.h*" )
 FILE ( GLOB ENCODER_HEADERS  "include/encoder/*.h*" )
 FILE ( GLOB TRACKER_HEADERS  "include/tracker/*.h*" )
-FILE ( GLOB KALMAN_HEADERS  "include/kalman/*.h*" )
+#FILE ( GLOB KALMAN_HEADERS	 "include/kalman/*.h*" )
 
 FILE ( GLOB COMMON_SOURCES   "src/common/*.c*" )
 FILE ( GLOB DETECTOR_SOURCES "src/detector/*.c*" )
 FILE ( GLOB DECODER_SOURCES  "src/decoder/*.c*" )
 FILE ( GLOB ENCODER_SOURCES  "src/encoder/*.c*" )
 FILE ( GLOB TRACKER_SOURCES  "src/tracker/*.c*" )
+#FILE ( GLOB KALMAN_SOURCES	 "src/kalman/*.c*" )
 
 add_library(${FTAG2_LIB_NAME}
   ${COMMON_SOURCES}
@@ -104,6 +105,7 @@ add_library(${FTAG2_LIB_NAME}
   ${DECODER_SOURCES}
   ${ENCODER_SOURCES}
   ${TRACKER_SOURCES}
+#  ${KALMAN_SOURCES}
 )
 target_link_libraries( ${FTAG2_LIB_NAME}
   ${OMPL_LIBRARIES}

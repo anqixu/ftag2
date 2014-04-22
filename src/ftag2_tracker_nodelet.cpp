@@ -120,7 +120,7 @@ public:
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
     params.markerWidthM = 0.07;
-    params.numberOfParticles = 10000;
+    params.numberOfParticles = 1000;
     params.position_std = 0.1;
     params.orientation_std = 0.1;
     params.position_noise_std = 0.2;
@@ -516,8 +516,7 @@ public:
     FT.step( tags, params.markerWidthM, cameraIntrinsic, cameraDistortion );
     trackerP.toc();
 
-//    std::cout << "xcornersInCamSpace: " << std::endl << cv::format(cornersInCamSpace, "MATLAB") << std::endl;
-
+    /* TODO: fix */
 //    for ( int c = 0; c < cornersInCamSpace.cols; c++ )
 //    {
 //		std::ostringstream frameName;
@@ -542,31 +541,13 @@ public:
     {
         cv::Mat overlaidImg;
         cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-
-        // Do not draw quads
-
-        // Draw detected tag observations: red
         for (const auto filt: FT.filters) {
         	auto tag_ = filt.hypothesis;
-//        	cout << "cornerswjates?: ";
-//        	for ( const auto corner: tag_.back_proj_corners )
-//        		cout << "( " << corner.x << ", " << corner.y << " )  /  ";
-//        	cout << endl;
         	if ( !tag_.back_proj_corners.empty() )
         		drawQuadWithCorner(overlaidImg, tag_.back_proj_corners );
         }
         cv::imshow("Back proj", overlaidImg);
     }
-
-//    for ( const MarkerFilter& filt: FT.filters ) {
-//    	drawQuad(overlaidImg, filt.hypothesis.bp_corners);
-//    	std::cout << "Corners: ";
-//    	for (const auto& data : filt.hypothesis.bp_corners)
-//    	    std::cout << data << ', ';
-//    	std::cout << endl;
-//    }
-//	cv::imshow("Back proj", overlaidImg);
-//    }
 
     // Decode tracked payloads
     decodePayloadP.tic();
