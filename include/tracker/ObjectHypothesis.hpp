@@ -20,17 +20,18 @@
 #include "common/FTag2.hpp"
 #include "common/VectorAndCircularMath.hpp"
 
+#include "kalman/ekfilter.hpp"
 #ifndef OBJECTHYPOTHESIS_H_
 #define OBJECTHYPOTHESIS_H_
 
-#define MS_PER_FRAME 100.0
+#define MS_PER_FRAME 33.0
 
 #define sigma_init_pos 0.1
 #define sigma_init_rot vc_math::pi/16
 
 using namespace std;
 
-class ObjectHypothesis {
+class ObjectHypothesis { //: public Kalman::EKFilter<double,1> {
 
 private:
 	FTag2Pose pose;
@@ -47,6 +48,14 @@ private:
 	double accel_z;
 
 public:
+	void makeA() {};
+	void makeH() {};
+	void makeV() {};
+	void makeR() {};
+	void makeW() {};
+	void makeQ() {};
+	void makeProcess() {};
+	void makeMeasure() {};
 	ObjectHypothesis();
 //	ObjectHypothesis(float x, float y, float sx, float sy){centroid[0]=x,centroid[1]=y,size[0]=sx,size[1]=sy;};
 	ObjectHypothesis(FTag2Pose pose, bool addNoise = true);

@@ -178,6 +178,18 @@ void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
     double& rw, double& rx, double& ry, double& rz);
 
 
+/**
+ * quadSizeM in meters
+ * cameraIntrinsic should be a 3x3 matrix of doubles
+ * cameraDistortion should be a 5x1 matrix of doubles
+ */
+std::vector<cv::Point2f> backProjectQuad(double cam_pose_in_tag_frame_x, double cam_pose_in_tag_frame_y,
+		double cam_pose_in_tag_frame_z, double cam_rot_in_tag_frame_w, double cam_rot_in_tag_frame_x,
+		double cam_rot_in_tag_frame_y, double cam_rot_in_tag_frame_z, double quadSizeM,
+		cv::Mat cameraIntrinsic, cv::Mat cameraDistortion);
+
+
+
 void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
                 double low_thresh, double high_thresh,
                 int aperture_size, cv::Mat& dx, cv::Mat& dy, bool L2gradient = false );

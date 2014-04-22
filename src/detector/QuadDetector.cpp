@@ -688,6 +688,66 @@ void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
 };
 
 
+std::vector<cv::Point2f> backProjectQuad(double cam_pose_in_tag_frame_x, double cam_pose_in_tag_frame_y,
+		double cam_pose_in_tag_frame_z, double cam_rot_in_tag_frame_w, double cam_rot_in_tag_frame_x,
+		double cam_rot_in_tag_frame_y, double cam_rot_in_tag_frame_z, double quadSizeM,
+		cv::Mat cameraIntrinsic, cv::Mat cameraDistortion) {
+
+	std::vector<cv::Point3d> tag_corners_in_tag_frame;
+	double quadSizeHalved = quadSizeM / 2;
+	tag_corners_in_tag_frame.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0));
+	tag_corners_in_tag_frame.push_back(cv::Point3d(-quadSizeHalved,  quadSizeHalved, 0.0));
+	tag_corners_in_tag_frame.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));
+	tag_corners_in_tag_frame.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
+
+	cv::Point3d cam_pose_in_tag_frame( cam_pose_in_tag_frame_x, cam_pose_in_tag_frame_y, cam_pose_in_tag_frame_z);
+	cv::Mat cam_rot_in_tag_frame = vc_math::quat2RotMat(cam_rot_in_tag_frame_w, cam_rot_in_tag_frame_x, cam_rot_in_tag_frame_y, cam_rot_in_tag_frame_z);
+//	cv::Mat tag_rot_in_cam_frame = cam_rot_in_tag_frame.t();
+//	cv::Mat mat_tag_pose_in_cam_frame =  -1.0*tag_rot_in_cam_frame*cv::Mat(cam_pose_in_tag_frame);
+//	cv::Point3d tag_pose_in_cam_frame(mat_tag_pose_in_cam_frame);
+
+//	std::cout << "Center: ( " << cam_pose_in_tag_frame_x << ", " << cam_pose_in_tag_frame_y << ", " << cam_pose_in_tag_frame_z << " )\t" << std::endl;
+//	std::cout << "tag_corners_in_tag_frame: ";
+//	for ( cv::Point3d& cor: tag_corners_in_tag_frame )
+//	{
+//		std::cout << "( " << cor.x << ", " << cor.y << ", " << cor.z << " )\t" << std::endl;
+//	}
+//	std::cout << std::endl;
+//
+//	std::cout << "cam_rot_in_tag_frame': " << std::endl << cv::format(cam_rot_in_tag_frame, "matlab") << std::endl;
+
+	cv::Mat rotVec = cv::Mat(1, 3, CV_64FC1);
+	cv::Rodrigues(cam_rot_in_tag_frame, rotVec);
+
+	cv::Mat transVec = cv::Mat(1, 3, CV_64FC1);
+	transVec.at<double>(0) = cam_pose_in_tag_frame.x;
+	transVec.at<double>(1) = cam_pose_in_tag_frame.y;
+	transVec.at<double>(2) = cam_pose_in_tag_frame.z;
+
+	cv::Mat cornersMat;
+//	cv::projectPoints(tag_corners_in_tag_frame, rotVec, transVec, cameraIntrinsic, cameraDistortion, cornersMat);
+	cv::projectPoints(tag_corners_in_tag_frame, rotVec, transVec, cameraIntrinsic, cameraDistortion, cornersMat);
+
+//	std::cout << "cornersMat: " << std::endl << cv::format( cornersMat, "matlab") << std::endl;
+
+	std::vector<cv::Point2f> cornersPx;
+	for ( int row = 0; row < cornersMat.rows; row++ )
+	{
+		cv::Point2f pt( cornersMat.at<double>(row,0), cornersMat.at<double>(row,1) );
+		cornersPx.push_back(pt);
+	}
+
+//	std::cout << "Corners: " << std::endl;
+//	for ( cv::Point2f& cor: cornersPx )
+//	{
+//		std::cout << "( " << cor.x << ", " << cor.y << " )\t" << std::endl;
+//	}
+//	std::cout << std::endl;
+	return cornersPx;
+}
+
+
+
 bool validateTagBorder(cv::Mat tag,
     double meanPxMaxThresh, double stdPxMaxThresh,
     unsigned int numRays, unsigned int borderBlocks) {

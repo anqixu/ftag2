@@ -11,8 +11,11 @@
 #include "common/FTag2.hpp"
 #include "tracker/ParticleFilter.hpp"
 #include "tracker/PayloadFilter.hpp"
+#include "detector/FTag2Detector.hpp"
 
 using namespace std;
+
+extern cv::Mat cornersInCamSpace;
 
 class MarkerFilter {
 
@@ -25,14 +28,18 @@ private:
 	int marker_id;
 
 public:
+	static cv::Mat cameraIntrinsic_;
+	static cv::Mat cameraDistortion_;
+	static cv::Mat last_image;
+	static double quadSizeM_;
 	FTag2Marker hypothesis;
 	MarkerFilter(){ frames_without_detection = 0;};
 	MarkerFilter(FTag2Marker detection);
 	virtual ~MarkerFilter() {};
 	FTag2Marker getHypothesis() { return hypothesis; }
 	int get_frames_without_detection() { return frames_without_detection; }
-	void step( FTag2Marker detection );
-	void step( );
+	void step( FTag2Marker detection, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion );
+	void step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion );
 	void updateParameters(int numberOfParticles_, double position_std_, double orientation_std_, double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_);
 };
 

@@ -15,6 +15,8 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <tf/transform_broadcaster.h>
 
+#include <mutex>
+
 #include <chrono>
 
 #ifndef PARTICLEFILTER_H_
@@ -30,17 +32,18 @@ public:
   typedef std::chrono::system_clock::time_point time_point;
 
 private:
+//    std::mutex paramsMutex;
 	std::vector< ObjectHypothesis > particles;
 	std::vector<double> weights;
 	static double sampling_percent;
 	bool disable_resampling;
-	unsigned int number_of_particles;
-	double position_std;
-	double orientation_std;
-	double position_noise_std;
-	double orientation_noise_std;
-	double velocity_noise_std;
-	double acceleration_noise_std;
+	static unsigned int number_of_particles;
+	static double position_std;
+	static double orientation_std;
+	static double position_noise_std;
+	static double orientation_noise_std;
+	static double velocity_noise_std;
+	static double acceleration_noise_std;
 	double log_max_weight;
 	double log_sum_of_weights;
 	time_point starting_time;
@@ -52,10 +55,10 @@ private:
 
 public:
 	ParticleFilter();
-	ParticleFilter(int numP, std::vector<FTag2Pose> observations);
-	ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_, double orientation_std_,
+	ParticleFilter(std::vector<FTag2Pose> observations);
+	ParticleFilter(std::vector<FTag2Pose> observations, double position_std_, double orientation_std_,
 			double position_noise_std, double orientation_noise_std, double velocity_noise_std, double acceleration_noise_std_);
-	ParticleFilter(int numP, FTag2Pose observation);
+	ParticleFilter(FTag2Pose observation);
 	void updateParameters(int numP, double position_std_, double orientation_std_,
 			double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std);
 	virtual ~ParticleFilter();
@@ -66,8 +69,10 @@ public:
 	void resample();
 	void measurementUpdate(std::vector<FTag2Pose> observations);
 	void displayParticles(int frame_id);
+	void publishTrackedPose(int marker_id);
 	FTag2Pose computeMeanPose();
 	FTag2Pose computeModePose();
+	FTag2Pose getEstimatedPose() { return estimated_pose; };
 };
 
 #endif /* PARTICLEFILTER_H_ */

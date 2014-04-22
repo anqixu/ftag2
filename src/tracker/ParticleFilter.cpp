@@ -7,11 +7,17 @@
 
 #include "tracker/ParticleFilter.hpp"
 
-#ifndef SILENT
-	#define SILENT
-#endif
+#define SILENT_PF
 
 double ParticleFilter::sampling_percent = 0.9;
+
+unsigned int ParticleFilter::number_of_particles = 10000;
+double ParticleFilter::position_std = 0.2;
+double ParticleFilter::orientation_std = 0.2;
+double ParticleFilter::position_noise_std = 0.2;
+double ParticleFilter::orientation_noise_std = 0.2;
+double ParticleFilter::velocity_noise_std = 0.2;
+double ParticleFilter::acceleration_noise_std = 0.2;
 
 ParticleFilter::~ParticleFilter() {
 	// TODO Auto-generated destructor stub
@@ -26,16 +32,11 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations,
 */
 
 ParticleFilter::ParticleFilter():
-				number_of_particles(100), disable_resampling(false), position_std(0.1), orientation_std(0.1),
-				position_noise_std(0.2), orientation_noise_std(0.2),
-				velocity_noise_std(0.01), acceleration_noise_std(0.01),
+				disable_resampling(false),
 				log_sum_of_weights(0.0), log_max_weight(0.0),
 				current_time_step_ms(0) { };
 
-ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations):
-				number_of_particles(numP), position_std(0.1), orientation_std(0.1),
-				position_noise_std(0.2), orientation_noise_std(0.2),
-				velocity_noise_std(0.01), acceleration_noise_std(0.01),
+ParticleFilter::ParticleFilter(std::vector<FTag2Pose> observations):
 				log_sum_of_weights(0.0), log_max_weight(0.0),
 				current_time_step_ms(0) {
 
@@ -76,12 +77,9 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations):
 }
 
 
-ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, double position_std_,
+ParticleFilter::ParticleFilter(std::vector<FTag2Pose> observations, double position_std_,
 		double orientation_std_, double position_noise_std_, double orientation_noise_std_,
 		double velocity_noise_std_, double acceleration_noise_std_ ):
-				number_of_particles(numP), position_std(position_std_), orientation_std(orientation_std_),
-				position_noise_std(position_noise_std_), orientation_noise_std(orientation_noise_std_),
-				velocity_noise_std(velocity_noise_std_), acceleration_noise_std(acceleration_noise_std_),
 				log_sum_of_weights(0.0), log_max_weight(0.0),
 				current_time_step_ms(0) {
 
@@ -122,10 +120,7 @@ ParticleFilter::ParticleFilter(int numP, std::vector<FTag2Pose> observations, do
 	disable_resampling = false;
 }
 
-ParticleFilter::ParticleFilter(int numP, FTag2Pose observation) :
-				number_of_particles(numP), position_std(0.1), orientation_std(0.1),
-				position_noise_std(0.2), orientation_noise_std(0.2),
-				velocity_noise_std(0.01), acceleration_noise_std(0.01),
+ParticleFilter::ParticleFilter(FTag2Pose observation) :
 				log_sum_of_weights(0.0), log_max_weight(0.0),
 				current_time_step_ms(0){
 
@@ -164,6 +159,7 @@ ParticleFilter::ParticleFilter(int numP, FTag2Pose observation) :
 
 void ParticleFilter::updateParameters(int numP, double position_std_, double orientation_std_,
 		double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_ ){
+//	std::lock_guard<std::mutex> lock(paramsMutex);
 	number_of_particles = numP;
 	position_std = position_std_;
 	orientation_std = orientation_std_;
@@ -171,18 +167,19 @@ void ParticleFilter::updateParameters(int numP, double position_std_, double ori
 	orientation_noise_std = orientation_noise_std_;
 	velocity_noise_std = velocity_noise_std_;
 	acceleration_noise_std = acceleration_noise_std_;
-
-#ifndef SILENT
+//	paramsMut.unlock();
+#ifndef SILENT_PF
 	std::cout << "Params: " << std::endl << "Num. paritlces: " << number_of_particles << std::endl;
 	std::cout << "Position STD: " << position_std << std::endl;
 	std::cout << "Orientation STD: " << orientation_std << std::endl;
 	std::cout << "Position noise STD: " << position_noise_std << std::endl;
 	std::cout << "Orientation noise STD: " << orientation_noise_std << std::endl;
-	#endif
+#endif
 }
 
 void ParticleFilter::step(FTag2Pose observation)
 {
+//	cout << "Steping PF with obs." << endl;
 	new_observations.clear();
 	new_observations.push_back(observation);
 	step();
@@ -190,14 +187,17 @@ void ParticleFilter::step(FTag2Pose observation)
 
 void ParticleFilter::step()
 {
+//	cout << "Steping PF without obs." << endl;
+//	paramsMutex.lock();
 	motionUpdate();
 	measurementUpdate(new_observations);
 	normalizeWeights();
-	estimated_pose = computeModePose();
+	computeMeanPose();
 	resample();
 
 	/* Clear processed observations */
 	new_observations.clear();
+//	paramsMutex.unlock();
 }
 
 void ParticleFilter::motionUpdate( ) {
@@ -206,10 +206,15 @@ void ParticleFilter::motionUpdate( ) {
 	unsigned long long current_time_step_ms = current_time_step_.count();
 
 	current_time = new_time;
-	for( unsigned int i=0; i < number_of_particles; i++ )
+	for( ObjectHypothesis& particle: particles )
 	{
-		particles[i].motionUpdate(position_noise_std, orientation_noise_std, velocity_noise_std, acceleration_noise_std, current_time_step_ms);
+		particle.motionUpdate(position_noise_std, orientation_noise_std, velocity_noise_std, acceleration_noise_std, current_time_step_ms);
 	}
+	//cout << "Part i: " << pose.position_x << ", " << pose.position_y << ", " << pose.position_z << endl;
+
+//	cout << "Curr. t.step: " << current_time_step_ms << endl;
+//	cout << "Pos STD ORIG: " << position_noise_std << endl;
+//	cout << "Orient STD ORIG: " << orientation_noise_std << endl;
 }
 
 void ParticleFilter::measurementUpdate(std::vector<FTag2Pose> observations) {
@@ -239,7 +244,7 @@ void ParticleFilter::normalizeWeights(){
 		if ( log_max_weight < particle.getLogWeight() )
 			log_max_weight = particle.getLogWeight();
 	}
-#ifndef SILENT
+#ifndef SILENT_PF
 	std::cout << "log max weight: " << log_max_weight << std::endl;
 	std::cout << "log min weight: " << log_min_weight << std::endl;
 #endif
@@ -250,7 +255,7 @@ void ParticleFilter::normalizeWeights(){
 		log_sum_of_weights += exp(particle.getLogWeight());
 	}
 	log_sum_of_weights = log(log_sum_of_weights);
-#ifndef SILENT
+#ifndef SILENT_PF
 	std::cout << "sum of weights: " << log_sum_of_weights << std::endl;
 	std::cout << "log sum of weights: " << log_sum_of_weights << std::endl;
 #endif
@@ -259,7 +264,7 @@ void ParticleFilter::normalizeWeights(){
 		particle.setLogWeight(particle.getLogWeight() - log_sum_of_weights);
 	}
 	log_max_weight = - log_sum_of_weights;
-#ifndef SILENT
+#ifndef SILENT_PF
 	std::cout << "log max weight: " << log_max_weight << std::endl;
 #endif
 	double sum_w = 0.0;
@@ -271,7 +276,7 @@ void ParticleFilter::normalizeWeights(){
 		sum_squared_w += w_ * w_;
 	}
 	double mean_weight = sum_w/number_of_particles;
-#ifndef SILENT
+#ifndef SILENT_PF
 	double Neff = 1.0 / sum_squared_w;
 #endif
 	double sum_square_diffs = 0.0;
@@ -279,7 +284,7 @@ void ParticleFilter::normalizeWeights(){
 	{
 		sum_square_diffs += (exp(particle.getLogWeight()) - mean_weight) * (exp(particle.getLogWeight()) - mean_weight);
 	}
-#ifndef SILENT
+#ifndef SILENT_PF
 	double weights_std = sqrt(sum_square_diffs / number_of_particles);
 	std::cout << "REAL SUM OF WEIGHTS: " << sum_w << std::endl;
 	std::cout << "MEAN WEIGHT: " << mean_weight << std::endl;
@@ -340,7 +345,7 @@ FTag2Pose ParticleFilter::computeMeanPose(){
 	tracked_pose.orientation_y = particles[0].getPose().orientation_y * current_weight;
 	tracked_pose.orientation_z = particles[0].getPose().orientation_z * current_weight;
 	tracked_pose.orientation_w = particles[0].getPose().orientation_w * current_weight;
-#ifndef SILENT
+#ifndef SILENT_PF
 	std::cout << "Pose x: " << tracked_pose.position_x << std::endl;
 	std::cout << "Pose y: " << tracked_pose.position_y << std::endl;
 	std::cout << "Pose z: " << tracked_pose.position_z << std::endl;
@@ -359,13 +364,14 @@ FTag2Pose ParticleFilter::computeMeanPose(){
 		tracked_pose.orientation_w += particles[i].getPose().orientation_w * current_weight;
 	}
 
-	tf::Quaternion rMat(tracked_pose.orientation_x,tracked_pose.orientation_y,tracked_pose.orientation_z,tracked_pose.orientation_w);
-	static tf::TransformBroadcaster br;
-	tf::Transform transform;
-	transform.setOrigin( tf::Vector3( tracked_pose.position_x, tracked_pose.position_y, tracked_pose.position_z ) );
-	transform.setRotation( rMat );
-	br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "track" ) );
+//	tf::Quaternion rMat(tracked_pose.orientation_x,tracked_pose.orientation_y,tracked_pose.orientation_z,tracked_pose.orientation_w);
+//	static tf::TransformBroadcaster br;
+//	tf::Transform transform;
+//	transform.setOrigin( tf::Vector3( tracked_pose.position_x, tracked_pose.position_y, tracked_pose.position_z ) );
+//	transform.setRotation( rMat );
+//	br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "track" ) );
 
+	estimated_pose = tracked_pose;
 	return tracked_pose;
 }
 
@@ -392,28 +398,41 @@ FTag2Pose ParticleFilter::computeModePose(){
 	tracked_pose.orientation_z = particles[max_index].getPose().orientation_z;
 	tracked_pose.orientation_w = particles[max_index].getPose().orientation_w;
 
-	tf::Quaternion rMat(tracked_pose.orientation_x,tracked_pose.orientation_y,tracked_pose.orientation_z,tracked_pose.orientation_w);
-	static tf::TransformBroadcaster br;
-	tf::Transform transform;
-	transform.setOrigin( tf::Vector3( tracked_pose.position_x, tracked_pose.position_y, tracked_pose.position_z ) );
-	transform.setRotation( rMat );
-	br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "track" ) );
+//	tf::Quaternion rMat(tracked_pose.orientation_x,tracked_pose.orientation_y,tracked_pose.orientation_z,tracked_pose.orientation_w);
+//	static tf::TransformBroadcaster br;
+//	tf::Transform transform;
+//	transform.setOrigin( tf::Vector3( tracked_pose.position_x, tracked_pose.position_y, tracked_pose.position_z ) );
+//	transform.setRotation( rMat );
+//	br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "track" ) );
 
+	estimated_pose = tracked_pose;
 	return tracked_pose;
 }
 
 
+void ParticleFilter::publishTrackedPose(int marker_id){
+	std::ostringstream frameName;
+	frameName << "Track_" << marker_id;
+	tf::Quaternion rMat(estimated_pose.orientation_x,estimated_pose.orientation_y,estimated_pose.orientation_z,estimated_pose.orientation_w);
+	static tf::TransformBroadcaster br;
+	tf::Transform transform;
+	transform.setOrigin( tf::Vector3( estimated_pose.position_x, estimated_pose.position_y, estimated_pose.position_z ) );
+	transform.setRotation( rMat );
+	br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
+}
+
+
 void ParticleFilter::displayParticles(int frame_id){
-	cout << "PUBLISHING PARTICLES OF TAG " << frame_id << endl;
 	for ( unsigned int i=0; i<number_of_particles; i++ )
 	{
+		std::ostringstream frameName;
+		frameName << "T" << frame_id << "P" << i;
+
 		tf::Quaternion rMat(particles[i].getPose().orientation_x,particles[i].getPose().orientation_y,particles[i].getPose().orientation_z,particles[i].getPose().orientation_w);
 		static tf::TransformBroadcaster br;
 		tf::Transform transform;
 		transform.setOrigin( tf::Vector3( particles[i].getPose().position_x, particles[i].getPose().position_y, particles[i].getPose().position_z ) );
 		transform.setRotation( rMat );
-		std::ostringstream frameName;
-		frameName << "T" << frame_id << "P" << i;
 		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
 //		std::vector<cv::Vec2i> corners = particles[i].getCorners();
 

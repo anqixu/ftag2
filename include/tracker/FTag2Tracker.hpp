@@ -28,7 +28,7 @@ public:
 	std::vector<MarkerFilter> filters;
 	FTag2Tracker() {};
 	virtual ~FTag2Tracker() {};
-	void step(std::vector<FTag2Marker> detectedTags);
+	void step(std::vector<FTag2Marker> detectedTags, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion );
 	void correspondence(std::vector<FTag2Marker> detectedTags);
 	void spawnFilters();
 	void updateFilters();

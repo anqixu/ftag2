@@ -35,6 +35,8 @@ public:
   static unsigned char adjustPSK(double phaseDeg, unsigned int pskSize);
 
   static void decodePayload(FTag2Payload& tag, double nStdThresh);
+
+  static int davinqiDist(const FTag2Payload& tag1, const FTag2Payload& tag2);
 };
 
 

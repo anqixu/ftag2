@@ -256,6 +256,7 @@ void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
   tag.numDecodedPhases = 0;
   tag.hasValidXORs = false;
   tag.numDecodedSections = 0;
+  tag.bitChunks = cv::Mat();
 
   // 1. Convert phases to bit chunks
   cv::Mat bitChunks = cv::Mat::ones(NUM_RAYS, NUM_FREQS, CV_8SC1) * -1;
@@ -289,6 +290,7 @@ void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
   }
   tag.bitChunksStr = bitChunksStr.str();
   tag.numDecodedPhases = numDecodedPhases;
+  tag.bitChunks = bitChunks;
 
   // 3. Validate XORs in FTag2MarkerV2 payload structure
   cv::Mat decodedSections = cv::Mat::ones(NUM_RAYS, 2, CV_8SC1) * -1; // -1: missing; -2: xor failed
@@ -368,3 +370,22 @@ void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
   tag.decodedPayloadStr = decodedSectionsStr.str();
   tag.numDecodedSections = numDecodedSections;
 };
+
+
+int FTag2Decoder::davinqiDist(const FTag2Payload& tag1, const FTag2Payload& tag2) {
+	int davinqi_dist = 0;
+//	std::cout << tag1.bitChunksStr << std::endl;
+//	std::cout << tag2.bitChunksStr << std::endl;
+	std::string::const_iterator it1 = tag1.bitChunksStr.begin();
+	std::string::const_iterator it2 = tag2.bitChunksStr.begin();
+	while( it1 != tag1.bitChunksStr.end() && it2 != tag2.bitChunksStr.end() )
+	{
+		if ( *it1 >= '0' && *it1 < '8' && *it2 >= '0' && *it2 < '8' )
+		{
+			if ( *it1 != *it2 )
+				davinqi_dist++;
+		}
+		it1++; it2++;
+	}
+	return davinqi_dist;
+}

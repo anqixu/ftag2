@@ -6,6 +6,7 @@
 #include "common/FTag2.hpp"
 
 #include "tracker/FTag2Tracker.hpp"
+#include "tracker/MarkerFilter.hpp"
 
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
@@ -21,16 +22,17 @@
 
 #include <ftag2/FreqTBMarkerInfo.h>
 
+#include <visualization_msgs/Marker.h>
 using namespace std;
 using namespace cv;
 using namespace vc_math;
-
 
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
 #define CV_SHOW_IMAGES
-//#define DISPLAY_DECODED_TAG_PAYLOADS
+#undef DISPLAY_DECODED_TAG_PAYLOADS
+#undef PROFILER
 
 #undef PARTICLE_FILTER
 
@@ -61,6 +63,8 @@ protected:
   image_transport::Publisher firstTagImagePub;
 
   ros::Publisher markerInfoPub;
+  ros::Publisher vis_pub;
+  visualization_msgs::Marker marker;
   int frameID;
 
   ftag2::CamTestbenchConfig params;
@@ -80,7 +84,7 @@ protected:
 
 
   // DEBUG VARIABLES
-  Profiler lineSegP, quadP, quadExtractorP, decodeQuadP, decodePayloadP, durationP, rateP;
+  Profiler lineSegP, quadP, quadExtractorP, decodeQuadP, trackerP, decodePayloadP, durationP, rateP;
   ros::Time latestProfTime;
   double profilerDelaySec;
 
@@ -116,7 +120,7 @@ public:
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
     params.markerWidthM = 0.07;
-    params.numberOfParticles = 100;
+    params.numberOfParticles = 10000;
     params.position_std = 0.1;
     params.orientation_std = 0.1;
     params.position_noise_std = 0.2;
@@ -124,6 +128,10 @@ public:
     params.velocity_noise_std = 0.05;
     params.acceleration_noise_std = 0.01;
     params.run_id = 1;
+    params.within_phase_range_n_sigma = 10.0;
+    params.within_phase_range_allowed_missmatches = 10;
+    params.within_phase_range_threshold = 200;
+    FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
@@ -159,6 +167,10 @@ public:
     } else {
       cameraDistortion = cv::Mat::zeros(1, 5, CV_64FC1); // prepare buffer for camera_info
     }
+
+    MarkerFilter::cameraIntrinsic_ = cameraIntrinsic.clone();
+    MarkerFilter::cameraDistortion_ = cameraDistortion.clone();
+    MarkerFilter::quadSizeM_ = 0.055;
 
     // Setup and initialize dynamic reconfigure server
     dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
@@ -196,6 +208,9 @@ public:
     GET_PARAM(position_noise_std);
     GET_PARAM(orientation_noise_std);
     GET_PARAM(run_id);
+    GET_PARAM(within_phase_range_n_sigma);
+    GET_PARAM(within_phase_range_allowed_missmatches);
+    GET_PARAM(within_phase_range_threshold);
 #undef GET_PARAM
     dynCfgSyncReq = true;
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
@@ -205,6 +220,7 @@ public:
     PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 #endif
     FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
+    FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
 #ifdef CV_SHOW_IMAGES
     // Configure windows
     namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
@@ -231,6 +247,11 @@ public:
 #endif
 
     markerInfoPub = local_nh.advertise<ftag2::FreqTBMarkerInfo>("marker_info", 1);
+    vis_pub = local_nh.advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
+	marker.type = visualization_msgs::Marker::SPHERE;
+	marker.action = visualization_msgs::Marker::ADD;
+	marker.header.frame_id = "camera";
+	marker.lifetime = ros::Duration();
 
     // Finish initialization
     alive = true;
@@ -248,6 +269,7 @@ public:
     PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
 #endif
     FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
+    FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
   };
 
 
@@ -291,6 +313,8 @@ public:
 
 
   void processImage(const cv::Mat sourceImg, int ID) {
+
+	//	cout << "Params position_std = " << params.position_std << endl;
     // Update profiler
     rateP.try_toc();
     rateP.tic();
@@ -475,7 +499,7 @@ public:
       tf::Transform transform;
       transform.setOrigin( tf::Vector3( tags[0].pose.position_x, tags[0].pose.position_y, tags[0].pose.position_z ) );
       transform.setRotation( rMat );
-      br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "aqua_base" ) );
+      br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "last_obs" ) );
 
 #ifdef PARTICLE_FILTER
       for ( FTag2Marker tag: tags )
@@ -490,13 +514,73 @@ public:
     }
 
     // Udpate marker filter (with or without new tags)
-    //FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
-    FT.step(tags); // @DAVID: IS THIS CORRECT?
+    trackerP.tic();
+    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
+    FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
+    FT.step( tags, params.markerWidthM, cameraIntrinsic, cameraDistortion );
+    trackerP.toc();
+
+//    std::cout << "xcornersInCamSpace: " << std::endl << cv::format(cornersInCamSpace, "MATLAB") << std::endl;
+
+//    for ( int c = 0; c < cornersInCamSpace.cols; c++ )
+//    {
+//		std::ostringstream frameName;
+//		frameName << "cor_" << c;
+////		marker.header.frame_id = frameName.str();
+//		marker.header.stamp = ros::Time();
+////		marker.ns = "ftag2";
+//		marker.id = c;
+//		marker.pose.position.x = cornersInCamSpace.at<double>(0,c);
+//		marker.pose.position.y = cornersInCamSpace.at<double>(1,c);
+//		marker.pose.position.z = cornersInCamSpace.at<double>(2,c);
+//		marker.scale.x = 0.01;
+//		marker.scale.y = 0.01;
+//		marker.scale.z = 0.01;
+//		marker.color.a = 1.0;
+//		marker.color.r = 0.0+(double)(c/5.0);
+//		marker.color.g = 1.0-(double)(c/5.0);
+//		marker.color.b = 0.0+(double)(c/5.0);
+//	//	//only if using a MESH_RESOURCE marker type:
+//		vis_pub.publish( marker );
+//    }
+    {
+        cv::Mat overlaidImg;
+        cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
+
+        // Do not draw quads
+
+        // Draw detected tag observations: red
+        for (const auto filt: FT.filters) {
+        	auto tag_ = filt.hypothesis;
+//        	cout << "cornerswjates?: ";
+//        	for ( const auto corner: tag_.back_proj_corners )
+//        		cout << "( " << corner.x << ", " << corner.y << " )  /  ";
+//        	cout << endl;
+        	if ( !tag_.back_proj_corners.empty() )
+        		drawQuadWithCorner(overlaidImg, tag_.back_proj_corners );
+        }
+        cv::imshow("Back proj", overlaidImg);
+    }
+
+//    for ( const MarkerFilter& filt: FT.filters ) {
+//    	drawQuad(overlaidImg, filt.hypothesis.bp_corners);
+//    	std::cout << "Corners: ";
+//    	for (const auto& data : filt.hypothesis.bp_corners)
+//    	    std::cout << data << ', ';
+//    	std::cout << endl;
+//    }
+//	cv::imshow("Back proj", overlaidImg);
+//    }
 
     // Decode tracked payloads
     decodePayloadP.tic();
+    bool first = true;
     for (MarkerFilter& tracked_tag: FT.filters) {
       FTag2Decoder::decodePayload(tracked_tag.hypothesis.payload, DECODE_PAYLOAD_N_STD_THRESH);
+      if (first) {
+    	  first = false;
+//    	  NODELET_INFO_STREAM("bitChunks: " << cv::format(tracked_tag.hypothesis.payload.bitChunks, "matlab"));
+      }
     }
     decodePayloadP.toc();
 
@@ -604,6 +688,7 @@ public:
     }
 #endif
 
+#ifdef PROFILER
     // Update profiler
     durationP.toc();
     if (profilerDelaySec > 0) {
@@ -614,6 +699,7 @@ public:
         cout << "detectQuads: " << quadP.getStatsString() << endl;
         cout << "extractTags: " << quadExtractorP.getStatsString() << endl;
         cout << "decodeQuad: " << decodeQuadP.getStatsString() << endl;
+        cout << "tracker: " << trackerP.getStatsString() << endl;
         cout << "decodePayload: " << decodePayloadP.getStatsString() << endl;
 
         cout << "Pipeline Duration: " << durationP.getStatsString() << endl;
@@ -621,6 +707,7 @@ public:
         latestProfTime = currTime;
       }
     }
+#endif
 
     // Allow OpenCV HighGUI events to process
 #ifdef CV_SHOW_IMAGES

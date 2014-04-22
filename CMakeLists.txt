@@ -90,6 +90,7 @@ FILE ( GLOB DETECTOR_HEADERS "include/detector/*.h*" )
 FILE ( GLOB DECODER_HEADERS  "include/decoder/*.h*" )
 FILE ( GLOB ENCODER_HEADERS  "include/encoder/*.h*" )
 FILE ( GLOB TRACKER_HEADERS  "include/tracker/*.h*" )
+FILE ( GLOB KALMAN_HEADERS  "include/kalman/*.h*" )
 
 FILE ( GLOB COMMON_SOURCES   "src/common/*.c*" )
 FILE ( GLOB DETECTOR_SOURCES "src/detector/*.c*" )

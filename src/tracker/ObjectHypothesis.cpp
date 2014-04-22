@@ -112,23 +112,26 @@ void ObjectHypothesis::motionUpdate(double position_noise_std, double orientatio
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 	std::default_random_engine generator(seed);
 
-	double position_noise_time = position_noise_std * current_time_step_ms / MS_PER_FRAME;
-	std::normal_distribution<double> distribution_pos(0.0, position_noise_time);
+	double position_noise_std_time = position_noise_std * current_time_step_ms / MS_PER_FRAME;
+	std::normal_distribution<double> distribution_pos(0.0, position_noise_std_time);
 	double position_noise_x = distribution_pos(generator);
 	double position_noise_y = distribution_pos(generator);
 	double position_noise_z = distribution_pos(generator);
 
-	double velocity_noise_time = velocity_noise_std * current_time_step_ms / MS_PER_FRAME;
-	std::normal_distribution<double> distribution_vel(0.0, velocity_noise_time);
+	double velocity_noise_std_time = velocity_noise_std * current_time_step_ms / MS_PER_FRAME;
+	std::normal_distribution<double> distribution_vel(0.0, velocity_noise_std_time);
 	double vel_noise_x = distribution_vel(generator);
 	double vel_noise_y = distribution_vel(generator);
 	double vel_noise_z = distribution_vel(generator);
 
-	double acceleration_noise_time = acceleration_noise_std * current_time_step_ms / MS_PER_FRAME;
-	std::normal_distribution<double> distribution_accel(0.0, acceleration_noise_time);
+	double acceleration_noise_std_time = acceleration_noise_std * current_time_step_ms / MS_PER_FRAME;
+	std::normal_distribution<double> distribution_accel(0.0, acceleration_noise_std_time);
 	double accel_noise_x = distribution_accel(generator);
 	double accel_noise_y = distribution_accel(generator);
 	double accel_noise_z = distribution_accel(generator);
+
+//	cout << "P.n. std = " << position_noise_std << endl;
+//	cout << "P.n. std time = " << position_noise_std_time << endl;
 
 	pose.position_x += position_noise_x;// + (vel_x + vel_noise_x)*current_time_step_ms/1000;// + (1.0/2.0)*(accel_x + accel_noise_x)*(current_time_step_ms/1000)*(current_time_step_ms/1000);
 	pose.position_y += position_noise_y;// + (vel_y + vel_noise_y)*current_time_step_ms/1000;// + (1.0/2.0)*(accel_y + accel_noise_y)*(current_time_step_ms/1000)*(current_time_step_ms/1000);
@@ -142,15 +145,16 @@ void ObjectHypothesis::motionUpdate(double position_noise_std, double orientatio
 	accel_y = (vel_y - vel_prev_y)/(current_time_step_ms/1000);
 	accel_z = (vel_z - vel_prev_z)/(current_time_step_ms/1000);
 
-#ifndef SILENT
+//#ifndef SILENT
 	//cout << "Part i: " << pose.position_x << ", " << pose.position_y << ", " << pose.position_z << endl;
 
-	cout << "PARAMS: Mean: " << distribution_pos.mean() << "\t Std: " << distribution_pos.stddev() << endl;
+//	cout << "PARAMS: Mean: " << distribution_pos.mean() << "\t Std: " << distribution_pos.stddev() << endl;
 
-	cout << "Curr. t.step: " << current_time_step_ms << endl;
-	cout << "STD ORIG: " << position_noise_std << endl;
-	cout << "STD NEW: " << position_noise_time << endl;
-#endif
+//	cout << "Curr. t.step: " << current_time_step_ms << endl;
+//	cout << "STD ORIG: " << position_noise_std << endl;
+//	cout << "STD NEW: " << position_noise_std_time << endl;
+//	cout << "P.n. x = " << position_noise_x << endl;
+//#endif
 }
 
 /*

@@ -6,10 +6,12 @@
 
 
 struct FTag2Pose{
+  // Camera position in tag frame
   double position_x;
   double position_y;
   double position_z;
 
+  // Camera rotation in tag frame
   double orientation_x;
   double orientation_y;
   double orientation_z;
@@ -33,6 +35,10 @@ struct FTag2Payload {
   constexpr static unsigned long long SIG_KEY = 0b00100011;
   constexpr static unsigned int MAX_NUM_FREQS = 5;
 
+  static double WITHIN_PHASE_RANGE_N_SIGMA;
+  static int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES;
+  static double WITHIN_PHASE_RANGE_THRESHOLD;
+
   std::vector<double> phaseVariances;
 
   bool hasSignature;
@@ -45,7 +51,7 @@ struct FTag2Payload {
   unsigned int numDecodedPhases;
   unsigned int numDecodedSections;
 
-  cv::Mat payloadChunks;
+  cv::Mat payloadChunks; // TODO: 1 remove?
 
   // TODO: 2 remove TEMP VARS
   unsigned long long signature;
@@ -98,6 +104,12 @@ struct FTag2Payload {
     phases(other.phases.clone()),
     bitChunks(other.bitChunks.clone()) {};
 
+  static void updateParameters(double WITHIN_PHASE_RANGE_N_SIGMA_, int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES_, double WITHIN_PHASE_RANGE_THRESHOLD_ ) {
+	  WITHIN_PHASE_RANGE_N_SIGMA = WITHIN_PHASE_RANGE_N_SIGMA_;
+	  WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES = WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES_;
+	  WITHIN_PHASE_RANGE_THRESHOLD = WITHIN_PHASE_RANGE_THRESHOLD_;
+  }
+
   void operator=(const FTag2Payload& other) {
     phaseVariances = other.phaseVariances;
     hasSignature = other.hasSignature;
@@ -140,20 +152,22 @@ struct FTag2Marker {
   double rectifiedWidth;
 
   std::vector<cv::Point2f> corners;
+  std::vector<cv::Point2f> back_proj_corners;
+  cv::Mat cornersInCamSpace;
   int imgRotDir; // counter-clockwise degrees
 
   FTag2Pose pose;
   FTag2Payload payload;
 
-
   FTag2Marker(double quadWidth = 0.0) : rectifiedWidth(quadWidth),
-      imgRotDir(0) {};
+      imgRotDir(0) { };
   virtual ~FTag2Marker() {};
 
   FTag2Marker(const FTag2Marker& other) :
     img(other.img.clone()),
     rectifiedWidth(other.rectifiedWidth),
     corners(other.corners),
+    back_proj_corners(other.back_proj_corners),
     imgRotDir(other.imgRotDir),
     pose(other.pose),
     payload(other.payload) {};
@@ -162,6 +176,7 @@ struct FTag2Marker {
     img = other.img.clone();
     rectifiedWidth = other.rectifiedWidth;
     corners = other.corners;
+    back_proj_corners = other.back_proj_corners;
     imgRotDir = other.imgRotDir;
     pose = other.pose;
     payload = other.payload;

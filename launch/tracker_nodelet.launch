@@ -11,7 +11,7 @@
     <param name="camera_intrinsic" value="610.5064145546552, 0.0, 321.7782261425325, 0.0, 609.9872996754198, 234.51369390724136, 0.0, 0.0, 1.0" />
     <param name="camera_distortion" value="0.12600439192381022, -0.2087299807304159, 0.0017791373517968146, 0.002607094551963359, 0.0" />
     
-    <param name="profiler_delay_sec" value="0.0" /> <!-- 0: disable -->
+    <param name="profiler_delay_sec" value="1.0" /> <!-- 0: disable -->
     <param name="markerWidthM" value="0.055" />
     
     <param name="target_tag_phases" value="" />
