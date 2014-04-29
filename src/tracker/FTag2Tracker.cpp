@@ -51,7 +51,7 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 //				std::cout << hyp2.payload.bitChunksStr << std::endl << std::endl;
 				davinqi_dist = FTag2Decoder::davinqiDist(hyp1.payload, hyp2.payload);
 //				std::cout << "Davinqi Dist = " << davinqi_dist << std::endl;
-				if ( davinqi_dist < 1 )
+				if ( davinqi_dist < 5 )
 					it2 = filters.erase(it2);
 				else
 					it2++;

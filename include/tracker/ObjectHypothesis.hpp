@@ -5,9 +5,9 @@
  *      Author: dacocp
  */
 
-#include <ompl/base/spaces/SO3StateSpace.h>
-#include <ompl/base/State.h>
-#include <ompl/base/ScopedState.h>
+//#include <ompl/base/spaces/SO3StateSpace.h>
+//#include <ompl/base/State.h>
+//#include <ompl/base/ScopedState.h>
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <random>

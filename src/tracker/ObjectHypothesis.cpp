@@ -43,7 +43,7 @@ ObjectHypothesis::ObjectHypothesis() {
 ObjectHypothesis::ObjectHypothesis(FTag2Pose marker, bool addNoise ) {
 	this->pose = pose;
 	if ( addNoise == true )
-	{
+	{   /*
 		ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
 		ompl::base::ScopedState<ompl::base::SO3StateSpace> stateMean(space);
 		ompl::base::ScopedState<ompl::base::SO3StateSpace> stateNew(space);
@@ -74,6 +74,7 @@ ObjectHypothesis::ObjectHypothesis(FTag2Pose marker, bool addNoise ) {
 		vel_x = 0.0;
 		vel_y = 0.0;
 		vel_z = 0.0;
+		*/
 	}
 }
 
@@ -88,7 +89,7 @@ void ObjectHypothesis::motionUpdate(double position_noise_std, double orientatio
 	vel_prev_x = vel_x;
 	vel_prev_y = vel_y;
 	vel_prev_z = vel_z;
-
+/*
     ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
     ompl::base::ScopedState<ompl::base::SO3StateSpace> stateMean(space);
     ompl::base::ScopedState<ompl::base::SO3StateSpace> stateNew(space);
@@ -155,6 +156,8 @@ void ObjectHypothesis::motionUpdate(double position_noise_std, double orientatio
 //	cout << "STD NEW: " << position_noise_std_time << endl;
 //	cout << "P.n. x = " << position_noise_x << endl;
 //#endif
+
+ */
 }
 
 /*
@@ -257,7 +260,7 @@ double ObjectHypothesis::measurementUpdate(std::vector<FTag2Pose> detections, do
 
 	double maxP = -std::numeric_limits<double>::infinity();
 	int max_log_prob_index = 0;
-
+/*
 	ompl::base::StateSpacePtr space(new ompl::base::SO3StateSpace());
 	ompl::base::ScopedState<ompl::base::SO3StateSpace> stateParticle(space);
 	ompl::base::ScopedState<ompl::base::SO3StateSpace> stateDetection(space);
@@ -288,5 +291,6 @@ double ObjectHypothesis::measurementUpdate(std::vector<FTag2Pose> detections, do
 		}
 	}
 	log_weight = maxP;
+	*/
 	return log_weight;
 }
