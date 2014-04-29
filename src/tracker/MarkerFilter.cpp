@@ -7,29 +7,37 @@
 
 #include "tracker/MarkerFilter.hpp"
 
-/* TODO: DELETE THIS AFTER MOVING THE BACKPROJECTING FUNCTION OUT OF HERE*/
-#include "detector/FTag2Detector.hpp"
-
 int MarkerFilter::num_Markers = 0;
+using namespace Kalman;
 
 MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 	num_Markers++;
 	marker_id = num_Markers;
 //	std::vector<FTag2Pose> observations;
 //	observations.push_back(detection.pose);
-//	KF = KalmanTrack();
+	KF = KalmanTrack(detection.pose);
 
-	PF = ParticleFilter(detection.pose);
+//	PF = ParticleFilter(detection.pose);
 	IF = PayloadFilter();
 	frames_without_detection = 0;
 };
 
 void MarkerFilter::step( FTag2Marker detection, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion ) {
-	PF.step(detection.pose);
+//	PF.step(detection.pose);
 	hypothesis.corners = detection.corners;
 	hypothesis.pose = detection.pose;
-	hypothesis.pose = PF.getEstimatedPose();
+//	hypothesis.pose = PF.getEstimatedPose();
 
+	KF.step_( detection.pose );
+	hypothesis.pose = KF.getEstimatedPose();
+//	std::cout << "KF Pose: "
+//			<< hypothesis.pose.position_x << ", "
+//			<< hypothesis.pose.position_y << ", "
+//			<< hypothesis.pose.position_z << ", "
+//			<< hypothesis.pose.orientation_w << ", "
+//			<< hypothesis.pose.orientation_x << ", "
+//			<< hypothesis.pose.orientation_y << ", "
+//			<< hypothesis.pose.orientation_z << ", " << std::endl;
 	hypothesis.back_proj_corners = backProjectQuad( hypothesis.pose.position_x,
 			hypothesis.pose.position_y, hypothesis.pose.position_z,
 			hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,
@@ -48,8 +56,9 @@ void MarkerFilter::step( FTag2Marker detection, double quadSizeM, cv::Mat camera
 
 void MarkerFilter::step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion  ) {
 //	std::cout << "MarkerFilter: stepping without detection" << std::endl;
-	PF.step();
-	hypothesis.pose = PF.getEstimatedPose();
+//	PF.step();
+	KF.step_( );
+	hypothesis.pose = KF.getEstimatedPose();
 	hypothesis.back_proj_corners = backProjectQuad( hypothesis.pose.position_x,
 				hypothesis.pose.position_y, hypothesis.pose.position_z,
 				hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,
@@ -58,8 +67,8 @@ void MarkerFilter::step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat came
 //	PF.publishTrackedPose(marker_id);
 //	PF.displayParticles(marker_id);
 
-	IF.step();
-	hypothesis.payload = IF.getFilteredPayload();
+//	IF.step();
+//	hypothesis.payload = IF.getFilteredPayload();
 
 	frames_without_detection++;
 };

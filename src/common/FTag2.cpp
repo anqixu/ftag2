@@ -21,7 +21,7 @@ double FTag2Payload::WITHIN_PHASE_RANGE_THRESHOLD = 200;
 
 bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
 //  cout << "WPRT: " << WITHIN_PHASE_RANGE_THRESHOLD << endl;
-  double avg_abs_diff = 0;
+  double avg_abs_diff = 0.0;
   int k = 0;
   for ( int ray=0 ; ray<phases.rows; ray++ )
   {

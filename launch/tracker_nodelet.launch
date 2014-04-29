@@ -12,9 +12,12 @@
     <param name="camera_distortion" value="0.12600439192381022, -0.2087299807304159, 0.0017791373517968146, 0.002607094551963359, 0.0" />
     
     <param name="profiler_delay_sec" value="1.0" /> <!-- 0: disable -->
+    <param name="num_samples_per_row" value="3" />
     <param name="markerWidthM" value="0.055" />
     
     <param name="numberOfParticles" value="1000" />
+    
+    <param name="within_phase_range_threshold" value="50.0" />
     
     <param name="target_tag_phases" value="" />
     <param name="target_tag_phases" value="270.00, 315.00, 180.00, 180.00, 180.00, 45.00, 225.00, 180.00, 315.00, 180.00, 180.00, 90.00, 315.00, 135.00, 315.00, 135.00, 225.00, 135.00, 315.00, 135.00, 270.00, 45.00, 0.00, 0.00, 45.00, 0.00, 0.00, 0.00, 0.00, 0.00" /> <!-- 5F -->

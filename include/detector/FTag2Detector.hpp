@@ -11,6 +11,7 @@
 #include "common/BaseCV.hpp"
 #include "common/FTag2.hpp"
 
+#include <cv_bridge/cv_bridge.h>
 
 struct Quad {
   std::vector<cv::Point2f> corners;
@@ -156,11 +157,11 @@ cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff = 12.0);
 cv::Mat cropFTag2Border(cv::Mat tag, unsigned int numRays = 6, unsigned int borderBlocks = 1);
 
 
-cv::Mat extractHorzRays(cv::Mat croppedTag, unsigned int numSamples = 1,
+cv::Mat extractHorzRays(cv::Mat croppedTag, unsigned int numSamples,
     unsigned int numRays = 6, bool markRays = false);
 
 
-inline cv::Mat extractVertRays(cv::Mat croppedTag, unsigned int numSamples = 1,
+inline cv::Mat extractVertRays(cv::Mat croppedTag, unsigned int numSamples,
     unsigned int numRays = 6, bool markRays = false) {
   return extractHorzRays(croppedTag.t(), numSamples, numRays, markRays);
 };
@@ -198,6 +199,174 @@ void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
 bool validateTagBorder(cv::Mat tag, double meanPxMaxThresh = 80.0, double stdPxMaxThresh = 30.0,
     unsigned int numRays = 6, unsigned int borderBlocks = 1);
 
+#ifdef DETECT_
+void detect( cv::Mat sourceImg ) {
+
+	// Convert source image to grayscale
+	cv::Mat grayImg;
+	cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
+
+	std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
+			params.sobelThreshHigh, params.sobelThreshLow,
+			params.sobelBlurWidth, params.lineMinEdgelsCC,
+			params.lineAngleMargin*degree, params.lineMinEdgelsSeg);
+#ifdef CV_SHOW_IMAGES
+	{
+		cv::Mat overlaidImg;
+		cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
+		drawLineSegments(overlaidImg, segments);
+		cv::imshow("segments", overlaidImg);
+	}
+#endif
+
+	// 2. Detect quadrilaterals
+	std::list<Quad> quads = detectQuads(segments,
+			params.quadMinAngleIntercept*degree,
+			params.quadMaxTIntDistRatio,
+			params.quadMaxEndptDistRatio,
+			params.quadMaxCornerGapEndptDistRatio,
+			params.quadMaxEdgeGapDistRatio,
+			params.quadMaxEdgeGapAlignAngle*degree,
+			params.quadMinWidth);
+	quads.sort(Quad::compareArea);
+
+#ifdef CV_SHOW_IMAGES
+	{
+		cv::Mat overlaidImg;
+		cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
+		for (const Quad& quad: quads) {
+			drawQuad(overlaidImg, quad.corners);
+		}
+		cv::imshow("quads", overlaidImg);
+	}
+#endif
+
+	// 3. Decode tags from quads
+	int quadCount = 0;
+	cv::Mat quadImg;
+	std::vector<FTag2Marker> tags;
+	FTag2Marker currTag;
+	for (const Quad& currQuad: quads) {
+		// Reject quads that overlap with already-detected tags (which have larger area than current quad)
+		bool overlap = false;
+		for (const FTag2Marker& prevTag: tags) {
+			if (vc_math::checkPolygonOverlap(prevTag.corners, currQuad.corners)) {
+				overlap = true;
+				break;
+			}
+		}
+		if (overlap) continue;
+
+		// Check whether we have scanned enough quads
+		quadCount++;
+		if (quadCount > params.quadMaxScans) break;
+
+		// Extract rectified quad image from frame
+		quadExtractorP.tic();
+		quadImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth*(8/6));
+		quadExtractorP.toc();
+		if (quadImg.empty()) { continue; }
+
+		// Decode tag
+		try {
+			currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
+					params.markerWidthM,
+					cameraIntrinsic, cameraDistortion,
+					params.tagMaxStripAvgDiff,
+					params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
+					phaseVariancePredictor);
+		} catch (const std::string& err) {
+			continue;
+		}
+
+		// Store tag in list
+		tags.push_back(currTag);
+	} // Scan through all detected quads
+
+
+	// Post-process largest detected tag
+	if (tags.size() >= 1) {
+		const FTag2Marker& firstTag = tags[0];
+
+		// Publish cropped tag image
+		cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
+				sensor_msgs::image_encodings::MONO8, firstTag.img);
+		cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
+		firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
+	}
+
+	// Publish image overlaid with detected markers
+	cv::Mat processedImg = sourceImg.clone();
+	for (const FTag2Marker& tag: tags) {
+		drawQuadWithCorner(processedImg, tag.corners);
+	}
+	cv_bridge::CvImage cvProcessedImg(std_msgs::Header(),
+			sensor_msgs::image_encodings::RGB8, processedImg);
+	cvProcessedImg.header.frame_id = boost::lexical_cast<std::string>(ID);
+	processedImagePub.publish(cvProcessedImg.toImageMsg());
+
+//	// Publish tag detections
+//	if (tags.size() > 0) {
+//		ftag2::TagDetections tagsMsg;
+//		tagsMsg.frameID = ID;
+//
+//		unsigned int i=0;
+//		for (const FTag2Marker& tag: tags) {
+//			ftag2::TagDetection tagMsg;
+//			tagMsg.pose.position.x = tag.pose.position_x;
+//			tagMsg.pose.position.y = tag.pose.position_y;
+//	        tagMsg.pose.position.z = tag.pose.position_z;
+//	        tagMsg.pose.orientation.w = tag.pose.orientation_w;
+//	        tagMsg.pose.orientation.x = tag.pose.orientation_x;
+//	        tagMsg.pose.orientation.y = tag.pose.orientation_y;
+//	        tagMsg.pose.orientation.z = tag.pose.orientation_z;
+//	        tagMsg.markerPixelWidth = tag.rectifiedWidth;
+//	        const double* magsPtr = (double*) tag.payload.mags.data;
+//	        tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+//	        const double* phasesPtr = (double*) tag.payload.phases.data;
+//	        tagMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+//	        tagsMsg.tags.push_back(tagMsg);
+//
+//	        std::ostringstream frameName;
+//	        frameName << "det_" << i;
+//	        tf::Quaternion rMat(tag.pose.orientation_x,tag.pose.orientation_y,tag.pose.orientation_z,tag.pose.orientation_w);
+//	        static tf::TransformBroadcaster br;
+//	        tf::Transform transform;
+//	        transform.setOrigin( tf::Vector3( tags[0].pose.position_x, tags[0].pose.position_y, tags[0].pose.position_z ) );
+//	        transform.setRotation( rMat );
+//	        br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
+//		}
+//		tagDetectionsPub.publish(tagsMsg);
+//
+////		FTag2Marker tag = tags[0];
+////		ftag2::FreqTBMarkerInfo markerInfoMsg;
+////		markerInfoMsg.frameID = frameID;
+////		markerInfoMsg.radius = sqrt(tag.pose.position_x*tag.pose.position_x + tag.pose.position_y*tag.pose.position_y);
+////		markerInfoMsg.z = tag.pose.position_z;
+////		markerInfoMsg.oop_rotation = tag.pose.getAngleFromCamera()*vc_math::radian;
+////		markerInfoMsg.pose.position.x = tag.pose.position_x;
+////		markerInfoMsg.pose.position.y = tag.pose.position_y;
+////		markerInfoMsg.pose.position.z = tag.pose.position_z;
+////		markerInfoMsg.pose.orientation.w = tag.pose.orientation_w;
+////		markerInfoMsg.pose.orientation.x = tag.pose.orientation_x;
+////		markerInfoMsg.pose.orientation.y = tag.pose.orientation_y;
+////		markerInfoMsg.pose.orientation.z = tag.pose.orientation_z;
+////		markerInfoMsg.markerPixelWidth = quadImg.rows;
+////		const double* magsPtr = (double*) tag.payload.mags.data;
+////		markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+////		const double* phasesPtr = (double*) tag.payload.phases.data;
+////		markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+////		markerInfoMsg.phaseVars = tag.payload.phaseVariances;
+////		markerInfoMsg.hasSignature = tag.payload.hasSignature;
+////		markerInfoMsg.hasValidXORs = tag.payload.hasValidXORs;
+////		markerInfoMsg.bitChunksStr = tag.payload.bitChunksStr;
+////		markerInfoMsg.decodedPayloadStr = tag.payload.decodedPayloadStr;
+////		markerInfoMsg.numDecodedPhases = tag.payload.numDecodedPhases;
+////		markerInfoMsg.numDecodedSections = tag.payload.numDecodedSections;
+////		markerInfoPub.publish(markerInfoMsg);
+	}
+}
+#endif
 
 /**
  * This class predicts the variance of encoded phases (in degrees) inside a
@@ -236,12 +405,13 @@ public:
     double angle = tag->pose.getAngleFromCamera()*vc_math::radian;
     paramsMutex.lock();
     for (unsigned int freq = 1; freq <= tag->payload.phaseVariances.size(); freq++) {
-      tag->payload.phaseVariances[freq-1]= pow(weight_bias + weight_r*r + weight_z*z +
+      tag->payload.phaseVariances[freq-1]= 2.0*pow(weight_bias + weight_r*r + weight_z*z +
           weight_angle*angle + weight_freq*freq,2);
     }
     paramsMutex.unlock();
   };
 };
+
 
 
 #endif /* FTAG2DETECTOR_HPP_ */

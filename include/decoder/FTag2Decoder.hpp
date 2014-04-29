@@ -9,14 +9,16 @@
 
 class FTag2Decoder {
 public:
+  static int num_samples_per_row;
   static FTag2Marker decodeQuad(const cv::Mat quadImg, const Quad& quad,
       double markerWidthM,
+      unsigned int num_samples_per_row,
       const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
       double quadMaxStripAvgDiff,
       double tagBorderMeanMaxThresh, double tagBorderStdMaxThresh,
       PhaseVariancePredictor& phaseVariancePredictor);
 
-  static void analyzeRays(const cv::Mat& img, FTag2Marker* tag);
+  static void analyzeRays(const cv::Mat& img, FTag2Marker* tag, unsigned int num_samples_per_row);
 
   static bool checkSignature(FTag2Marker* tag);
 

@@ -8,6 +8,7 @@
 FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
     const Quad& quad,
     double markerWidthM,
+    unsigned int num_samples_per_row,
     const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
     double quadMaxStripAvgDiff,
     double tagBorderMeanMaxThresh, double tagBorderStdMaxThresh,
@@ -27,7 +28,7 @@ FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
   FTag2Marker tagBuffer(trimmedTagImg.rows);
 
   // Extract rays, and decode frequency and phase spectra
-  analyzeRays(croppedTagImg, &tagBuffer);
+  analyzeRays(croppedTagImg, &tagBuffer, num_samples_per_row);
 
   // Decode signature
   if (!checkSignature(&tagBuffer)) {
@@ -75,14 +76,14 @@ FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
 };
 
 
-void FTag2Decoder::analyzeRays(const cv::Mat& img, FTag2Marker* tag) {
+void FTag2Decoder::analyzeRays(const cv::Mat& img, FTag2Marker* tag, unsigned int num_samples_per_row) {
   assert(img.channels() == 1);
 
   img.copyTo(tag->img);
 
   // Extract rays
-  tag->payload.horzRays = extractHorzRays(tag->img);
-  tag->payload.vertRays = extractVertRays(tag->img);
+  tag->payload.horzRays = extractHorzRays(tag->img, num_samples_per_row);
+  tag->payload.vertRays = extractVertRays(tag->img, num_samples_per_row);
 
   // Compute magnitude and phase spectra for both horizontal and vertical rays
   cv::Mat flippedRays;

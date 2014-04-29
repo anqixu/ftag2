@@ -355,6 +355,7 @@ public:
           try {
             currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
                 params.markerWidthM,
+                1, /* TODO change for params.num_samples_per_row */
                 cameraIntrinsic, cameraDistortion,
                 params.tagMaxStripAvgDiff,
                 params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,

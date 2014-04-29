@@ -23,6 +23,7 @@
 #include <ftag2/FreqTBMarkerInfo.h>
 
 #include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 using namespace std;
 using namespace cv;
 using namespace vc_math;
@@ -58,13 +59,13 @@ protected:
 
   image_transport::Subscriber imageSub;
   image_transport::CameraSubscriber cameraSub;
-  ros::Publisher tagDetectionsPub;
+  ros::Publisher rawTagDetectionsPub;
+  ros::Publisher decodedTagDetectionsPub;
   image_transport::Publisher processedImagePub;
   image_transport::Publisher firstTagImagePub;
 
   ros::Publisher markerInfoPub;
   ros::Publisher vis_pub;
-  visualization_msgs::Marker marker;
   int frameID;
 
   ftag2::CamTestbenchConfig params;
@@ -111,6 +112,8 @@ public:
     params.quadMaxEdgeGapDistRatio = 0.5;
     params.quadMaxEdgeGapAlignAngle = 10.0;
     params.quadMaxScans = 10;
+    params.markerWidthM = 0.07;
+    params.num_samples_per_row = 3;
     params.tagMaxStripAvgDiff = 15.0;
     params.tagBorderMeanMaxThresh = 150.0;
     params.tagBorderStdMaxThresh = 30.0;
@@ -119,7 +122,6 @@ public:
     params.phaseVarWeightAngle = 0;
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
-    params.markerWidthM = 0.07;
     params.numberOfParticles = 1000;
     params.position_std = 0.1;
     params.orientation_std = 0.1;
@@ -130,7 +132,7 @@ public:
     params.run_id = 1;
     params.within_phase_range_n_sigma = 10.0;
     params.within_phase_range_allowed_missmatches = 10;
-    params.within_phase_range_threshold = 200;
+    params.within_phase_range_threshold = 70.0;
     FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
@@ -189,6 +191,8 @@ public:
     GET_PARAM(quadMaxEdgeGapDistRatio);
     GET_PARAM(quadMaxEdgeGapAlignAngle);
     GET_PARAM(quadMaxScans);
+    GET_PARAM(markerWidthM);
+    GET_PARAM(num_samples_per_row);
     GET_PARAM(tagMaxStripAvgDiff);
     GET_PARAM(tagBorderMeanMaxThresh);
     GET_PARAM(tagBorderStdMaxThresh);
@@ -197,7 +201,6 @@ public:
     GET_PARAM(phaseVarWeightAngle);
     GET_PARAM(phaseVarWeightFreq);
     GET_PARAM(phaseVarWeightBias);
-    GET_PARAM(markerWidthM);
     GET_PARAM(numberOfParticles);
     GET_PARAM(position_std);
     GET_PARAM(orientation_std);
@@ -228,7 +231,8 @@ public:
 
     // Setup ROS communication links
     image_transport::ImageTransport it(local_nh);
-    tagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
+    rawTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
+    decodedTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("decoded_tags", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
     imageSub = it.subscribe("image_in", 1, &FTag2TrackerNodelet::imageCallback, this);
@@ -243,11 +247,7 @@ public:
 #endif
 
     markerInfoPub = local_nh.advertise<ftag2::FreqTBMarkerInfo>("marker_info", 1);
-    vis_pub = local_nh.advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
-	marker.type = visualization_msgs::Marker::SPHERE;
-	marker.action = visualization_msgs::Marker::ADD;
-	marker.header.frame_id = "camera";
-	marker.lifetime = ros::Duration();
+    vis_pub = local_nh.advertise<visualization_msgs::MarkerArray>( "ftag2_array", 1);
 
     // Finish initialization
     alive = true;
@@ -390,6 +390,7 @@ public:
       try {
         currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
             params.markerWidthM,
+            params.num_samples_per_row,
             cameraIntrinsic, cameraDistortion,
             params.tagMaxStripAvgDiff,
             params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
@@ -461,7 +462,7 @@ public:
         tagMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
         tagsMsg.tags.push_back(tagMsg);
       }
-      tagDetectionsPub.publish(tagsMsg);
+      rawTagDetectionsPub.publish(tagsMsg);
 
       FTag2Marker tag = tags[0];
       ftag2::FreqTBMarkerInfo markerInfoMsg;
@@ -489,14 +490,14 @@ public:
       markerInfoMsg.numDecodedPhases = tag.payload.numDecodedPhases;
       markerInfoMsg.numDecodedSections = tag.payload.numDecodedSections;
       markerInfoPub.publish(markerInfoMsg);
-
+      {
       tf::Quaternion rMat(tags[0].pose.orientation_x,tags[0].pose.orientation_y,tags[0].pose.orientation_z,tags[0].pose.orientation_w);
       static tf::TransformBroadcaster br;
       tf::Transform transform;
       transform.setOrigin( tf::Vector3( tags[0].pose.position_x, tags[0].pose.position_y, tags[0].pose.position_z ) );
       transform.setRotation( rMat );
       br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "last_obs" ) );
-
+      }
 #ifdef PARTICLE_FILTER
       for ( FTag2Marker tag: tags )
         tag_observations.push_back(tag.pose);
@@ -516,28 +517,25 @@ public:
     FT.step( tags, params.markerWidthM, cameraIntrinsic, cameraDistortion );
     trackerP.toc();
 
-    /* TODO: fix */
-//    for ( int c = 0; c < cornersInCamSpace.cols; c++ )
-//    {
-//		std::ostringstream frameName;
-//		frameName << "cor_" << c;
-////		marker.header.frame_id = frameName.str();
-//		marker.header.stamp = ros::Time();
-////		marker.ns = "ftag2";
-//		marker.id = c;
-//		marker.pose.position.x = cornersInCamSpace.at<double>(0,c);
-//		marker.pose.position.y = cornersInCamSpace.at<double>(1,c);
-//		marker.pose.position.z = cornersInCamSpace.at<double>(2,c);
-//		marker.scale.x = 0.01;
-//		marker.scale.y = 0.01;
-//		marker.scale.z = 0.01;
-//		marker.color.a = 1.0;
-//		marker.color.r = 0.0+(double)(c/5.0);
-//		marker.color.g = 1.0-(double)(c/5.0);
-//		marker.color.b = 0.0+(double)(c/5.0);
-//	//	//only if using a MESH_RESOURCE marker type:
-//		vis_pub.publish( marker );
-//    }
+    visualization_msgs::MarkerArray markerArray;
+    unsigned int i=0;
+    for ( const MarkerFilter &filter: FT.filters )
+    {
+		std::ostringstream frameName;
+		frameName << "filt_" << i;
+		tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
+		static tf::TransformBroadcaster br;
+		tf::Transform transform;
+		transform.setOrigin( tf::Vector3( filter.hypothesis.pose.position_x, filter.hypothesis.pose.position_y, filter.hypothesis.pose.position_z ) );
+		transform.setRotation( rMat );
+		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
+
+//		visualzation_m
+//		vis_pub.publish();
+		i++;
+    }
+
+
     {
         cv::Mat overlaidImg;
         cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
@@ -560,6 +558,29 @@ public:
       }
     }
     decodePayloadP.toc();
+
+    ftag2::TagDetections tagsMsg;
+    tagsMsg.frameID = ID;
+    for (const MarkerFilter& filter: FT.filters ) {
+      ftag2::TagDetection tagMsg;
+      FTag2Marker tag = filter.hypothesis;
+      tagMsg.pose.position.x = tag.pose.position_x;
+      tagMsg.pose.position.y = tag.pose.position_y;
+      tagMsg.pose.position.z = tag.pose.position_z;
+      tagMsg.pose.orientation.w = tag.pose.orientation_w;
+      tagMsg.pose.orientation.x = tag.pose.orientation_x;
+      tagMsg.pose.orientation.y = tag.pose.orientation_y;
+      tagMsg.pose.orientation.z = tag.pose.orientation_z;
+      tagMsg.markerPixelWidth = tag.rectifiedWidth;
+      const double* magsPtr = (double*) tag.payload.mags.data;
+      tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+      const double* phasesPtr = (double*) tag.payload.phases.data;
+      tagMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+//      tagMsg.tag.payload.bitChunksStr;
+      tagMsg.IDString = tag.payload.bitChunksStr;
+      tagsMsg.tags.push_back(tagMsg);
+    }
+    decodedTagDetectionsPub.publish(tagsMsg);
 
 #ifdef PARTICLE_FILTER
     if (tracking == true)
