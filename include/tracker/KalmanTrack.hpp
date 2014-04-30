@@ -14,10 +14,6 @@
 
 #include "common/FTag2.hpp"
 
-#include <ompl/base/spaces/SO3StateSpace.h>
-#include <ompl/base/State.h>
-#include <ompl/base/ScopedState.h>
-
 #include <random>
 #include <iostream>
 #include <chrono>
