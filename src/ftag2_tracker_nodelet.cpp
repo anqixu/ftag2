@@ -34,7 +34,7 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
-#undef CV_SHOW_IMAGES
+#define CV_SHOW_IMAGES
 #undef DISPLAY_DECODED_TAG_PAYLOADS
 #undef PROFILER
 
@@ -520,6 +520,7 @@ public:
 #endif
     }
 
+    cout << "FIRST STEP: " << endl;
     // Udpate marker filter (with or without new tags)
     trackerP.tic();
     FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);

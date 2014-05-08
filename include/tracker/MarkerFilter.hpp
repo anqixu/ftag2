@@ -30,7 +30,7 @@ private:
 public:
 	bool no_detection_in_current_frame;
 	FTag2Marker hypothesis;
-	MarkerFilter(){ frames_without_detection = 0; no_detection_in_current_frame = true; };
+	MarkerFilter(){ frames_without_detection = 0;};
 	MarkerFilter(FTag2Marker detection);
 	virtual ~MarkerFilter() {};
 	FTag2Marker getHypothesis() { return hypothesis; }

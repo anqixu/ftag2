@@ -11,9 +11,9 @@ int MarkerFilter::num_Markers = 0;
 using namespace Kalman;
 
 MarkerFilter::MarkerFilter( FTag2Marker detection ) {
+	no_detection_in_current_frame = false;
 	num_Markers++;
 	marker_id = num_Markers;
-	no_detection_in_current_frame = false;
 //	std::vector<FTag2Pose> observations;
 //	observations.push_back(detection.pose);
 	KF = KalmanTrack(detection.pose);
@@ -24,8 +24,8 @@ MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 };
 
 void MarkerFilter::step( FTag2Marker detection, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion ) {
-//	PF.step(detection.pose);
 	no_detection_in_current_frame = false;
+//	PF.step(detection.pose);
 	hypothesis.corners = detection.corners;
 	hypothesis.pose = detection.pose;
 //	hypothesis.pose = PF.getEstimatedPose();
