@@ -13,7 +13,8 @@
     
     <param name="profiler_delay_sec" value="1.0" /> <!-- 0: disable -->
     <param name="num_samples_per_row" value="3" />
-    <param name="markerWidthM" value="0.055" />
+    <!-- param name="markerWidthM" value="0.055" / -->
+    <param name="markerWidthM" value="0.184" />
     
     <param name="numberOfParticles" value="1000" />
     

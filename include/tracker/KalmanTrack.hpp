@@ -14,10 +14,6 @@
 
 #include "common/FTag2.hpp"
 
-#include <ompl/base/spaces/SO3StateSpace.h>
-#include <ompl/base/State.h>
-#include <ompl/base/ScopedState.h>
-
 #include <random>
 #include <iostream>
 #include <chrono>
@@ -49,6 +45,7 @@ public:
     static double process_noise_vel;
     static double process_noise_rot;
     static double observation_noise_pos;
+    static double observation_noise_vel;
     static double observation_noise_rot;
     static unsigned int number_of_state_dimensions;
     static unsigned int number_of_observation_dimensions;
@@ -143,7 +140,7 @@ public:
     	Q(3,3) = process_noise_pos;		// y
     	Q(4,4) = process_noise_vel;		// y'
     	Q(5,5) = process_noise_pos;		// z
-    	Q(6,6) = process_noise_rot;		// z'
+    	Q(6,6) = process_noise_vel;		// z'
     	Q(7,7) = process_noise_rot;		// rw
     	Q(8,8) = process_noise_rot;		// rx
     	Q(9,9) = process_noise_rot;		// ry
@@ -164,15 +161,20 @@ public:
 //    	cout << "Making H..." << endl;
     	for (unsigned int i=1; i<=number_of_observation_dimensions; i++)
     		for (unsigned int j=1; j<=number_of_state_dimensions; j++)
-    			H(i,j) = 0.0;
+    		{
+    			if (i==j)
+    				H(i,j) = 1.0;
+    			else
+    				H(i,j) = 0.0;
+    		}
 
-    	H(1,1) = 1.0;
-    	H(2,3) = 1.0;
-    	H(3,5) = 1.0;
-    	H(4,7) = 1.0;
-    	H(5,8) = 1.0;
-    	H(6,9) = 1.0;
-    	H(7,10) = 1.0;
+//    	H(1,1) = 1.0;
+//    	H(2,3) = 1.0;
+//    	H(3,5) = 1.0;
+//    	H(4,7) = 1.0;
+//    	H(5,8) = 1.0;
+//    	H(6,9) = 1.0;
+//    	H(7,10) = 1.0;
 //    	printMatrix(H);
     }
 
@@ -200,9 +202,12 @@ public:
     			else
     				R(i,j) = 0.0;
     		}
-    	for ( unsigned int i=1; i <= 3; i++ )
+    	for ( unsigned int i=1; i<=5; i+=2 )
+    	{
     		R(i,i) = observation_noise_pos;
-    	for ( unsigned int i=4; i <= 7; i++ )
+    		R(i+1,i+1) = observation_noise_vel;
+    	}
+    	for ( unsigned int i=7; i<=10; i++ )
     		R(i,i) = observation_noise_rot;
 //    	printMatrix(R);
     }
@@ -215,11 +220,11 @@ public:
 //    	cout << "Making process: "  << endl;
     	Vector x_(number_of_state_dimensions);
     	x_(1) = x(1) + x(2)*Period;
-    	x_(2) = 0.0;  //x_(1) - x(1);
+    	x_(2) = x(2);  //x_(1) - x(1);
     	x_(3) = x(3) + x(4)*Period;
-    	x_(4) = 0.0;  // x_(3) - x(3);
+    	x_(4) = x(4);  // x_(3) - x(3);
     	x_(5) = x(5) + x(6)*Period;
-    	x_(6) = 0.0;  // x_(5) - x(5);
+    	x_(6) = x(6);  // x_(5) - x(5);
 
     	x_(7) = x(7);
     	x_(8) = x(8);
@@ -234,12 +239,15 @@ public:
     {
 //    	cout << "Making measure: "  << endl;
     	z(1) = x(1);
-    	z(2) = x(3);
-    	z(3) = x(5);
-    	z(4) = x(7);
-    	z(5) = x(8);
-    	z(6) = x(9);
-    	z(7) = x(10);
+    	z(2) = x(2);
+    	z(3) = x(3);
+    	z(4) = x(4);
+    	z(5) = x(5);
+    	z(6) = x(6);
+    	z(7) = x(7);
+    	z(8) = x(8);
+    	z(9) = x(9);
+    	z(10) = x(10);
 //    	cout << "Finished measure" << endl;
     }
 
@@ -255,7 +263,7 @@ public:
         setDim(number_of_state_dimensions, number_of_inputs, number_of_process_noise_dimensions, number_of_observation_dimensions, number_of_observation_noise_dimensions);
 
         Period = 1;
-
+        previous_state = Vector(number_of_state_dimensions);
 #define ICP 0.1
 #define ICV 0.5
 #define ICR 0.1
@@ -304,12 +312,18 @@ public:
 
 
 		z_(1) = current_observation.position_x;
-		z_(2) = current_observation.position_y;
-		z_(3) = current_observation.position_z;
-		z_(4) = current_observation.orientation_w;
-		z_(5) = current_observation.orientation_x;
-		z_(6) = current_observation.orientation_y;
-		z_(7) = current_observation.orientation_z;
+		z_(2) = x(2)-previous_state(2);
+		z_(3) = current_observation.position_y;
+		z_(4) = x(4)-previous_state(4);;
+		z_(5) = current_observation.position_z;
+		z_(6) = x(6)-previous_state(6);;
+		z_(7) = current_observation.orientation_w;
+		z_(8) = current_observation.orientation_x;
+		z_(9) = current_observation.orientation_y;
+		z_(10) = current_observation.orientation_z;
+
+		for (unsigned int i=1; i <= number_of_state_dimensions; i++ )
+			previous_state(i) = x(i);
 
 		Vector u_(0);
 		step(u_, z_);
@@ -329,6 +343,8 @@ public:
 	}
 
 	void step_() {
+		for (unsigned int i=1; i <= number_of_state_dimensions; i++ )
+			previous_state(i) = x(i);
 		Vector u_(0);
 		timeUpdateStep(u_);
 	}

@@ -22,6 +22,9 @@
 
 #include <ftag2/FreqTBMarkerInfo.h>
 
+#include "ftag2/ARMarker.h"
+#include "ftag2/ARMarkers.h"
+
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 using namespace std;
@@ -61,11 +64,16 @@ protected:
   image_transport::CameraSubscriber cameraSub;
   ros::Publisher rawTagDetectionsPub;
   ros::Publisher decodedTagDetectionsPub;
+  ros::Publisher arMarkerPub_;
+  ARMarkers arPoseMarkers_;
+  ros::Publisher rvizMarkerPub_;
+  visualization_msgs::Marker rvizMarker_;
+
   image_transport::Publisher processedImagePub;
   image_transport::Publisher firstTagImagePub;
 
   ros::Publisher markerInfoPub;
-  ros::Publisher vis_pub;
+//  ros::Publisher vis_pub;
   int frameID;
 
   ftag2::CamTestbenchConfig params;
@@ -233,6 +241,8 @@ public:
     image_transport::ImageTransport it(local_nh);
     rawTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
     decodedTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("decoded_tags", 1);
+    arMarkerPub_ = local_nh.advertise < ARMarkers > ("ar_pose_marker", 1);
+    rvizMarkerPub_ = local_nh.advertise < visualization_msgs::Marker > ("ftag2_vis_Makrer", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
     imageSub = it.subscribe("image_in", 1, &FTag2TrackerNodelet::imageCallback, this);
@@ -247,7 +257,7 @@ public:
 #endif
 
     markerInfoPub = local_nh.advertise<ftag2::FreqTBMarkerInfo>("marker_info", 1);
-    vis_pub = local_nh.advertise<visualization_msgs::MarkerArray>( "ftag2_array", 1);
+//    vis_pub = local_nh.advertise<visualization_msgs::MarkerArray>( "ftag2_array", 1);
 
     // Finish initialization
     alive = true;
@@ -517,23 +527,6 @@ public:
     FT.step( tags, params.markerWidthM, cameraIntrinsic, cameraDistortion );
     trackerP.toc();
 
-    visualization_msgs::MarkerArray markerArray;
-    unsigned int i=0;
-    for ( const MarkerFilter &filter: FT.filters )
-    {
-		std::ostringstream frameName;
-		frameName << "filt_" << i;
-		tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
-		static tf::TransformBroadcaster br;
-		tf::Transform transform;
-		transform.setOrigin( tf::Vector3( filter.hypothesis.pose.position_x, filter.hypothesis.pose.position_y, filter.hypothesis.pose.position_z ) );
-		transform.setRotation( rMat );
-		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
-
-//		visualzation_m
-//		vis_pub.publish();
-		i++;
-    }
 
 
     {
@@ -558,6 +551,80 @@ public:
       }
     }
     decodePayloadP.toc();
+
+    for ( const MarkerFilter &filter: FT.filters )
+    {
+    	cout << "Payload: ";
+    	cout << filter.hypothesis.payload.bitChunksStr << endl;
+    	std::ostringstream ostr;
+    	bool valid_id = true;
+    	cout << "Payload (6x): ";
+    	for( unsigned int i=0; i<35; i+=6 ) {
+    		cout << filter.hypothesis.payload.bitChunksStr[i];
+    		if ( filter.hypothesis.payload.bitChunksStr[i]>='0' && filter.hypothesis.payload.bitChunksStr[i] <= '9' ) {
+    			ostr << filter.hypothesis.payload.bitChunksStr[i];
+    		}
+    		else {
+    			ostr.clear();
+    			valid_id = false;
+    			break;
+    		}
+    	}
+    	unsigned int marker_id = 0;
+    	if (valid_id == true)
+    		marker_id = std::stoi(ostr.str());
+    	else continue;
+    	cout << endl<< " Marker_id: " << marker_id << "\tOstr = " << ostr.str() << endl;
+		std::ostringstream frameName;
+		frameName << "filt_" << marker_id;
+		tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
+		static tf::TransformBroadcaster br;
+		tf::Transform transform;
+		transform.setOrigin( tf::Vector3( filter.hypothesis.pose.position_x, filter.hypothesis.pose.position_y, filter.hypothesis.pose.position_z ) );
+		transform.setRotation( rMat );
+		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
+
+		tf::poseTFToMsg(tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ), rvizMarker_.pose);
+		rvizMarker_.header.frame_id = "camera";
+		rvizMarker_.header.stamp = ros::Time::now();
+		rvizMarker_.id = marker_id;
+
+		rvizMarker_.scale.x = params.markerWidthM;
+		rvizMarker_.scale.y = params.markerWidthM;
+		rvizMarker_.scale.z = params.markerWidthM/2.0;
+		rvizMarker_.ns = "basic_shapes";
+		rvizMarker_.type = visualization_msgs::Marker::CUBE;
+		rvizMarker_.action = visualization_msgs::Marker::ADD;
+
+        rvizMarker_.color.r = 0.0f;
+        rvizMarker_.color.g = 0.0f;
+        rvizMarker_.color.b = 1.0f;
+        rvizMarker_.color.a = 1.0;
+        rvizMarker_.lifetime = ros::Duration (1.0);
+
+		rvizMarkerPub_.publish(rvizMarker_);
+
+		ARMarker ar_pose_marker_;
+
+		ar_pose_marker_.header.frame_id = "camera";
+		ar_pose_marker_.header.stamp    = ros::Time::now();
+
+		ar_pose_marker_.id              = marker_id;
+
+		ar_pose_marker_.pose.pose.position.x = filter.hypothesis.pose.position_x;
+		ar_pose_marker_.pose.pose.position.y = filter.hypothesis.pose.position_y;
+		ar_pose_marker_.pose.pose.position.z = filter.hypothesis.pose.position_z;
+
+		ar_pose_marker_.pose.pose.orientation.x = filter.hypothesis.pose.orientation_x;
+		ar_pose_marker_.pose.pose.orientation.y = filter.hypothesis.pose.orientation_y;
+		ar_pose_marker_.pose.pose.orientation.z = filter.hypothesis.pose.orientation_z;
+		ar_pose_marker_.pose.pose.orientation.w = filter.hypothesis.pose.orientation_w;
+
+		arPoseMarkers_.markers.push_back(ar_pose_marker_);
+
+    }
+    arMarkerPub_.publish(arPoseMarkers_);
+
 
     ftag2::TagDetections tagsMsg;
     tagsMsg.frameID = ID;
