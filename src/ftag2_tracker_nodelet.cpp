@@ -34,7 +34,7 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
-#define CV_SHOW_IMAGES
+#undef CV_SHOW_IMAGES
 #undef DISPLAY_DECODED_TAG_PAYLOADS
 #undef PROFILER
 
@@ -528,9 +528,9 @@ public:
     trackerP.toc();
 
 
-
+#ifdef CV_SHOW_IMAGES
     {
-        cv::Mat overlaidImg;
+    cv::Mat overlaidImg;
         cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
         for (const auto filt: FT.filters) {
         	auto tag_ = filt.hypothesis;
@@ -539,6 +539,7 @@ public:
         }
         cv::imshow("Back proj", overlaidImg);
     }
+#endif
 
     // Decode tracked payloads
     decodePayloadP.tic();
@@ -554,8 +555,13 @@ public:
 
     for ( const MarkerFilter &filter: FT.filters )
     {
-    	cout << "Payload: ";
-    	cout << filter.hypothesis.payload.bitChunksStr << endl;
+    	if ( filter.no_detection_in_current_frame ) {
+    		cout << "No detection in current frame" << endl;
+    		continue;
+    	}
+
+//    	cout << "Payload: ";
+//    	cout << filter.hypothesis.payload.bitChunksStr << endl;
     	std::ostringstream ostr;
     	bool valid_id = true;
     	cout << "Payload (6x): ";
@@ -574,7 +580,7 @@ public:
     	if (valid_id == true)
     		marker_id = std::stoi(ostr.str());
     	else continue;
-    	cout << endl<< " Marker_id: " << marker_id << "\tOstr = " << ostr.str() << endl;
+    	cout << endl<< " Marker_id: " << marker_id << endl; // << "\tOstr = " << ostr.str() << endl;
 		std::ostringstream frameName;
 		frameName << "filt_" << marker_id;
 		tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
