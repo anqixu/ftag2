@@ -672,6 +672,11 @@ void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
   cv::Mat transVec, rotVec, rotMat;
 
   double quadSizeHalved = quadSizeM / 2;
+//  spatialPoints.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0));
+//  spatialPoints.push_back(cv::Point3d(-quadSizeHalved,  quadSizeHalved, 0.0));
+//  spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));
+//  spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
+
   spatialPoints.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0));
   spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
   spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));

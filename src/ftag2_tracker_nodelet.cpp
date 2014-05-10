@@ -34,7 +34,7 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
-#define CV_SHOW_IMAGES
+#undef CV_SHOW_IMAGES
 #undef DISPLAY_DECODED_TAG_PAYLOADS
 #undef PROFILER
 
@@ -520,7 +520,6 @@ public:
 #endif
     }
 
-    cout << "FIRST STEP: " << endl;
     // Udpate marker filter (with or without new tags)
     trackerP.tic();
     FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
@@ -557,15 +556,17 @@ public:
     for ( const MarkerFilter &filter: FT.filters )
     {
     	if ( filter.no_detection_in_current_frame ) {
-    		cout << "No detection in current frame" << endl;
+//    		cout << "No detection in current frame" << endl;
     		continue;
     	}
+
+    	std::string tf_frame = "192_168_0_23";
 
 //    	cout << "Payload: ";
 //    	cout << filter.hypothesis.payload.bitChunksStr << endl;
     	std::ostringstream ostr;
     	bool valid_id = true;
-    	cout << "Payload (6x): ";
+//    	cout << "Payload (6x): ";
     	for( unsigned int i=0; i<35; i+=6 ) {
     		cout << filter.hypothesis.payload.bitChunksStr[i];
     		if ( filter.hypothesis.payload.bitChunksStr[i]>='0' && filter.hypothesis.payload.bitChunksStr[i] <= '9' ) {
@@ -581,18 +582,23 @@ public:
     	if (valid_id == true)
     		marker_id = std::stoi(ostr.str());
     	else continue;
-    	cout << endl<< " Marker_id: " << marker_id << endl; // << "\tOstr = " << ostr.str() << endl;
+    	cout << " Marker_id: " << marker_id << endl; // << "\tOstr = " << ostr.str() << endl;
 		std::ostringstream frameName;
 		frameName << "filt_" << marker_id;
 		tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
+		/* TODO: CHECK IF THIS IS CORRECT!!! */
+		tf::Quaternion rotateAroundY(0,1,0,0);
+		rMat = rotateAroundY*rMat;
+		/* ********************************* */
+
 		static tf::TransformBroadcaster br;
 		tf::Transform transform;
 		transform.setOrigin( tf::Vector3( filter.hypothesis.pose.position_x, filter.hypothesis.pose.position_y, filter.hypothesis.pose.position_z ) );
 		transform.setRotation( rMat );
-		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ) );
+		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), tf_frame, frameName.str() ) );
 
-		tf::poseTFToMsg(tf::StampedTransform( transform, ros::Time::now(), "camera", frameName.str() ), rvizMarker_.pose);
-		rvizMarker_.header.frame_id = "camera";
+		tf::poseTFToMsg(tf::StampedTransform( transform, ros::Time::now(), tf_frame, frameName.str() ), rvizMarker_.pose);
+		rvizMarker_.header.frame_id = tf_frame;
 		rvizMarker_.header.stamp = ros::Time::now();
 		rvizMarker_.id = marker_id;
 
@@ -613,7 +619,7 @@ public:
 
 		ARMarker ar_pose_marker_;
 
-		ar_pose_marker_.header.frame_id = "camera";
+		ar_pose_marker_.header.frame_id = tf_frame;
 		ar_pose_marker_.header.stamp    = ros::Time::now();
 
 		ar_pose_marker_.id              = marker_id;
