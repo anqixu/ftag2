@@ -71,8 +71,8 @@ void MarkerFilter::step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat came
 //	PF.publishTrackedPose(marker_id);
 //	PF.displayParticles(marker_id);
 
-//	IF.step();
-//	hypothesis.payload = IF.getFilteredPayload();
+	IF.step();
+	hypothesis.payload = IF.getFilteredPayload();
 
 	frames_without_detection++;
 };

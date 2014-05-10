@@ -9,9 +9,9 @@
 #include "common/VectorAndCircularMath.hpp"
 #include "decoder/FTag2Decoder.hpp"
 
-#ifndef SILENT_TRACKER
-#define SILENT_TRACKER
-#endif
+//#ifndef SILENT_TRACKER
+#undef SILENT_TRACKER
+//#endif
 
 using namespace std;
 
@@ -35,32 +35,32 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 	std::sort(filters.begin(), filters.end(), compareMarkerFilters);
 
 	vector <MarkerFilter>::iterator it1 = filters.begin();
-	while( it1 != filters.end() )
-	{
-		vector <MarkerFilter>::iterator it2 = it1+1;
-		while( it2 != filters.end() )
-		{
-			FTag2Marker hyp1 = it1->getHypothesis();
-			FTag2Marker hyp2 = it2->getHypothesis();
-			bool overlap = vc_math::checkPolygonOverlap(hyp1.back_proj_corners, hyp1.back_proj_corners );
-			if ( overlap )
-			{
-				int davinqi_dist;
-//				std::cout << "Overlap: " << std::endl;
-//				std::cout << hyp1.payload.bitChunksStr << std::endl;
-//				std::cout << hyp2.payload.bitChunksStr << std::endl << std::endl;
-				davinqi_dist = FTag2Decoder::davinqiDist(hyp1.payload, hyp2.payload);
-//				std::cout << "Davinqi Dist = " << davinqi_dist << std::endl;
-				if ( davinqi_dist < 5 )
-					it2 = filters.erase(it2);
-				else
-					it2++;
-			}
-			else
-				it2++;
-		}
-		it1++;
-	}
+//	while( it1 != filters.end() )
+//	{
+//		vector <MarkerFilter>::iterator it2 = it1+1;
+//		while( it2 != filters.end() )
+//		{
+//			FTag2Marker hyp1 = it1->getHypothesis();
+//			FTag2Marker hyp2 = it2->getHypothesis();
+//			bool overlap = vc_math::checkPolygonOverlap(hyp1.back_proj_corners, hyp1.back_proj_corners );
+//			if ( overlap )
+//			{
+//				int davinqi_dist;
+////				std::cout << "Overlap: " << std::endl;
+////				std::cout << hyp1.payload.bitChunksStr << std::endl;
+////				std::cout << hyp2.payload.bitChunksStr << std::endl << std::endl;
+//				davinqi_dist = FTag2Decoder::davinqiDist(hyp1.payload, hyp2.payload);
+////				std::cout << "Davinqi Dist = " << davinqi_dist << std::endl;
+//				if ( davinqi_dist < 5 )
+//					it2 = filters.erase(it2);
+//				else
+//					it2++;
+//			}
+//			else
+//				it2++;
+//		}
+//		it1++;
+//	}
 
 	it1 = filters.begin();
 	while( it1 != filters.end() )
@@ -111,7 +111,7 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 
 void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion )
 {
-//	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
+	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
 
 //	for ( FTag2Marker f: detectedTags )
 //	{

@@ -40,7 +40,7 @@ typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer
 
 #undef PARTICLE_FILTER
 
-#define DECODE_PAYLOAD_N_STD_THRESH (3)
+#define DECODE_PAYLOAD_N_STD_THRESH (1)
 #define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES (8)
 #define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS (2)
 
@@ -244,7 +244,8 @@ public:
     rvizMarkerPub_ = local_nh.advertise < visualization_msgs::Marker > ("ftag2_vis_Makrer", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
-    imageSub = it.subscribe("image_in", 1, &FTag2TrackerNodelet::imageCallback, this);
+    imageSub = it.subscribe("image_in", 1, &FTag2TrackerNodelet::imageCallback, this,
+    		image_transport::TransportHints("compressed") );
     cameraSub = it.subscribeCamera("camera_in", 1, &FTag2TrackerNodelet::cameraCallback, this);
 
 #ifdef PARTICLE_FILTER
@@ -555,10 +556,10 @@ public:
     ARMarkers arPoseMarkers_;
     for ( const MarkerFilter &filter: FT.filters )
     {
-//    	if ( !filter.got_detection_in_current_frame ) {
+    	if ( !filter.got_detection_in_current_frame ) {
 //    		cout << "No detection in current frame" << endl;
-//    		continue;
-//    	}
+    		continue;
+    	}
 
     	std::string tf_frame = "192_168_0_23";
 
@@ -590,9 +591,6 @@ public:
 		std::ostringstream frameName;
 		frameName << "filt_" << marker_id;
 		tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
-		//tf::Quaternion rotateAroundY(0,1,0,0);
-        //tf::Quaternion rotateAroundY = tf::createQuaternionFromYaw(M_PI);
-        //rMat = rotateAroundY*rMat;
 
 		static tf::TransformBroadcaster br;
 		tf::Transform transform;

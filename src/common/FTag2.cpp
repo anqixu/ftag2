@@ -16,11 +16,11 @@ double FTag2Pose::getAngleFromCamera() {
 
 double FTag2Payload::WITHIN_PHASE_RANGE_N_SIGMA = 10.0;
 int FTag2Payload::WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES = 10;
-double FTag2Payload::WITHIN_PHASE_RANGE_THRESHOLD = 200;
+double FTag2Payload::WITHIN_PHASE_RANGE_THRESHOLD = 50;
 
 
 bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
-//  cout << "WPRT: " << WITHIN_PHASE_RANGE_THRESHOLD << endl;
+  cout << "WPRT: " << WITHIN_PHASE_RANGE_THRESHOLD << endl;
   double avg_abs_diff = 0.0;
   int k = 0;
   for ( int ray=0 ; ray<phases.rows; ray++ )
@@ -48,7 +48,7 @@ bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
     }
   }
   avg_abs_diff /= k;
-//  cout << "k = " << k << "\tAvg. phase diff = " << avg_abs_diff << endl;
+  cout << "k = " << k << "\tAvg. phase diff = " << avg_abs_diff << endl;
   if ( avg_abs_diff > WITHIN_PHASE_RANGE_THRESHOLD )
   {
 //    cout << "Did not match!" << endl;

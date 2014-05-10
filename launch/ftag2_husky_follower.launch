@@ -2,7 +2,8 @@
   <arg name="nodelet_name" value="ftag2" />
 
   <!-- Uncomment only one of the following -->
-  <remap from="/$(arg nodelet_name)/image_in" to="/axis/image_raw" />
+  <remap from="/$(arg nodelet_name)/image_in" to="/camera/image_raw" />
+  <!-- remap from="/$(arg nodelet_name)/image_in" to="/axis/image_raw" / -->
   <!-- remap from="/$(arg nodelet_name)/camera_in" to="/axis/image_raw" / -->
 
   <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen"/>
@@ -11,14 +12,14 @@
     <param name="camera_intrinsic" value="694.194438, 0.0, 401.744560, 0.0, 694.169610, 298.236867, 0.0, 0.0, 1.0" />
     <param name="camera_distortion" value="-0.304910, 0.092995, -0.004267, -0.000836, 0.0" />
     
-    <param name="profiler_delay_sec" value="1.0" /> <!-- 0: disable -->
+    <param name="profiler_delay_sec" value="0.0" /> <!-- 0: disable -->
     <param name="num_samples_per_row" value="3" />
     <!-- param name="markerWidthM" value="0.055" / -->
     <param name="markerWidthM" value="0.184" />
     
     <param name="numberOfParticles" value="1000" />
     
-    <param name="within_phase_range_threshold" value="70.0" />
+    <param name="within_phase_range_threshold" value="50.0" />
     
     <param name="target_tag_phases" value="" />
     <param name="target_tag_phases" value="270.00, 315.00, 180.00, 180.00, 180.00, 45.00, 225.00, 180.00, 315.00, 180.00, 180.00, 90.00, 315.00, 135.00, 315.00, 135.00, 225.00, 135.00, 315.00, 135.00, 270.00, 45.00, 0.00, 0.00, 45.00, 0.00, 0.00, 0.00, 0.00, 0.00" /> <!-- 5F -->
