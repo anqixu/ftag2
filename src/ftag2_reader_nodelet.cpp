@@ -109,6 +109,10 @@ public:
     //ros::NodeHandle& nh = getNodeHandle();
     ros::NodeHandle& local_nh = getPrivateNodeHandle();
 
+    // Obtain image transport parameter
+    std::string transportType = "raw";
+    local_nh.param("transport_type", transportType, transportType);    
+
     // Load misc. non-dynamic parameters
     local_nh.param("profiler_delay_sec", profilerDelaySec, profilerDelaySec);
 
@@ -174,13 +178,17 @@ public:
     namedWindow("tags", CV_GUI_EXPANDED);
 #endif
 
+    // Resolve image topic names
+    std::string imageTopic = local_nh.resolveName("image_in");
+    std::string cameraTopic = local_nh.resolveName("camera_in");
+
     // Setup ROS communication links
     image_transport::ImageTransport it(local_nh);
     tagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
-    imageSub = it.subscribe("image_in", 1, &FTag2ReaderNodelet::imageCallback, this);
-    cameraSub = it.subscribeCamera("camera_in", 1, &FTag2ReaderNodelet::cameraCallback, this);
+    imageSub = it.subscribe(imageTopic, 1, &FTag2ReaderNodelet::imageCallback, this, transportType);
+    cameraSub = it.subscribeCamera(cameraTopic, 1, &FTag2ReaderNodelet::cameraCallback, this, transportType);
 
     // Finish initialization
     alive = true;
@@ -433,7 +441,7 @@ public:
 
     // Allow OpenCV HighGUI events to process
 #ifdef CV_SHOW_IMAGES
-    char c = waitKey(0); // TODO: 0 revert to waitKey(1)
+    char c = waitKey(1);
     if (c == 'x' || c == 'X') {
       ros::shutdown();
     }

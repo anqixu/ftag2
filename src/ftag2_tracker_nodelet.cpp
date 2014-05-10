@@ -34,7 +34,8 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
-#undef CV_SHOW_IMAGES
+//#undef CV_SHOW_IMAGES
+#define CV_SHOW_IMAGES
 #undef DISPLAY_DECODED_TAG_PAYLOADS
 #define PROFILER
 
@@ -160,6 +161,10 @@ public:
     //ros::NodeHandle& nh = getNodeHandle();
     ros::NodeHandle& local_nh = getPrivateNodeHandle();
 
+    // Obtain image transport parameter
+    std::string transportType = "raw";
+    local_nh.param("transport_type", transportType, transportType);    
+
     // Load misc. non-dynamic parameters
     local_nh.param("profiler_delay_sec", profilerDelaySec, profilerDelaySec);
 
@@ -237,6 +242,13 @@ public:
     namedWindow("hypotheses", CV_GUI_EXPANDED);
 #endif
 
+    // Resolve image topic names
+    std::string imageTopic = local_nh.resolveName("image_in");
+    std::string cameraTopic = local_nh.resolveName("camera_in");
+
+    std::cout << "Image: " << imageTopic << ", transport: " << transportType << std::endl; // TODO: 0 remove
+    std::cout << "Camera: " << cameraTopic << ", transport: " << transportType << std::endl; // TODO: 0 remove
+
     // Setup ROS communication links
     image_transport::ImageTransport it(local_nh);
     rawTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
@@ -245,9 +257,8 @@ public:
     rvizMarkerPub_ = local_nh.advertise < visualization_msgs::Marker > ("ftag2_vis_Makrer", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
-//    imageSub = it.subscribe("image_in", 1, &FTag2TrackerNodelet::imageCallback, this);
-    imageSub = it.subscribe("/axis/image_raw", 1, &FTag2TrackerNodelet::imageCallback, this, image_transport::TransportHints("compressed") );
-    cameraSub = it.subscribeCamera("camera_in", 1, &FTag2TrackerNodelet::cameraCallback, this);
+    imageSub = it.subscribe(imageTopic, 1, &FTag2TrackerNodelet::imageCallback, this, transportType);
+    cameraSub = it.subscribeCamera(cameraTopic, 1, &FTag2TrackerNodelet::cameraCallback, this, transportType);
 
 #ifdef PARTICLE_FILTER
     tag_observations = std::vector<FTag2Pose>();
@@ -262,7 +273,7 @@ public:
 
     // Finish initialization
     alive = true;
-    NODELET_INFO("FTag2 reader nodelet initialized");
+    NODELET_INFO("FTag2 tracker nodelet initialized");
   };
 
 
@@ -321,7 +332,7 @@ public:
 
   void processImage(const cv::Mat sourceImg, int ID) {
 
-	//	cout << "Params position_std = " << params.position_std << endl;
+  //  cout << "Params position_std = " << params.position_std << endl;
     // Update profiler
     rateP.try_toc();
     rateP.tic();
@@ -516,7 +527,7 @@ public:
       {
         tracking = true;
         PF = ParticleFilter(params.numberOfParticles, tag_observations );
-        //    	  cv::waitKey();
+        //        cv::waitKey();
       }
 #endif
     }
@@ -534,9 +545,9 @@ public:
 //    cv::Mat overlaidImg;
 //        cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
 //        for (const auto filt: FT.filters) {
-//        	auto tag_ = filt.hypothesis;
-//        	if ( !tag_.back_proj_corners.empty() )
-//        		drawQuadWithCorner(overlaidImg, tag_.back_proj_corners );
+//          auto tag_ = filt.hypothesis;
+//          if ( !tag_.back_proj_corners.empty() )
+//            drawQuadWithCorner(overlaidImg, tag_.back_proj_corners );
 //        }
 //        cv::imshow("Back proj", overlaidImg);
 //    }
@@ -548,8 +559,8 @@ public:
     for (MarkerFilter& tracked_tag: FT.filters) {
       FTag2Decoder::decodePayload(tracked_tag.hypothesis.payload, DECODE_PAYLOAD_N_STD_THRESH);
       if (first) {
-    	  first = false;
-//    	  NODELET_INFO_STREAM("bitChunks: " << cv::format(tracked_tag.hypothesis.payload.bitChunks, "matlab"));
+        first = false;
+//        NODELET_INFO_STREAM("bitChunks: " << cv::format(tracked_tag.hypothesis.payload.bitChunks, "matlab"));
       }
     }
     decodePayloadP.toc();
@@ -557,59 +568,59 @@ public:
     ARMarkers arPoseMarkers_;
     for ( const MarkerFilter &filter: FT.filters )
     {
-    	if ( !filter.got_detection_in_current_frame ) {
-//    		cout << "No detection in current frame" << endl;
-    		continue;
-    	}
+      if ( !filter.got_detection_in_current_frame ) {
+//        cout << "No detection in current frame" << endl;
+        continue;
+      }
 
-    	std::string tf_frame = "192_168_0_23";
+      std::string tf_frame = "192_168_0_23";
 
-    	cout << "Payload: ";
-    	cout << filter.hypothesis.payload.bitChunksStr << endl;
-    	std::ostringstream ostr;
-    	bool valid_id = true;
-//    	cout << "Payload (6x): ";
-    	for( unsigned int i=0; i<35; i+=6 ) {
-//    		cout << filter.hypothesis.payload.bitChunksStr[i];
-    		if ( filter.hypothesis.payload.bitChunksStr[i]>='0' && filter.hypothesis.payload.bitChunksStr[i] <= '9' ) {
-    			ostr << filter.hypothesis.payload.bitChunksStr[i];
-    		}
-    		else {
-    			ostr.clear();
-    			valid_id = false;
-    			break;
-    		}
-    	}
-    	unsigned int marker_id = 0;
-    	if (valid_id == true){
-    		marker_id = std::stoi(ostr.str());
+      cout << "Payload: ";
+      cout << filter.hypothesis.payload.bitChunksStr << endl;
+      std::ostringstream ostr;
+      bool valid_id = true;
+//      cout << "Payload (6x): ";
+      for( unsigned int i=0; i<35; i+=6 ) {
+//        cout << filter.hypothesis.payload.bitChunksStr[i];
+        if ( filter.hypothesis.payload.bitChunksStr[i]>='0' && filter.hypothesis.payload.bitChunksStr[i] <= '9' ) {
+          ostr << filter.hypothesis.payload.bitChunksStr[i];
         }
-    	else {
+        else {
+          ostr.clear();
+          valid_id = false;
+          break;
+        }
+      }
+      unsigned int marker_id = 0;
+      if (valid_id == true){
+        marker_id = std::stoi(ostr.str());
+        }
+      else {
             cout << "Not a valid ID" << endl;
             continue;
         }
-    	cout << " Marker_id: " << marker_id << endl; // << "\tOstr = " << ostr.str() << endl;
-		std::ostringstream frameName;
-		frameName << "filt_" << marker_id;
-		tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
+      cout << " Marker_id: " << marker_id << endl; // << "\tOstr = " << ostr.str() << endl;
+    std::ostringstream frameName;
+    frameName << "filt_" << marker_id;
+    tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
 
-		static tf::TransformBroadcaster br;
-		tf::Transform transform;
-		transform.setOrigin( tf::Vector3( filter.hypothesis.pose.position_x, filter.hypothesis.pose.position_y, filter.hypothesis.pose.position_z ) );
-		transform.setRotation( rMat );
-		br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), tf_frame, frameName.str() ) );
+    static tf::TransformBroadcaster br;
+    tf::Transform transform;
+    transform.setOrigin( tf::Vector3( filter.hypothesis.pose.position_x, filter.hypothesis.pose.position_y, filter.hypothesis.pose.position_z ) );
+    transform.setRotation( rMat );
+    br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), tf_frame, frameName.str() ) );
 
-		tf::poseTFToMsg(tf::StampedTransform( transform, ros::Time::now(), tf_frame, frameName.str() ), rvizMarker_.pose);
-		rvizMarker_.header.frame_id = tf_frame;
-		rvizMarker_.header.stamp = ros::Time::now();
-		rvizMarker_.id = marker_id;
+    tf::poseTFToMsg(tf::StampedTransform( transform, ros::Time::now(), tf_frame, frameName.str() ), rvizMarker_.pose);
+    rvizMarker_.header.frame_id = tf_frame;
+    rvizMarker_.header.stamp = ros::Time::now();
+    rvizMarker_.id = marker_id;
 
-		rvizMarker_.scale.x = params.markerWidthM;
-		rvizMarker_.scale.y = params.markerWidthM;
-		rvizMarker_.scale.z = params.markerWidthM/2.0;
-		rvizMarker_.ns = "basic_shapes";
-		rvizMarker_.type = visualization_msgs::Marker::CUBE;
-		rvizMarker_.action = visualization_msgs::Marker::ADD;
+    rvizMarker_.scale.x = params.markerWidthM;
+    rvizMarker_.scale.y = params.markerWidthM;
+    rvizMarker_.scale.z = params.markerWidthM/2.0;
+    rvizMarker_.ns = "basic_shapes";
+    rvizMarker_.type = visualization_msgs::Marker::CUBE;
+    rvizMarker_.action = visualization_msgs::Marker::ADD;
 
         rvizMarker_.color.r = 0.0f;
         rvizMarker_.color.g = 0.0f;
@@ -617,24 +628,24 @@ public:
         rvizMarker_.color.a = 1.0;
         rvizMarker_.lifetime = ros::Duration (1.0);
 
-		rvizMarkerPub_.publish(rvizMarker_);
+    rvizMarkerPub_.publish(rvizMarker_);
 
-		ARMarker ar_pose_marker_;
-		ar_pose_marker_.header.frame_id = tf_frame;
-		ar_pose_marker_.header.stamp    = ros::Time::now();
+    ARMarker ar_pose_marker_;
+    ar_pose_marker_.header.frame_id = tf_frame;
+    ar_pose_marker_.header.stamp    = ros::Time::now();
 
-		ar_pose_marker_.id              = marker_id;
+    ar_pose_marker_.id              = marker_id;
 
-		ar_pose_marker_.pose.pose.position.x = filter.hypothesis.pose.position_x;
-		ar_pose_marker_.pose.pose.position.y = filter.hypothesis.pose.position_y;
-		ar_pose_marker_.pose.pose.position.z = filter.hypothesis.pose.position_z;
+    ar_pose_marker_.pose.pose.position.x = filter.hypothesis.pose.position_x;
+    ar_pose_marker_.pose.pose.position.y = filter.hypothesis.pose.position_y;
+    ar_pose_marker_.pose.pose.position.z = filter.hypothesis.pose.position_z;
 
-		ar_pose_marker_.pose.pose.orientation.x = filter.hypothesis.pose.orientation_x;
-		ar_pose_marker_.pose.pose.orientation.y = filter.hypothesis.pose.orientation_y;
-		ar_pose_marker_.pose.pose.orientation.z = filter.hypothesis.pose.orientation_z;
-		ar_pose_marker_.pose.pose.orientation.w = filter.hypothesis.pose.orientation_w;
+    ar_pose_marker_.pose.pose.orientation.x = filter.hypothesis.pose.orientation_x;
+    ar_pose_marker_.pose.pose.orientation.y = filter.hypothesis.pose.orientation_y;
+    ar_pose_marker_.pose.pose.orientation.z = filter.hypothesis.pose.orientation_z;
+    ar_pose_marker_.pose.pose.orientation.w = filter.hypothesis.pose.orientation_w;
 
-		arPoseMarkers_.markers.push_back(ar_pose_marker_);
+    arPoseMarkers_.markers.push_back(ar_pose_marker_);
 
     }
     arMarkerPub_.publish(arPoseMarkers_);
