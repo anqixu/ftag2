@@ -672,19 +672,23 @@ void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
   cv::Mat transVec, rotVec, rotMat;
 
   double quadSizeHalved = quadSizeM / 2;
-//  spatialPoints.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0));
-//  spatialPoints.push_back(cv::Point3d(-quadSizeHalved,  quadSizeHalved, 0.0));
-//  spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));
-//  spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
-
   spatialPoints.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0));
-  spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
-  spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));
   spatialPoints.push_back(cv::Point3d(-quadSizeHalved,  quadSizeHalved, 0.0));
+  spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));
+  spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
+
+//  spatialPoints.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0));
+//  spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
+//  spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));
+//  spatialPoints.push_back(cv::Point3d(-quadSizeHalved,  quadSizeHalved, 0.0));
 
   cv::solvePnP(spatialPoints, cornersPx, cameraIntrinsic, cameraDistortion,
       rotVec, transVec);
   cv::Rodrigues(rotVec, rotMat);
+  //cv::Mat flipZ = cv::Mat::eye(3,3,CV_64FC1);
+  //flipZ.at<double>(2,2) = -1.0;
+  //rotMat = flipZ*rotMat;
+  //rotMat = rotMat.t();
   vc_math::rotMat2quat(rotMat, rw, rx, ry, rz);
 
   tx = transVec.at<double>(0);
