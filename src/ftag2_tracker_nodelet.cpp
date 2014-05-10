@@ -34,9 +34,9 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
-#undef CV_SHOW_IMAGES
+#define CV_SHOW_IMAGES
 #undef DISPLAY_DECODED_TAG_PAYLOADS
-#undef PROFILER
+#define PROFILER
 
 #undef PARTICLE_FILTER
 
@@ -499,14 +499,14 @@ public:
       markerInfoMsg.numDecodedPhases = tag.payload.numDecodedPhases;
       markerInfoMsg.numDecodedSections = tag.payload.numDecodedSections;
       markerInfoPub.publish(markerInfoMsg);
-      {
-      tf::Quaternion rMat(tags[0].pose.orientation_x,tags[0].pose.orientation_y,tags[0].pose.orientation_z,tags[0].pose.orientation_w);
-      static tf::TransformBroadcaster br;
-      tf::Transform transform;
-      transform.setOrigin( tf::Vector3( tags[0].pose.position_x, tags[0].pose.position_y, tags[0].pose.position_z ) );
-      transform.setRotation( rMat );
-      br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "last_obs" ) );
-      }
+//      {
+//      tf::Quaternion rMat(tags[0].pose.orientation_x,tags[0].pose.orientation_y,tags[0].pose.orientation_z,tags[0].pose.orientation_w);
+//      static tf::TransformBroadcaster br;
+//      tf::Transform transform;
+//     transform.setOrigin( tf::Vector3( tags[0].pose.position_x, tags[0].pose.position_y, tags[0].pose.position_z ) );
+//      transform.setRotation( rMat );
+//      br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "last_obs" ) );
+//      }
 #ifdef PARTICLE_FILTER
       for ( FTag2Marker tag: tags )
         tag_observations.push_back(tag.pose);
@@ -528,16 +528,16 @@ public:
 
 
 #ifdef CV_SHOW_IMAGES
-    {
-    cv::Mat overlaidImg;
-        cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-        for (const auto filt: FT.filters) {
-        	auto tag_ = filt.hypothesis;
-        	if ( !tag_.back_proj_corners.empty() )
-        		drawQuadWithCorner(overlaidImg, tag_.back_proj_corners );
-        }
-        cv::imshow("Back proj", overlaidImg);
-    }
+//    {
+//    cv::Mat overlaidImg;
+//        cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
+//        for (const auto filt: FT.filters) {
+//        	auto tag_ = filt.hypothesis;
+//        	if ( !tag_.back_proj_corners.empty() )
+//        		drawQuadWithCorner(overlaidImg, tag_.back_proj_corners );
+//        }
+//        cv::imshow("Back proj", overlaidImg);
+//    }
 #endif
 
     // Decode tracked payloads
@@ -555,15 +555,15 @@ public:
     ARMarkers arPoseMarkers_;
     for ( const MarkerFilter &filter: FT.filters )
     {
-    	if ( !filter.got_detection_in_current_frame ) {
+//    	if ( !filter.got_detection_in_current_frame ) {
 //    		cout << "No detection in current frame" << endl;
-    		continue;
-    	}
+//    		continue;
+//    	}
 
     	std::string tf_frame = "192_168_0_23";
 
-//    	cout << "Payload: ";
-//    	cout << filter.hypothesis.payload.bitChunksStr << endl;
+    	cout << "Payload: ";
+    	cout << filter.hypothesis.payload.bitChunksStr << endl;
     	std::ostringstream ostr;
     	bool valid_id = true;
 //    	cout << "Payload (6x): ";
@@ -579,17 +579,19 @@ public:
     		}
     	}
     	unsigned int marker_id = 0;
-    	if (valid_id == true)
+    	if (valid_id == true){
     		marker_id = std::stoi(ostr.str());
-    	else continue;
+        }
+    	else {
+            cout << "Not a valid ID" << endl;
+            continue;
+        }
     	cout << " Marker_id: " << marker_id << endl; // << "\tOstr = " << ostr.str() << endl;
 		std::ostringstream frameName;
 		frameName << "filt_" << marker_id;
 		tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
-		/* TODO: CHECK IF THIS IS CORRECT!!! */
 		tf::Quaternion rotateAroundY(0,1,0,0);
 		rMat = rotateAroundY*rMat;
-		/* ********************************* */
 
 		static tf::TransformBroadcaster br;
 		tf::Transform transform;

@@ -405,7 +405,7 @@ public:
     double angle = tag->pose.getAngleFromCamera()*vc_math::radian;
     paramsMutex.lock();
     for (unsigned int freq = 1; freq <= tag->payload.phaseVariances.size(); freq++) {
-      tag->payload.phaseVariances[freq-1]= 2.0*pow(weight_bias + weight_r*r + weight_z*z +
+      tag->payload.phaseVariances[freq-1]= pow(weight_bias + weight_r*r + weight_z*z +
           weight_angle*angle + weight_freq*freq,2);
     }
     paramsMutex.unlock();
