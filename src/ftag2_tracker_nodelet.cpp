@@ -65,7 +65,6 @@ protected:
   ros::Publisher rawTagDetectionsPub;
   ros::Publisher decodedTagDetectionsPub;
   ros::Publisher arMarkerPub_;
-  ARMarkers arPoseMarkers_;
   ros::Publisher rvizMarkerPub_;
   visualization_msgs::Marker rvizMarker_;
 
@@ -553,9 +552,10 @@ public:
     }
     decodePayloadP.toc();
 
+    ARMarkers arPoseMarkers_;
     for ( const MarkerFilter &filter: FT.filters )
     {
-    	if ( filter.no_detection_in_current_frame ) {
+    	if ( !filter.got_detection_in_current_frame ) {
 //    		cout << "No detection in current frame" << endl;
     		continue;
     	}
@@ -568,7 +568,7 @@ public:
     	bool valid_id = true;
 //    	cout << "Payload (6x): ";
     	for( unsigned int i=0; i<35; i+=6 ) {
-    		cout << filter.hypothesis.payload.bitChunksStr[i];
+//    		cout << filter.hypothesis.payload.bitChunksStr[i];
     		if ( filter.hypothesis.payload.bitChunksStr[i]>='0' && filter.hypothesis.payload.bitChunksStr[i] <= '9' ) {
     			ostr << filter.hypothesis.payload.bitChunksStr[i];
     		}
@@ -618,7 +618,6 @@ public:
 		rvizMarkerPub_.publish(rvizMarker_);
 
 		ARMarker ar_pose_marker_;
-
 		ar_pose_marker_.header.frame_id = tf_frame;
 		ar_pose_marker_.header.stamp    = ros::Time::now();
 
