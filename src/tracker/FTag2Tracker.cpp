@@ -9,9 +9,9 @@
 #include "common/VectorAndCircularMath.hpp"
 #include "decoder/FTag2Decoder.hpp"
 
-//#ifndef SILENT_TRACKER
-#undef SILENT_TRACKER
-//#endif
+#ifndef SILENT_TRACKER
+#define SILENT_TRACKER
+#endif
 
 using namespace std;
 
@@ -111,7 +111,7 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 
 void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion )
 {
-	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
+//	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
 
 //	for ( FTag2Marker f: detectedTags )
 //	{

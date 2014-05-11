@@ -34,7 +34,7 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
-#define CV_SHOW_IMAGES
+#undef CV_SHOW_IMAGES
 #undef DISPLAY_DECODED_TAG_PAYLOADS
 #define PROFILER
 
