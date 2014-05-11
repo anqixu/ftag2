@@ -40,6 +40,7 @@ typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer
 
 #undef PARTICLE_FILTER
 
+/* TODO: I changed DECODE_PAYLOAD_N_STD_THRESH from 3 to 1. Check! */
 #define DECODE_PAYLOAD_N_STD_THRESH (1)
 #define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES (8)
 #define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS (2)
@@ -244,8 +245,8 @@ public:
     rvizMarkerPub_ = local_nh.advertise < visualization_msgs::Marker > ("ftag2_vis_Makrer", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
-    imageSub = it.subscribe("image_in", 1, &FTag2TrackerNodelet::imageCallback, this,
-    		image_transport::TransportHints("compressed") );
+//    imageSub = it.subscribe("image_in", 1, &FTag2TrackerNodelet::imageCallback, this);
+    imageSub = it.subscribe("/axis/image_raw", 1, &FTag2TrackerNodelet::imageCallback, this, image_transport::TransportHints("compressed") );
     cameraSub = it.subscribeCamera("camera_in", 1, &FTag2TrackerNodelet::cameraCallback, this);
 
 #ifdef PARTICLE_FILTER
