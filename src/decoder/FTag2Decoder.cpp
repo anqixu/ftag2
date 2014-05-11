@@ -267,9 +267,20 @@ void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
     double phaseBinDeg = 360.0/maxBitValue;
     double phaseStdBinNormed = sqrt(phaseVars[freq]) / phaseBinDeg;
     for (int ray = 0; ray < NUM_RAYS; ray++) {
-      double phaseBinNormed = vc_math::wrapAngle(phases.at<double>(ray, freq), 360) / phaseBinDeg + 0.5;
+        double phaseBinNormed = vc_math::wrapAngle(phases.at<double>(ray, freq), 360) / phaseBinDeg + 0.5;
+        if( freq == 0 ){
+            std::cout << "(freq , ray) = " << "( " << freq << ", " << ray << " )" << std::endl;
+            std::cout << "PhaseBinNormed = " << phaseBinNormed << std::endl;
+            std::cout << "stdThresh = " << nStdThresh << std::endl;
+            std::cout << "PhaseStdBinNormed = " << phaseStdBinNormed << std::endl;
+        }
       if (floor(phaseBinNormed - nStdThresh*phaseStdBinNormed) == floor(phaseBinNormed + nStdThresh*phaseStdBinNormed)) {
         bitChunks.at<char>(ray, freq) = (unsigned char) phaseBinNormed % (unsigned char) maxBitValue;
+
+        if (freq == 0) {
+        int temp = (unsigned char) phaseBinNormed % (unsigned char) maxBitValue;
+std::cout << "(ray, freq)" << "(" << ray << ", " << freq << ") = " << temp << "(" << (int) bitChunks.at<char>(ray, freq) << "), phaseBinNormed: " << phaseBinNormed << ", maxBitValue: " << maxBitValue << std::endl;
+        }
       }
     }
   }
@@ -289,7 +300,9 @@ void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
       numDecodedPhases += 1;
     }
   }
+  std::cout << cv::format(bitChunks,"matlab") << std::endl;
   tag.bitChunksStr = bitChunksStr.str();
+  std::cout << bitChunksStr.str() << std::endl;
   tag.numDecodedPhases = numDecodedPhases;
   tag.bitChunks = bitChunks;
 

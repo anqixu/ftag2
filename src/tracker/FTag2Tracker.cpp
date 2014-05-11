@@ -9,9 +9,9 @@
 #include "common/VectorAndCircularMath.hpp"
 #include "decoder/FTag2Decoder.hpp"
 
-#ifndef SILENT_TRACKER
-#define SILENT_TRACKER
-#endif
+//#ifndef SILENT_TRACKER
+#undef SILENT_TRACKER
+//#endif
 
 using namespace std;
 
@@ -113,16 +113,24 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags, double quadSizeM,
 {
 //	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
 
-//	for ( FTag2Marker f: detectedTags )
-//	{
-//		std::cout << "Detected tags " << i << ": Variances: ";
-//		for ( double d: f.payload.phaseVariances )
-//		{
-//			cout << d << " ,";
-//		}
-//		cout << endl;
-//	}
-	correspondence( detectedTags );
+    int i=0;
+	for ( FTag2Marker f: detectedTags )
+	{
+		std::cout << "Detected tag " << i << ": Variances: ";
+		for ( double d: f.payload.phaseVariances )
+		{
+			cout << sqrt(d) << ", ";
+		}
+        
+		cout << endl << "Phases: ";
+         for ( int j=0; j<6; j++) {
+            cout << f.payload.phases.at<double>(j,0) << ", ";
+        }
+        cout << endl;
+        i++;
+	}
+
+    correspondence( detectedTags );
 
 #ifndef SILENT_TRACKER
 	cout << "*** After correspondence:  ***" << endl;
@@ -172,6 +180,22 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags, double quadSizeM,
 #ifndef SILENT_TRACKER
 	std::cout << "After current iteration, " << filters.size() << " filters exist." << endl;
 #endif
+    i = 0;
+    for ( MarkerFilter filt: filters )
+    {
+        FTag2Marker f = filt.hypothesis;
+        std::cout << "Filter " << i << ": Variances: ";
+        for ( double d: f.payload.phaseVariances )
+        {
+            cout << sqrt(d) << ", ";
+        }
+        cout << endl << "Phases: ";
+        for ( int j=0; j<6; j++) {
+            cout << f.payload.phases.at<double>(j,0) << ", ";
+        }
+        cout << endl;
+        i++;
+    } 
 }
 
 void FTag2Tracker::updateParameters(int numberOfParticles_, double position_std_, double orientation_std_, double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_)

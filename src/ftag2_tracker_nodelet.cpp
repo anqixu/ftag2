@@ -22,8 +22,8 @@
 
 #include <ftag2/FreqTBMarkerInfo.h>
 
-#include "ftag2/ARMarker.h"
-#include "ftag2/ARMarkers.h"
+#include "ftag2/ARMarkerFT.h"
+#include "ftag2/ARMarkersFT.h"
 
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -34,15 +34,15 @@ using namespace vc_math;
 typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
 
 
-//#undef CV_SHOW_IMAGES
-#define CV_SHOW_IMAGES
+#undef CV_SHOW_IMAGES
+//#define CV_SHOW_IMAGES
 #undef DISPLAY_DECODED_TAG_PAYLOADS
 #define PROFILER
 
 #undef PARTICLE_FILTER
 
 /* TODO: I changed DECODE_PAYLOAD_N_STD_THRESH from 3 to 1. Check! */
-#define DECODE_PAYLOAD_N_STD_THRESH (1)
+#define DECODE_PAYLOAD_N_STD_THRESH (0.01)
 #define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES (8)
 #define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS (2)
 
@@ -253,8 +253,8 @@ public:
     image_transport::ImageTransport it(local_nh);
     rawTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
     decodedTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("decoded_tags", 1);
-    arMarkerPub_ = local_nh.advertise < ARMarkers > ("ar_pose_marker", 1);
-    rvizMarkerPub_ = local_nh.advertise < visualization_msgs::Marker > ("ftag2_vis_Makrer", 1);
+    arMarkerPub_ = local_nh.advertise < ARMarkersFT > ("ft_pose_markers", 1);
+    rvizMarkerPub_ = local_nh.advertise < visualization_msgs::Marker > ("ftag2_vis_Marker", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
     imageSub = it.subscribe(imageTopic, 1, &FTag2TrackerNodelet::imageCallback, this, transportType);
@@ -565,7 +565,7 @@ public:
     }
     decodePayloadP.toc();
 
-    ARMarkers arPoseMarkers_;
+    ARMarkersFT arPoseMarkers_;
     for ( const MarkerFilter &filter: FT.filters )
     {
       if ( !filter.got_detection_in_current_frame ) {
@@ -630,7 +630,7 @@ public:
 
     rvizMarkerPub_.publish(rvizMarker_);
 
-    ARMarker ar_pose_marker_;
+    ARMarkerFT ar_pose_marker_;
     ar_pose_marker_.header.frame_id = tf_frame;
     ar_pose_marker_.header.stamp    = ros::Time::now();
 
