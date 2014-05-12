@@ -25,7 +25,10 @@ bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
   int k = 0;
   for ( int ray=0 ; ray<phases.rows; ray++ )
   {
-    for ( int freq=0 ; freq<phases.cols; freq++ )
+	/* TODO: RETURN TO:
+	 * for ( int freq=0 ; freq<phases.cols; freq++ )
+	 */
+    for ( int freq=0 ; freq<1; freq++ )
     {
 //      cout << "Phase variance (" << ray << ", " << freq << ") = " << phaseVariances[freq] << endl;
       double phObs = phases.at<double>(ray,freq);

@@ -16,7 +16,7 @@ MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 	marker_id = num_Markers;
 //	std::vector<FTag2Pose> observations;
 //	observations.push_back(detection.pose);
-//	KF = KalmanTrack(detection.pose);
+	KF = KalmanTrack(detection.pose);
 
 //	PF = ParticleFilter(detection.pose);
 	IF = PayloadFilter();
@@ -30,8 +30,8 @@ void MarkerFilter::step( FTag2Marker detection, double quadSizeM, cv::Mat camera
 	hypothesis.pose = detection.pose;
 //	hypothesis.pose = PF.getEstimatedPose();
 
-//	KF.step_( detection.pose );
-//	hypothesis.pose = KF.getEstimatedPose();
+	KF.step_( detection.pose );
+	hypothesis.pose = KF.getEstimatedPose();
 
 //	std::cout << "KF Pose: "
 //			<< hypothesis.pose.position_x << ", "
@@ -61,8 +61,8 @@ void MarkerFilter::step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat came
 	got_detection_in_current_frame = false;
 //	std::cout << "MarkerFilter: stepping without detection" << std::endl;
 //	PF.step();
-//	KF.step_( );
-//	hypothesis.pose = KF.getEstimatedPose();
+	KF.step_( );
+	hypothesis.pose = KF.getEstimatedPose();
 //	hypothesis.back_proj_corners = backProjectQuad( hypothesis.pose.position_x,
 //				hypothesis.pose.position_y, hypothesis.pose.position_z,
 //				hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,

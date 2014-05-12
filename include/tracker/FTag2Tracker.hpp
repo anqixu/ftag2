@@ -22,7 +22,7 @@ private:
 	std::vector<MarkerFilter> ready_to_be_killed;
 	std::vector<FTag2Marker> detection_matches;
 	std::vector<FTag2Marker> to_be_spawned;
-	constexpr static int MAX_FRAMES_NO_DETECTION = 50;
+	constexpr static int MAX_FRAMES_NO_DETECTION = 10;
 
 public:
 	std::vector<MarkerFilter> filters;
