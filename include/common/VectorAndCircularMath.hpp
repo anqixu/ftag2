@@ -40,25 +40,17 @@ inline bool lessThanArray5i(const std::array<int, 5>& lhs, const std::array<int,
 
 namespace vc_math {
 
-#ifndef BOOST_VERSION
+#if BOOST_VERSION/100 < 1050
 constexpr double pi = 3.1415926535897932384626433832795;
-#else
-constexpr double pi = boost::math::constants::pi<double>();
-#endif
-
-#if BOOST_VERSION/100 < 1046
 constexpr double two_pi = pi*2;
 constexpr double inv_sqrt_2pi = 0.3989422804014327;
-#else
-constexpr double two_pi = boost::math::constants::two_pi<double>();
-constexpr double inv_sqrt_2pi = 1.0/boost::math::constants::root_two_pi<double>();
-#endif
-
-#if BOOST_VERSION/100 < 1050
 constexpr double degree = pi/180.0;
 constexpr double radian = 180.0/pi;
 constexpr double half_pi = pi/2.0;
 #else
+constexpr double pi = boost::math::constants::pi<double>();
+constexpr double two_pi = boost::math::constants::two_pi<double>();
+constexpr double inv_sqrt_2pi = 1.0/boost::math::constants::root_two_pi<double>();
 constexpr double degree = boost::math::constants::degree<double>();
 constexpr double radian = boost::math::constants::radian<double>();
 constexpr double half_pi = boost::math::constants::half_pi<double>();
