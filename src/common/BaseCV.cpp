@@ -10,7 +10,6 @@
 
 using namespace std;
 using namespace cv;
-using namespace boost::math::constants;
 using namespace vc_math;
 
 
