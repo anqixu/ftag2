@@ -19,10 +19,6 @@
 #include "tracker/PayloadFilter.hpp" // TODO: 0 remove debug
 
 
-#include <opencv2/gpu/gpu.hpp> // TODO: 000 remove
-
-
-
 using namespace std;
 using namespace cv;
 using namespace vc_math;
@@ -65,11 +61,6 @@ protected:
   Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
   ros::Time latestProfTime;
   double profilerDelaySec;
-
-
-  // TODO: 000 remove
-  Profiler cannyCVdurationP, cannyMedurationP, cannyGPUdurationP;
-
 
 
 public:
@@ -181,17 +172,11 @@ public:
 
 #ifdef CV_SHOW_IMAGES
     // Configure windows
-
-    namedWindow("canny_cv", CV_GUI_EXPANDED);
-    namedWindow("canny_me", CV_GUI_EXPANDED);
-    namedWindow("canny_gpu", CV_GUI_EXPANDED);
-
-    // TODO: 000 remove above and uncomment below
-    //namedWindow("quad_1", CV_GUI_EXPANDED);
-    //namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
-    //namedWindow("segments", CV_GUI_EXPANDED);
-    //namedWindow("quads", CV_GUI_EXPANDED);
-    //namedWindow("tags", CV_GUI_EXPANDED);
+    namedWindow("quad_1", CV_GUI_EXPANDED);
+    namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
+    namedWindow("segments", CV_GUI_EXPANDED);
+    namedWindow("quads", CV_GUI_EXPANDED);
+    namedWindow("tags", CV_GUI_EXPANDED);
 #endif
 
     // Resolve image topic names
@@ -259,75 +244,6 @@ public:
 
 
   void processImage(const cv::Mat sourceImg, int ID) {
-    durationP.tic();
-
-    cv::Mat grayImg, edgelImg, dxImg, dyImg, cannyCVImg, cannyMeImg;
-    cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
-
-    blur(grayImg, edgelImg, cv::Size(params.sobelBlurWidth, params.sobelBlurWidth));
-
-    cannyCVdurationP.tic();
-    cv::Canny(edgelImg, cannyCVImg, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth);
-    cv::Sobel(grayImg, dxImg, CV_16S, 1, 0, params.sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
-    cv::Sobel(grayImg, dyImg, CV_16S, 0, 1, params.sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
-    cannyCVdurationP.toc();
-
-    cannyMedurationP.tic();
-    OpenCVCanny(edgelImg, cannyMeImg, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth, dxImg, dyImg);
-    cannyMedurationP.toc();
-
-    if (gpu::getCudaEnabledDeviceCount() > 0) {
-      gpu::GpuMat edgelGPUImg(edgelImg);
-      gpu::GpuMat cannyGPUImg_;
-
-      cannyGPUdurationP.tic();
-      gpu::Canny(edgelGPUImg, cannyGPUImg_, params.sobelThreshLow, params.sobelThreshHigh, params.sobelBlurWidth);
-      cannyGPUdurationP.toc();
-
-      cv::Mat cannyGPUImg(cannyGPUImg_);
-      // TODO: 000 compare results between gpu::canny and cv::canny
-
-      #ifdef CV_SHOW_IMAGES
-      cv::imshow("canny_gpu", cannyGPUImg);
-#endif
-    }
-
-#ifdef CV_SHOW_IMAGES
-    cv::imshow("canny_cv", cannyCVImg);
-    cv::imshow("canny_me", cannyMeImg);
-#endif
-
-    // Update profiler
-    durationP.toc();
-    if (profilerDelaySec > 0) {
-      ros::Time currTime = ros::Time::now();
-      ros::Duration td = currTime - latestProfTime;
-      if (td.toSec() > profilerDelaySec) {
-        cout << "canny_cv: " << cannyCVdurationP.getStatsString() << endl;
-        cout << "canny_me: " << cannyMedurationP.getStatsString() << endl;
-        cout << "cannygpu: " << cannyGPUdurationP.getStatsString() << endl;
-        cout << "Pipeline Duration: " << durationP.getStatsString() << endl;
-        cout << "Pipeline Rate: " << rateP.getStatsString() << endl;
-        latestProfTime = currTime;
-      }
-    }
-
-    // Allow OpenCV HighGUI events to process
-#ifdef CV_SHOW_IMAGES
-    char c = waitKey(1);
-    if (c == 'x' || c == 'X') {
-      ros::shutdown();
-    }
-#endif
-
-    return;
-  };
-
-
-
-  void processImageOLD(const cv::Mat sourceImg, int ID) {
-
-
     // Update profiler
     rateP.try_toc();
     rateP.tic();
