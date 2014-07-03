@@ -15,7 +15,7 @@
   
     <param name="transport_type" value="compressed" />
     
-    <param name="profiler_delay_sec" value="0.0" /> <!-- 0: disable -->
+    <param name="profiler_delay_sec" value="1.0" /> <!-- 0: disable -->
     
     <param name="target_tag_phases" value="" />
     <param name="target_tag_phases" value="270.00, 315.00, 180.00, 180.00, 180.00, 45.00, 225.00, 180.00, 315.00, 180.00, 180.00, 90.00, 315.00, 135.00, 315.00, 135.00, 225.00, 135.00, 315.00, 135.00, 270.00, 45.00, 0.00, 0.00, 45.00, 0.00, 0.00, 0.00, 0.00, 0.00" /> <!-- 5F -->

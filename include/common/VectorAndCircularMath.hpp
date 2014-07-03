@@ -40,6 +40,7 @@ inline bool lessThanArray5i(const std::array<int, 5>& lhs, const std::array<int,
 
 namespace vc_math {
 
+
 #if BOOST_VERSION/100 < 1050
 constexpr double pi = 3.1415926535897932384626433832795;
 constexpr double two_pi = pi*2;
