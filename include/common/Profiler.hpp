@@ -15,8 +15,19 @@
 class Profiler {
 public:
   Profiler() : count(0), totalTime(0), totalTimeSqrd(0),
-      ticTime(boost::posix_time::not_a_date_time) {
-  };
+      ticTime(boost::posix_time::not_a_date_time) {};
+
+  Profiler(const Profiler& o) : count(o.count), totalTime(o.totalTime),
+      totalTimeSqrd(o.totalTimeSqrd), ticTime(o.ticTime) {};
+
+  void operator=(const Profiler& o) {
+    timeMutex.lock();
+    count = o.count;
+    totalTime = o.totalTime;
+    totalTimeSqrd = o.totalTimeSqrd;
+    ticTime = o.ticTime;
+    timeMutex.unlock();
+  }
 
   ~Profiler() {
   };

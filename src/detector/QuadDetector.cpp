@@ -1,6 +1,8 @@
 #include "detector/FTag2Detector.hpp"
 #include <cmath>
 
+#include <iostream> // TODO: 000 remove
+
 
 /**
  * Returns 1 if the line segments intersect, 0 if their lines intersect
@@ -414,11 +416,17 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     double minQuadWidth) {
   std::list<Quad> quads;
 
-  // Compute lengths of each segment
+  _profilers["31_quad_edgepair"].tic();
+
+  // Compute lengths and orientations of each segment
   std::vector<double> segmentLengths;
+  std::vector<double> segmentOrientations;
   for (const cv::Vec4i& seg: segments) {
     segmentLengths.push_back(vc_math::dist(seg));
+    segmentOrientations.push_back(vc_math::orientation(seg));
   }
+
+  unsigned long long __count; // TODO: 000 remove
 
   // Identify connected segments
   std::vector< std::list<unsigned int> > adjList(segments.size());
@@ -430,8 +438,8 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
   for (i = 0; i < segments.size(); i++) {
     for (j = i+1; j < segments.size(); j++) {
       // Do not connect nearby segments with sharp (or near-180') angles in between them
-      double intAngle = vc_math::angularDist(vc_math::orientation(segments[i]),
-          vc_math::orientation(segments[j]), vc_math::pi);
+      double intAngle = vc_math::angularDist(segmentOrientations[i],
+          segmentOrientations[j], vc_math::pi);
       if (intAngle < intSegMinAngle || intAngle > vc_math::pi - intSegMinAngle) { continue; }
 
       intersect = getSegmentIntersection(segments[i], segments[j], intPt,
@@ -456,6 +464,8 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
 
       // Determine adjacency order between the two segments
       if (intersect > 0) {
+        __count += 1;
+
         if (isClockwiseOrder(segments[i], segments[j], intPt)) {
           adjList[i].push_back(j);
           incomingAdj[j] = true;
@@ -466,8 +476,12 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
       }
     }
   }
+  _profilers["31_quad_edgepair"].toc();
+
+  std::cout << "D> " << segments.size() << " segments; " << segments.size()*(segments.size()-1)/2 << " checks; " << __count << " conn pairs" << std::endl; // TODO: 000 remove
 
   // Keep only intersecting edgels and create reduced adjacency matrix + list
+  _profilers["32_quad_dft"].tic();
   std::vector<int> toIntSegIDs(segments.size(), -1);
   std::vector<int> toOrigSegIDs;
   for (i = 0; i < segments.size(); i++) {
@@ -531,6 +545,7 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
       }
     }
   }
+  _profilers["32_quad_dft"].toc();
 
   return quads;
 };
@@ -754,7 +769,6 @@ std::vector<cv::Point2f> backProjectQuad(double cam_pose_in_tag_frame_x, double 
 //	std::cout << std::endl;
 	return cornersPx;
 }
-
 
 
 bool validateTagBorder(cv::Mat tag,

@@ -52,19 +52,43 @@ struct Quad {
  * Detects line segments (represented as [endA.x, endA.y, endB.x, endB.y])
  * by grouping connected edge elements based on similar edgel directions.
  *
+ * DEFAULT value for segmentMinNumEdgels is chosen with the assumption that
+ * there are up to 5Hz information in each FTag2 horizontal slice, which require
+ * a minimum of 10 horizontal pixels to represent. Appending on the 2/8 border
+ * slices, and rounding up, results in a minimum of 15 pixels. As for vertical
+ * pixels, there must be at least 8 (rounding up to 10) pixels available,
+ * in order to recover the 6 horizontal slices within a tag.
+ *
+ * Furthermore, even under the mildest of blurring settings, there is no
+ * guarantee that 2 line segments of an actual object corner will be connected.
+ * Therefore, the DEFAULT value for ccMinNumEdgels is chosen to be equal to
+ * the one for segmentMinNumEdgels.
+ *
  * @params grayImg: 1-channel image (of type CV_8UC1)
- * @params sobelThreshHigh: maximum hysteresis threshold for Sobel edge detector
- * @params sobelThreshLow: minimum hysteresis threshold for Sobel edge detector
- * @params sobelBlurWidth: width of blur mask for Sobel edge detector (must be 3, 5, or 7)
- * @params ccMinNumEdgels: minimum number of edgels
- * @params angleMargin: in radians
+ * @params cannyBlurWidth: pre-Canny Gaussian blur width [DEFAULT: minimal noise filtering setting]
+ * @params cannyApertureSize: filter width for Sobel edge detector (must be 3, 5, or 7) [DEFAULT: finest edgel setting]
+ * @params cannyThreshHigh: maximum hysteresis threshold to filter Sobel edge response [DEFAULT: heuristic]
+ * @params cannyThreshLow: minimum hysteresis threshold to filter Sobel edge response [DEFAULT: heuristic]
+ * @params ccMinNumEdgels: minimum number of edgels in each accepted connected component [DEFAULT: see comment above]
+ * @params angleMargin: maximum angular range (in radians) when connecting edgels into line segments [DEFAULT: conservative heuristic]
+ * @params segmentMinNumEdgels: minimum number of edgels in each connected line segment, within a connected component [DEFAULT: see comment above]
  */
 std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
-    int sobelThreshHigh = 100, int sobelThreshLow = 30, int sobelBlurWidth = 3,
-    unsigned int ccMinNumEdgels = 50, double angleMargin = 20.0*vc_math::degree,
-    unsigned int segmentMinNumEdgels = 15);
+    unsigned int cannyBlurWidth = 3,
+    int cannyApertureSize = 3,
+    int cannyThreshHigh = 100,
+    int cannyThreshLow = 30,
+    unsigned int ccMinNumEdgels = 10,
+    double angleMargin = 20.0*vc_math::degree,
+    unsigned int segmentMinNumEdgels = 10);
 
 
+/**
+ * DEPRECATED: using a fixed-width rho/alpha grid sampling in Hough space
+ * is ill-advised since it fails to sample nearby lines that are far from the
+ * origin of the Hough space, thus resulting in inequal spatial sampling of
+ * edgels in Cartesian space.
+ */
 std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
     int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
     double houghRhoRes, double houghThetaRes,
@@ -206,10 +230,7 @@ void detect( cv::Mat sourceImg ) {
 	cv::Mat grayImg;
 	cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
 
-	std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
-			params.sobelThreshHigh, params.sobelThreshLow,
-			params.sobelBlurWidth, params.lineMinEdgelsCC,
-			params.lineAngleMargin*degree, params.lineMinEdgelsSeg);
+	std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
 #ifdef CV_SHOW_IMAGES
 	{
 		cv::Mat overlaidImg;

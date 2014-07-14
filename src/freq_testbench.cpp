@@ -302,10 +302,7 @@ public:
 
         // 1. Detect line segments
         lineSegP.tic();
-        std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
-            params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
-            params.lineMinEdgelsCC, params.lineAngleMargin*degree,
-            params.lineMinEdgelsSeg);
+        std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
         lineSegP.toc();
         sourceImgRot.copyTo(overlaidImg);
         drawLineSegments(overlaidImg, segments);

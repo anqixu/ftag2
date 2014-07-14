@@ -171,13 +171,23 @@ public:
     //filter.setParams(0.0); // TODO: 0 remove debug
 
 #ifdef CV_SHOW_IMAGES
+    // TODO: 0 uncomment namedWindows
     // Configure windows
-    namedWindow("quad_1", CV_GUI_EXPANDED);
-    namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
+    //namedWindow("quad_1", CV_GUI_EXPANDED);
+    //namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
     namedWindow("segments", CV_GUI_EXPANDED);
     namedWindow("quads", CV_GUI_EXPANDED);
-    namedWindow("tags", CV_GUI_EXPANDED);
+    //namedWindow("tags", CV_GUI_EXPANDED);
 #endif
+
+    // TODO: 0 remove debug profiler hooks
+    _profilers["01_pp_duration"] = Profiler();
+    _profilers["02_pp_rate"] = Profiler();
+    _profilers["10_pp_rgb2gray"] = Profiler();
+    _profilers["20_pp_line"] = Profiler();
+    _profilers["30_pp_quad"] = Profiler();
+    _profilers["31_quad_edgepair"] = Profiler();
+    _profilers["32_quad_dft"] = Profiler();
 
     // Resolve image topic names
     std::string imageTopic = local_nh.resolveName("image_in");
@@ -245,6 +255,84 @@ public:
 
   void processImage(const cv::Mat sourceImg, int ID) {
     // Update profiler
+    _profilers["02_pp_rate"].try_toc();
+    _profilers["02_pp_rate"].tic();
+    _profilers["01_pp_duration"].tic();
+
+    // Convert source image to grayscale
+    _profilers["10_pp_rgb2gray"].tic();
+    cv::Mat grayImg;
+    cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
+    _profilers["10_pp_rgb2gray"].toc();
+
+    // 1. Detect line segments
+    _profilers["20_pp_line"].tic();
+    std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
+    _profilers["20_pp_line"].toc();
+#ifdef CV_SHOW_IMAGES
+    {
+      cv::Mat overlaidImg;
+      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
+      drawLineSegments(overlaidImg, segments);
+      cv::imshow("segments", overlaidImg);
+    }
+#endif
+
+    // 2. Detect quadrilaterals
+    _profilers["30_pp_quad"].tic();
+    std::list<Quad> quads = detectQuads(segments,
+        params.quadMinAngleIntercept*degree,
+        params.quadMaxTIntDistRatio,
+        params.quadMaxEndptDistRatio,
+        params.quadMaxCornerGapEndptDistRatio,
+        params.quadMaxEdgeGapDistRatio,
+        params.quadMaxEdgeGapAlignAngle*degree,
+        params.quadMinWidth);
+    quads.sort(Quad::compareArea);
+    _profilers["30_pp_quad"].toc();
+#ifdef CV_SHOW_IMAGES
+    {
+      cv::Mat overlaidImg;
+      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
+      for (const Quad& quad: quads) {
+        drawQuad(overlaidImg, quad.corners);
+      }
+      cv::imshow("quads", overlaidImg);
+    }
+#endif
+
+    // Update profiler
+    _profilers["01_pp_duration"].toc();
+    if (profilerDelaySec > 0) {
+      ros::Time currTime = ros::Time::now();
+      ros::Duration td = currTime - latestProfTime;
+      if (td.toSec() > profilerDelaySec) {
+        ROS_WARN_STREAM("===== PROFILERS =====");
+        for (std::map<std::string, Profiler>::iterator it = _profilers.begin();
+            it != _profilers.end(); it++) {
+          ROS_WARN_STREAM(it->first << ": " << it->second.getStatsString());
+        }
+        ROS_WARN_STREAM("");
+        latestProfTime = currTime;
+      }
+    }
+
+    // Allow OpenCV HighGUI events to process
+#ifdef CV_SHOW_IMAGES
+    char c = waitKey(1);
+    if (c == 'x' || c == 'X') {
+      ros::shutdown();
+    } else if (c == 'r' || c == 'R') {
+      for (std::map<std::string, Profiler>::iterator it = _profilers.begin();
+          it != _profilers.end(); it++) {
+        it->second.reset();
+      }
+    }
+#endif
+  };
+
+  void processImageOLD(const cv::Mat sourceImg, int ID) {
+    // Update profiler
     rateP.try_toc();
     rateP.tic();
     durationP.tic();
@@ -255,10 +343,7 @@ public:
 
     // 1. Detect line segments
     lineSegP.tic();
-    std::vector<cv::Vec4i> segments = detectLineSegments(grayImg,
-        params.sobelThreshHigh, params.sobelThreshLow, params.sobelBlurWidth,
-        params.lineMinEdgelsCC, params.lineAngleMargin*degree,
-        params.lineMinEdgelsSeg);
+    std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
     lineSegP.toc();
 #ifdef CV_SHOW_IMAGES
     {

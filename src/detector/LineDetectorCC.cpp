@@ -8,7 +8,7 @@
 struct Segment {
   // Elements populated by grouplearSegmentsInCC()
   std::vector<cv::Point2i> points; // NOTE: points are NOT assumed to be sorted in any way
-  double minAngleSlack, maxAngleSlack, minAngle, maxAngle; // WARNING: may be corrupted by tryMergeColinear()
+  double minAngleSlack, maxAngleSlack, minAngle, maxAngle; // WARNING: may be corrupted by tryMergeColinear(), since this fn does not try to update minAngle / maxAngle when merging
 
   // Elements populated by populateSegmentEndpoints()
   cv::Vec4f line;
@@ -105,10 +105,11 @@ void populateSegmentEndpoints(Segment& currSegment,
 bool tryMergeColinear(Segment& a, Segment& b, double endpointDistThresh = 2.0,
     double angleThreshRad = 10.0*vc_math::degree) {
   if (b.points.empty()) return false;
-  if ((vc_math::dist(a.endpointA, b.endpointA) > endpointDistThresh) &&
-      (vc_math::dist(a.endpointA, b.endpointB) > endpointDistThresh) &&
-      (vc_math::dist(a.endpointB, b.endpointA) > endpointDistThresh) &&
-      (vc_math::dist(a.endpointA, b.endpointB) > endpointDistThresh)) return false;
+  double endpointDistThreshSqrd = endpointDistThresh * endpointDistThresh;
+  if ((vc_math::distSqrd(a.endpointA, b.endpointA) > endpointDistThreshSqrd) &&
+      (vc_math::distSqrd(a.endpointA, b.endpointB) > endpointDistThreshSqrd) &&
+      (vc_math::distSqrd(a.endpointB, b.endpointA) > endpointDistThreshSqrd) &&
+      (vc_math::distSqrd(a.endpointA, b.endpointB) > endpointDistThreshSqrd)) return false;
   if (vc_math::angularDist(
           std::atan2(a.line[1], a.line[0]),
           std::atan2(b.line[1], b.line[0]), vc_math::pi) > angleThreshRad) return false;
@@ -236,6 +237,10 @@ std::list<Segment> groupLinearSegmentsInCC(const std::vector< std::vector<cv::Po
     } // for each edgel inside the CC
 
     // Merge nearby co-linear segments
+    // NOTE: we assume that there are not many fragmented segments within each
+    //       connected component, hence we can rely on a naive O(E^2) pairwise
+    //       matching strategy rather than using spatial hashing as a
+    //       pre-filtering step
     if (segmentsCC.size() > 1) {
       std::list<Segment>::iterator segA = segmentsCC.begin(), segB;
       for (; segA != segmentsCC.end(); segA++) {
@@ -266,8 +271,12 @@ std::list<Segment> groupLinearSegmentsInCC(const std::vector< std::vector<cv::Po
 
 
 std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
-    int sobelThreshHigh, int sobelThreshLow, int sobelBlurWidth,
-    unsigned int ccMinNumEdgels, double angleMarginRad,
+    unsigned int cannyBlurWidth,
+    int cannyApertureSize,
+    int cannyThreshHigh,
+    int cannyThreshLow,
+    unsigned int ccMinNumEdgels,
+    double angleMarginRad,
     unsigned int segmentMinNumEdgels) {
   // Validate inputs
   assert(grayImg.type() == CV_8UC1);
@@ -275,7 +284,11 @@ std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
 
   // Identify edgels and compute derivate components along x and y axes (needed to compute orientation of edgels)
   cv::Mat edgelImg, dxImg, dyImg;
-  blur(grayImg, edgelImg, cv::Size(sobelBlurWidth, sobelBlurWidth));
+  if (cannyBlurWidth > 0) {
+    blur(grayImg, edgelImg, cv::Size(cannyBlurWidth, cannyBlurWidth));
+  } else {
+    edgelImg = grayImg;
+  }
 
   // NOTE: The commented implementation using OpenCV's Canny + Sobel functions
   //       is wasteful since Canny calls Sobel internally. We therefore copied
@@ -283,7 +296,7 @@ std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
   //Canny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth); // args: in, out, low_thresh, high_thresh, gauss_blur
   //cv::Sobel(grayImg, dxImg, CV_16S, 1, 0, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
   //cv::Sobel(grayImg, dyImg, CV_16S, 0, 1, sobelBlurWidth, 1, 0, cv::BORDER_REPLICATE);
-  OpenCVCanny(edgelImg, edgelImg, sobelThreshLow, sobelThreshHigh, sobelBlurWidth, dxImg, dyImg);
+  OpenCVCanny(edgelImg, edgelImg, cannyThreshLow, cannyThreshHigh, cannyApertureSize, dxImg, dyImg);
 
   // Identify all connected edgel components above minimum count threshold
   std::vector< std::vector<cv::Point2i> > edgelCCs = identifyEdgelCCs(edgelImg);
@@ -307,6 +320,7 @@ std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
     }
   }
 
+  // Convert segments to segment endpoints
   std::vector<cv::Vec4i> segmentEndpoints;
   for (Segment& currSegment: segments) {
     segmentEndpoints.push_back(cv::Vec4i(
@@ -315,23 +329,6 @@ std::vector<cv::Vec4i> detectLineSegments(cv::Mat grayImg,
         currSegment.endpointB.x,
         currSegment.endpointB.y));
   }
-
-  /*
-  // Display edgels
-  cv::Mat overlayImg = edgelImg * 0.5;
-  std::cout << "Found " << segments.size() << " segments [from a total of " << edgelCCs.size() << " edgel sets]" << std::endl;
-  for (Segment& currSegment: segments) {
-    assert(!currSegment.points.empty());
-    for (cv::Point2i& currPt: currSegment.points) {
-      overlayImg.at<unsigned char>(currPt.y, currPt.x) = 200;
-    }
-  }
-  for (cv::Vec4i& endpts: segmentEndpoints) {
-    cv::circle(overlayImg, cv::Point2i(endpts[0], endpts[1]), 2, cv::Scalar(255), 1);
-    cv::circle(overlayImg, cv::Point2i(endpts[2], endpts[3]), 2, cv::Scalar(255), 2);
-  }
-  cv::imshow("debug", overlayImg);
-  */
 
   return segmentEndpoints;
 };

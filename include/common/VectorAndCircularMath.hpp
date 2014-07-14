@@ -12,6 +12,11 @@
 #include <cassert>
 
 
+// TODO: 0 remove global profiler hook
+#include "common/Profiler.hpp"
+extern std::map<std::string, Profiler> _profilers;
+
+
 inline bool operator==(const cv::Vec4i& lhs, const cv::Vec4i& rhs) {
   return ((lhs[0] == rhs[0]) &&
           (lhs[1] == rhs[1]) &&
@@ -118,6 +123,21 @@ inline double dist(const cv::Point2i& xy1, const cv::Point2i& xy2) {
 };
 inline double dist(const cv::Vec4i& xy12) {
   return sqrt((xy12[0]-xy12[2])*(xy12[0]-xy12[2])+(xy12[1]-xy12[3])*(xy12[1]-xy12[3]));
+};
+inline double distSqrd(double x1, double y1, double x2, double y2) {
+  return (x1-x2)*(x1-x2)+(y1-y2)*(y1-y2);
+};
+inline double distSqrd(const cv::Point2d& xy1, const cv::Point2d& xy2) {
+  return (xy1.x-xy2.x)*(xy1.x-xy2.x)+(xy1.y-xy2.y)*(xy1.y-xy2.y);
+};
+inline double distSqrd(const cv::Point2f& xy1, const cv::Point2f& xy2) {
+  return (xy1.x-xy2.x)*(xy1.x-xy2.x)+(xy1.y-xy2.y)*(xy1.y-xy2.y);
+};
+inline double distSqrd(const cv::Point2i& xy1, const cv::Point2i& xy2) {
+  return (xy1.x-xy2.x)*(xy1.x-xy2.x)+(xy1.y-xy2.y)*(xy1.y-xy2.y);
+};
+inline double distSqrd(const cv::Vec4i& xy12) {
+  return (xy12[0]-xy12[2])*(xy12[0]-xy12[2])+(xy12[1]-xy12[3])*(xy12[1]-xy12[3]);
 };
 
 /**
@@ -461,10 +481,14 @@ inline double computeScaleFactor(const cv::Size& from, const cv::Size& to) {
 };
 
 /**
- * Computes orientation of line segment (of the form [x1, y1, x2, y2])
+ * Computes orientation of line segment (of the form [x1, y1, x2, y2]), in
+ * radians.
  */
 inline double orientation(const cv::Vec4i& seg) {
   return std::atan2(seg[3] - seg[1], seg[2] - seg[0]);
+};
+inline double orientation(const cv::Point2i& ptA, const cv::Point2i& ptB) {
+  return std::atan2(ptB.y - ptA.y, ptB.x - ptA.x);
 };
 inline double orientation(const cv::Point2d& ptA, const cv::Point2d& ptB) {
   return std::atan2(ptB.y - ptA.y, ptB.x - ptA.x);

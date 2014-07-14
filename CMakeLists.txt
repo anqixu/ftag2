@@ -120,13 +120,13 @@ target_link_libraries(${FTAG2_READER_NODELET_NAME}
 )
 add_dependencies(${FTAG2_READER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 
-add_library(${FTAG2_TRACKER_NODELET_NAME} src/ftag2_tracker_nodelet.cpp)
-target_link_libraries(${FTAG2_TRACKER_NODELET_NAME}
-  ${FTAG2_LIB_NAME}
-  ${OpenCV_LIBRARIES}
-  ${catkin_LIBRARIES}
-)
-add_dependencies(${FTAG2_TRACKER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
+#add_library(${FTAG2_TRACKER_NODELET_NAME} src/ftag2_tracker_nodelet.cpp)
+#target_link_libraries(${FTAG2_TRACKER_NODELET_NAME}
+#  ${FTAG2_LIB_NAME}
+#  ${OpenCV_LIBRARIES}
+#  ${catkin_LIBRARIES}
+#)
+#add_dependencies(${FTAG2_TRACKER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 
 #add_executable(ros_cam_testbench src/ros_cam_testbench.cpp)
 #target_link_libraries(ros_cam_testbench
@@ -137,13 +137,13 @@ add_dependencies(${FTAG2_TRACKER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 # )
 #add_dependencies(ros_cam_testbench ${PROJECT_NAME}_gencfg)
 
-add_executable(freq_testbench src/freq_testbench.cpp)
-target_link_libraries(freq_testbench
-  ${FTAG2_LIB_NAME}
-  ${OpenCV_LIBRARIES}
-  ${catkin_LIBRARIES}
-)
-add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_generate_messages_cpp)
+#add_executable(freq_testbench src/freq_testbench.cpp)
+#target_link_libraries(freq_testbench
+#  ${FTAG2_LIB_NAME}
+#  ${OpenCV_LIBRARIES}
+#  ${catkin_LIBRARIES}
+#)
+#add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_generate_messages_cpp)
 
 
 #############

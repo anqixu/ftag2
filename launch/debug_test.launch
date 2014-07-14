@@ -1,0 +1,20 @@
+<launch>
+  <arg name="nodelet_name" value="ftag2" />
+
+  <!-- Uncomment only one of the following -->
+  <!-- remap from="/$(arg nodelet_name)/image_in" to="/camera/image_raw" / -->
+  <remap from="/$(arg nodelet_name)/camera_in" to="/camera/image_raw" />
+
+  <!-- node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen" launch-prefix="gdb -ex run - -args" / -->
+  <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen"/>
+  
+  <node pkg="nodelet" type="nodelet" name="$(arg nodelet_name)"
+        args="load ftag2/ftag2_reader_nodelet nodelet_manager">
+    <param name="camera_intrinsic" value="1397.333781087287, 0.0, 983.8942950980206, 0.0, 1405.0985092500441, 565.1807876161381, 0.0, 0.0, 1.0" />
+    <param name="camera_distortion" value="0.11129261201886534, -0.13914268258885296, 0.002552247431691603, -0.0013492609115971868, 0.0" />
+  
+    <param name="transport_type" value="raw" />
+    
+    <param name="profiler_delay_sec" value="1.0" /> <!-- 0: disable -->
+  </node>
+</launch>
