@@ -67,14 +67,6 @@ public:
       dynCfgSyncReq(false),
       latestProfTime(ros::Time::now()),
       profilerDelaySec(0) {
-    params.quadMinWidth = 15;
-    params.quadMinAngleIntercept = 30.0;
-    params.quadHashMapWidth = 10;
-    params.quadMaxEndptDistRatio = 0.1;
-    params.quadMaxTIntDistRatio = 0.05;
-    params.quadMaxCornerGapEndptDistRatio = 0.2;
-    params.quadMaxEdgeGapDistRatio = 0.5;
-    params.quadMaxEdgeGapAlignAngle = 10.0;
     params.quadRefineCorners = true;
     params.quadMaxScans = 10;
     params.tagMaxStripAvgDiff = 15.0;
@@ -131,14 +123,6 @@ public:
     // Parse static parameters and update dynamic reconfigure values
     #define GET_PARAM(v) \
       local_nh.param(std::string(#v), params.v, params.v)
-    GET_PARAM(quadMinWidth);
-    GET_PARAM(quadMinAngleIntercept);
-    GET_PARAM(quadHashMapWidth);
-    GET_PARAM(quadMaxEndptDistRatio);
-    GET_PARAM(quadMaxTIntDistRatio);
-    GET_PARAM(quadMaxCornerGapEndptDistRatio);
-    GET_PARAM(quadMaxEdgeGapDistRatio);
-    GET_PARAM(quadMaxEdgeGapAlignAngle);
     GET_PARAM(quadRefineCorners);
     GET_PARAM(quadMaxScans);
     GET_PARAM(tagMaxStripAvgDiff);
@@ -266,14 +250,7 @@ public:
 
     // Detect quadrilaterals
     _profilers["30_pp_quad"].tic();
-    std::list<Quad> quads = scanQuadsExhaustive(segments,
-        params.quadMinAngleIntercept*degree,
-        params.quadMaxTIntDistRatio,
-        params.quadMaxEndptDistRatio,
-        params.quadMaxCornerGapEndptDistRatio,
-        params.quadMaxEdgeGapDistRatio,
-        params.quadMaxEdgeGapAlignAngle*degree,
-        params.quadMinWidth);
+    std::list<Quad> quads = scanQuadsExhaustive(segments);
     if (params.quadRefineCorners) {
       refineQuadCorners(grayImg, quads);
     }
@@ -292,16 +269,7 @@ public:
 
     // Detect quadrilaterals using spatial hashing
     _profilers["40_pp_hashquad"].tic();
-    std::list<Quad> hashquads = scanQuadsSpatialHash(segments,
-        grayImg.cols, grayImg.rows,
-        params.quadMinAngleIntercept*degree,
-        params.quadHashMapWidth,
-        params.quadMaxTIntDistRatio,
-        params.quadMaxEndptDistRatio,
-        params.quadMaxCornerGapEndptDistRatio,
-        params.quadMaxEdgeGapDistRatio,
-        params.quadMaxEdgeGapAlignAngle*degree,
-        params.quadMinWidth);
+    std::list<Quad> hashquads = scanQuadsSpatialHash(segments, grayImg.cols, grayImg.rows);
     if (params.quadRefineCorners) {
       refineQuadCorners(grayImg, hashquads);
     }
@@ -394,14 +362,7 @@ public:
 
     // 2. Detect quadrilaterals
     quadP.tic();
-    std::list<Quad> quads = scanQuadsExhaustive(segments,
-        params.quadMinAngleIntercept*degree,
-        params.quadMaxTIntDistRatio,
-        params.quadMaxEndptDistRatio,
-        params.quadMaxCornerGapEndptDistRatio,
-        params.quadMaxEdgeGapDistRatio,
-        params.quadMaxEdgeGapAlignAngle*degree,
-        params.quadMinWidth);
+    std::list<Quad> quads = scanQuadsExhaustive(segments);
     quads.sort(Quad::compareArea);
     quadP.toc();
 #ifdef CV_SHOW_IMAGES
@@ -437,7 +398,7 @@ public:
 
       // Extract rectified quad image from frame
       quadExtractorP.tic();
-      quadImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth*(8/6));
+      quadImg = extractQuadImg(sourceImg, currQuad);
       quadExtractorP.toc();
       if (quadImg.empty()) { continue; }
 

@@ -107,13 +107,13 @@ std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
  * The resulting quad corners are returned in clockwise order (in image space)
  */
 std::list<Quad> scanQuadsExhaustive(const std::vector<cv::Vec4i>& segments,
-    double intSegMinAngle = 30.0*vc_math::degree,
-    double maxTIntDistRatio = 0.25,
-    double maxEndptDistRatio = 0.1,
-    double maxCornerGapEndptDistRatio = 0.2,
+    double intSegMinAngle = 25.0*vc_math::degree,
+    double maxTIntDistRatio = 0.1,
+    double maxEndptDistRatio = 0.15,
+    double maxCornerGapEndptDistRatio = 0.25,
     double maxEdgeGapDistRatio = 0.5,
     double maxEdgeGapAlignAngle = 15.0*vc_math::degree,
-    double minQuadWidth = 15.0);
+    double minQuadWidth = 10.0);
 
 
 /**
@@ -131,14 +131,14 @@ std::list<Quad> scanQuadsExhaustive(const std::vector<cv::Vec4i>& segments,
  */
 std::list<Quad> scanQuadsSpatialHash(const std::vector<cv::Vec4i>& segments,
     unsigned int imWidth, unsigned int imHeight,
-    double intSegMinAngle = 30.0*vc_math::degree,
+    double intSegMinAngle = 25.0*vc_math::degree,
     unsigned int hashMapWidth = 10,
-    double maxTIntDistRatio = 0.25,
-    double maxEndptDistRatio = 0.1,
-    double maxCornerGapEndptDistRatio = 0.2,
+    double maxTIntDistRatio = 0.1,
+    double maxEndptDistRatio = 0.15,
+    double maxCornerGapEndptDistRatio = 0.25,
     double maxEdgeGapDistRatio = 0.5,
     double maxEdgeGapAlignAngle = 15.0*vc_math::degree,
-    double minQuadWidth = 15.0);
+    double minQuadWidth = 10.0);
 
 
 /**
