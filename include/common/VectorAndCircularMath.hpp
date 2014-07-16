@@ -12,11 +12,6 @@
 #include <cassert>
 
 
-// TODO: 0 remove global profiler hook
-#include "common/Profiler.hpp"
-extern std::map<std::string, Profiler> _profilers;
-
-
 inline bool operator==(const cv::Vec4i& lhs, const cv::Vec4i& rhs) {
   return ((lhs[0] == rhs[0]) &&
           (lhs[1] == rhs[1]) &&

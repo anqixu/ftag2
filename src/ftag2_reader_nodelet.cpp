@@ -67,6 +67,7 @@ public:
       dynCfgSyncReq(false),
       latestProfTime(ros::Time::now()),
       profilerDelaySec(0) {
+    params.quadFastDetector = false;
     params.quadRefineCorners = true;
     params.quadMaxScans = 10;
     params.tagMaxStripAvgDiff = 15.0;
@@ -123,6 +124,7 @@ public:
     // Parse static parameters and update dynamic reconfigure values
     #define GET_PARAM(v) \
       local_nh.param(std::string(#v), params.v, params.v)
+    GET_PARAM(quadFastDetector);
     GET_PARAM(quadRefineCorners);
     GET_PARAM(quadMaxScans);
     GET_PARAM(tagMaxStripAvgDiff);
@@ -142,22 +144,11 @@ public:
 
 #ifdef CV_SHOW_IMAGES
     // Configure windows
-    namedWindow("segments", CV_GUI_EXPANDED);
     namedWindow("quads", CV_GUI_EXPANDED);
-    namedWindow("hashquads", CV_GUI_EXPANDED);
-    namedWindow("contquads", CV_GUI_EXPANDED);
     //namedWindow("tags", CV_GUI_EXPANDED);
     //namedWindow("quad_1", CV_GUI_EXPANDED);
     //namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
 #endif
-
-    _profilers["01_pp_duration"] = Profiler();
-    _profilers["02_pp_rate"] = Profiler();
-    _profilers["10_pp_rgb2gray"] = Profiler();
-    _profilers["20_pp_line"] = Profiler();
-    _profilers["30_pp_quad"] = Profiler();
-    _profilers["40_pp_hashquad"] = Profiler();
-    _profilers["50_pp_contquads"] = Profiler();
 
     // Resolve image topic names
     std::string imageTopic = local_nh.resolveName("image_in");
@@ -225,37 +216,27 @@ public:
 
   void processImage(const cv::Mat sourceImg, int ID) {
     // Update profiler
-    _profilers["02_pp_rate"].try_toc();
-    _profilers["02_pp_rate"].tic();
-    _profilers["01_pp_duration"].tic();
+    rateP.try_toc();
+    rateP.tic();
+    durationP.tic();
 
     // Convert source image to grayscale
-    _profilers["10_pp_rgb2gray"].tic();
     cv::Mat grayImg;
     cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
-    _profilers["10_pp_rgb2gray"].toc();
 
-    // Detect line segments
-    _profilers["20_pp_line"].tic();
-    std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
-    _profilers["20_pp_line"].toc();
-#ifdef CV_SHOW_IMAGES
-    {
-      cv::Mat overlaidImg;
-      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-      drawLineSegments(overlaidImg, segments);
-      cv::imshow("segments", overlaidImg);
+    // Detect quadrilaterals in image
+    quadP.tic();
+    std::list<Quad> quads;
+    if (params.quadFastDetector) {
+      quads = detectQuadsViaContour(grayImg);
+    } else {
+      std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
+      quads = scanQuadsSpatialHash(segments, grayImg.cols, grayImg.rows);
     }
-#endif
-
-    // Detect quadrilaterals
-    _profilers["30_pp_quad"].tic();
-    std::list<Quad> quads = scanQuadsExhaustive(segments);
     if (params.quadRefineCorners) {
       refineQuadCorners(grayImg, quads);
     }
     quads.sort(Quad::compareArea);
-    _profilers["30_pp_quad"].toc();
 #ifdef CV_SHOW_IMAGES
     {
       cv::Mat overlaidImg;
@@ -266,58 +247,18 @@ public:
       cv::imshow("quads", overlaidImg);
     }
 #endif
-
-    // Detect quadrilaterals using spatial hashing
-    _profilers["40_pp_hashquad"].tic();
-    std::list<Quad> hashquads = scanQuadsSpatialHash(segments, grayImg.cols, grayImg.rows);
-    if (params.quadRefineCorners) {
-      refineQuadCorners(grayImg, hashquads);
-    }
-    hashquads.sort(Quad::compareArea);
-    _profilers["40_pp_hashquad"].toc();
-#ifdef CV_SHOW_IMAGES
-    {
-      cv::Mat overlaidImg;
-      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-      for (const Quad& quad: hashquads) {
-        drawQuad(overlaidImg, quad.corners);
-      }
-      cv::imshow("hashquads", overlaidImg);
-    }
-#endif
-
-    // Detect quadrilaterals via contours
-    _profilers["50_pp_contquad"].tic();
-    std::list<Quad> contquads = detectQuadsViaContour(grayImg);
-    if (params.quadRefineCorners) {
-      refineQuadCorners(grayImg, contquads);
-    }
-    contquads.sort(Quad::compareArea);
-    _profilers["50_pp_contquad"].toc();
-#ifdef CV_SHOW_IMAGES
-    {
-      cv::Mat overlaidImg;
-      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-      for (const Quad& quad: contquads) {
-        drawQuad(overlaidImg, quad.corners);
-      }
-      cv::imshow("contquads", overlaidImg);
-    }
-#endif
-
+    quadP.toc();
 
     // Update profiler
-    _profilers["01_pp_duration"].toc();
+    durationP.toc();
     if (profilerDelaySec > 0) {
       ros::Time currTime = ros::Time::now();
       ros::Duration td = currTime - latestProfTime;
       if (td.toSec() > profilerDelaySec) {
         ROS_WARN_STREAM("===== PROFILERS =====");
-        for (std::map<std::string, Profiler>::iterator it = _profilers.begin();
-            it != _profilers.end(); it++) {
-          ROS_WARN_STREAM(it->first << ": " << it->second.getStatsString());
-        }
-        ROS_WARN_STREAM("");
+        ROS_WARN_STREAM("detectQuads: " << quadP.getStatsString());
+        ROS_WARN_STREAM("Pipeline Duration:: " << durationP.getStatsString());
+        ROS_WARN_STREAM("Pipeline Rate: " << rateP.getStatsString());
         latestProfTime = currTime;
       }
     }
@@ -327,11 +268,6 @@ public:
     char c = waitKey(1);
     if (c == 'x' || c == 'X') {
       ros::shutdown();
-    } else if (c == 'r' || c == 'R') {
-      for (std::map<std::string, Profiler>::iterator it = _profilers.begin();
-          it != _profilers.end(); it++) {
-        it->second.reset();
-      }
     }
 #endif
   };

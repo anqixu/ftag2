@@ -5,9 +5,6 @@ using namespace std;
 using namespace boost::math::constants;
 
 
-std::map<std::string, Profiler> _profilers;
-
-
 namespace vc_math {
 
 
