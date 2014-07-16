@@ -11,10 +11,9 @@
 #include "common/BaseCV.hpp"
 #include "common/FTag2.hpp"
 
-#include <cv_bridge/cv_bridge.h>
 
 struct Quad {
-  std::vector<cv::Point2f> corners;
+  std::vector<cv::Point2f> corners; // assumed stored in clockwise order (in image space)
   double area;
 
   void updateArea() {
@@ -103,9 +102,11 @@ std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
 /**
  * Detect quadrilaterals formed by 4 (near-)intersecting line segments, where
  * the intersections do not necessarily need to be near the endpoints of the
- * segments
+ * segments.
+ *
+ * The resulting quad corners are returned in clockwise order (in image space)
  */
-std::list<Quad> detectAllQuads(const std::vector<cv::Vec4i>& segments,
+std::list<Quad> scanQuadsExhaustive(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle = 30.0*vc_math::degree,
     double maxTIntDistRatio = 0.25,
     double maxEndptDistRatio = 0.1,
@@ -117,16 +118,18 @@ std::list<Quad> detectAllQuads(const std::vector<cv::Vec4i>& segments,
 
 /**
  * Detect quadrilaterals formed by 4 (near-)intersecting line segments, where
- * the intersections must be near the endpoints of individual segments
+ * the intersections must be near the endpoints of individual segments.
  *
- * This function is much faster than detectAllQuads, mainly because it uses
+ * This function is much faster than scanQuadsExhaustive, mainly because it uses
  * spatial hashing to drastically cut down the number of pairs of segments to
  * check for proximity. In particular, all segment endpoints are binned into
  * a hash map, whose resolution is (imWidth/hashMapWidth, imHeight/hashMapWidth).
  * Only segments that have endpoints in 8-connected neighbouring bins are
  * considered as neighbours.
+ *
+ * The resulting quad corners are returned in clockwise order (in image space)
  */
-std::list<Quad> detectEndptQuads(const std::vector<cv::Vec4i>& segments,
+std::list<Quad> scanQuadsSpatialHash(const std::vector<cv::Vec4i>& segments,
     unsigned int imWidth, unsigned int imHeight,
     double intSegMinAngle = 30.0*vc_math::degree,
     unsigned int hashMapWidth = 10,
@@ -136,6 +139,60 @@ std::list<Quad> detectEndptQuads(const std::vector<cv::Vec4i>& segments,
     double maxEdgeGapDistRatio = 0.5,
     double maxEdgeGapAlignAngle = 15.0*vc_math::degree,
     double minQuadWidth = 15.0);
+
+
+/**
+ * Detect quadrilaterals in grayscale image by using adaptive thresholding,
+ * contour detection, and approximate polygonal reduction of contours.
+ *
+ * This approach is heavily inspired by Aruco's quad detector, and is noticeably
+ * faster (2-4x) than (detectLineSegments + scanQuadsExhaustive /
+ * scanQuadsSpatialHash). On the other hand, it cannot tolerate edge-border
+ * occlusions; it can return false quads based on the insides of adaptive
+ * thresholded contours; and it also will return skewed quad corner positions
+ * if occluded.
+ *
+ * DEFAULT value for quadMinWidth is chosen with the assumption that
+ * there are up to 5Hz information in each FTag2 horizontal slice, which require
+ * a minimum of 10 horizontal pixels to represent. Appending on the 2/8 border
+ * slices, and rounding up, results in a minimum of 15 pixels. As for vertical
+ * pixels, there must be at least 8 (rounding up to 10) pixels available,
+ * in order to recover the 6 horizontal slices within a tag.
+ *
+ * @params adaptiveThreshBlockSize: see cv::adaptiveThreshold() [DEFAULT: thick borders -> more reliable contours]
+ * @params adaptiveThreshMeanWeight: see cv::adaptiveThreshold() [>= 3, ODD] [DEFAULT: heuristically chosen ~ adaptiveThreshBlockSize]
+ * @params quadMinWidth: minimum pixel width for accepted quad [DEFAULT: see comment above]
+ * @params quadMinPerimeter: minimum pixel perimeter count for accepted quad [DEFAULT: 4*quadMinWidth]
+ * @params approxPolyEpsSizeRatio: epsilon parameter of cv::approxPolyDP() is set to contourSize * approxPolyEpsSizeRatio [DEFAULT: heuristic]
+*/
+std::list<Quad> detectQuadsViaContour(cv::Mat grayImg,
+  unsigned int adaptiveThreshBlockSize = 9,
+  double adaptiveThreshMeanWeight = 9.0,
+  unsigned int quadMinWidth = 10,
+  unsigned int quadMinPerimeter = 40,
+  double approxPolyEpsSizeRatio = 0.05);
+
+
+/**
+ * Thin wrapper for cv::cornerSubPix(); the quad corners are modified in-place.
+ *
+ * NOTE: this step is considerably faster than detectQuads, for typical SD/HD
+ * images with natural scenes. Hence, convergence parameters are heuristically
+ * chosen to yield accurate results, with little relative increase in run time.
+ *
+ * WARNING: there is no guarantee that the refined quads are not overlapping
+ *
+ * Default parameter values are chosen heuristically.
+ */
+inline void refineQuadCorners(cv::Mat grayImg, std::list<Quad>& quads,
+    unsigned int winSize = 4, unsigned int maxIters = 10, double epsilon = 0.05) {
+  if (winSize <= 1) winSize = 1;
+  for (Quad& currQuad: quads) {
+    cv::cornerSubPix(grayImg, currQuad.corners,
+        cv::Size(winSize, winSize), cv::Size(-1, -1),
+        cv::TermCriteria(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, maxIters, epsilon));
+  }
+};
 
 
 inline void drawQuad(cv::Mat img, const std::vector<cv::Point2f>& corners,

@@ -1,4 +1,5 @@
 #include "detector/FTag2Detector.hpp"
+#include <opencv2/imgproc/imgproc.hpp>
 #include <cmath>
 #include <list>
 
@@ -386,14 +387,12 @@ bool isFiveConnQuad(const PartialQuadDFTParams& data,
 };
 
 
-std::list<Quad> detectAllQuads(const std::vector<cv::Vec4i>& segments,
+std::list<Quad> scanQuadsExhaustive(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle, double maxTIntDistRatio, double maxEndptDistRatio,
     double maxCornerGapEndptDistRatio,
     double maxEdgeGapDistRatio, double maxEdgeGapAlignAngle,
     double minQuadWidth) {
   std::list<Quad> quads;
-
-  _profilers["31_quad_edgepair"].tic();
 
   // Compute lengths and orientations of each segment
   std::vector<double> segmentLengths;
@@ -449,10 +448,8 @@ std::list<Quad> detectAllQuads(const std::vector<cv::Vec4i>& segments,
       }
     }
   }
-  _profilers["31_quad_edgepair"].toc();
 
   // Keep only intersecting edgels and create reduced adjacency matrix + list
-  _profilers["32_quad_dft"].tic();
   std::vector<int> toIntSegIDs(segments.size(), -1);
   std::vector<int> toOrigSegIDs;
   for (i = 0; i < segments.size(); i++) {
@@ -516,13 +513,12 @@ std::list<Quad> detectAllQuads(const std::vector<cv::Vec4i>& segments,
       }
     }
   }
-  _profilers["32_quad_dft"].toc();
 
   return quads;
 };
 
 
-std::list<Quad> detectEndptQuads(const std::vector<cv::Vec4i>& segments,
+std::list<Quad> scanQuadsSpatialHash(const std::vector<cv::Vec4i>& segments,
     unsigned int imWidth, unsigned int imHeight,
     double intSegMinAngle, unsigned int hashMapWidth,
     double maxTIntDistRatio, double maxEndptDistRatio,
@@ -531,7 +527,6 @@ std::list<Quad> detectEndptQuads(const std::vector<cv::Vec4i>& segments,
     double minQuadWidth) {
   std::list<Quad> quads;
 
-  _profilers["41_hash_edgepair"].tic();
   // Initialize augmented data structure for each segment
   std::vector<LineSegment> segmentStructs(segments.size());
   std::vector<double> segmentLengths;
@@ -682,10 +677,8 @@ std::list<Quad> detectEndptQuads(const std::vector<cv::Vec4i>& segments,
 
     segmentID += 1;
   }
-  _profilers["41_hash_edgepair"].toc();
 
   // Keep only intersecting edgels and create reduced adjacency matrix + list
-  _profilers["42_hash_dft"].tic();
   std::vector<int> toIntSegIDs(segments.size(), -1);
   std::vector<int> toOrigSegIDs;
   unsigned int i, j;
@@ -750,7 +743,82 @@ std::list<Quad> detectEndptQuads(const std::vector<cv::Vec4i>& segments,
       }
     }
   }
-  _profilers["42_hash_dft"].toc();
+
+  return quads;
+};
+
+
+std::list<Quad> detectQuadsViaContour(cv::Mat grayImg,
+    unsigned int adaptiveThreshBlockSize, double adaptiveThreshMeanWeight,
+    unsigned int quadMinWidth, unsigned int quadMinPerimeter,
+    double approxPolyEpsSizeRatio) {
+  // Validate input arguments
+  if (adaptiveThreshBlockSize < 3) { adaptiveThreshBlockSize = 3; }
+  else if (adaptiveThreshBlockSize % 2 == 0) { adaptiveThreshBlockSize += 1; }
+
+  // Threshold image
+  cv::Mat threshImg;
+  cv::adaptiveThreshold(grayImg, threshImg, 255,
+    cv::ADAPTIVE_THRESH_MEAN_C,
+    cv::THRESH_BINARY_INV,
+    adaptiveThreshBlockSize, adaptiveThreshMeanWeight);
+
+  // Scan for rectangular contours in thresholded image
+  unsigned int quadMaxPerimeter = std::max(grayImg.cols, grayImg.rows) * 4; // used as a rough sanity check
+  double quadMinWidthSqrd = quadMinWidth*quadMinWidth;
+  std::list<Quad> quads;
+  std::vector< std::vector<cv::Point> > contours;
+  std::vector<cv::Vec4i> contourHierarchy; // Throw-away var; unpopulated due to CV_RETR_LIST arg
+  std::vector<cv::Point> currApproxPoly;
+  Quad currQuad;
+  cv::Point _v1, _v2;
+  cv::findContours(threshImg, contours, contourHierarchy,
+      CV_RETR_LIST, CV_CHAIN_APPROX_NONE); // NOTE: this fn changes threshImg!
+  for (std::vector<cv::Point>& currContour: contours) {
+    // Reject small or large contours
+    if (currContour.size() < quadMinPerimeter ||
+        currContour.size() > quadMaxPerimeter) continue;
+
+    // Approximate to a polygon
+    cv::approxPolyDP(currContour, currApproxPoly,
+        approxPolyEpsSizeRatio * currContour.size(),
+        true); // closed = true
+
+    // Reject non-quadrilaterals
+    if (currApproxPoly.size() != 4) continue;
+
+    // Reject non-convex polygons
+    if (!cv::isContourConvex(currApproxPoly)) continue;
+
+    // Reject quads that have small widths
+    bool lessThanMinWidth = false;
+    for (int i = 0; i < 4; i++) {
+      if (i == 3) {
+        lessThanMinWidth = (vc_math::distSqrd(currApproxPoly[i], currApproxPoly[0]) < quadMinWidthSqrd);
+      } else {
+        lessThanMinWidth = (vc_math::distSqrd(currApproxPoly[i], currApproxPoly[i+1]) < quadMinWidthSqrd);
+      }
+      if (lessThanMinWidth) break;
+    }
+    if (lessThanMinWidth) continue;
+
+    // Store as quad struct (where corners are stored in clockwise order)
+    _v1 = currApproxPoly[1] - currApproxPoly[0];
+    _v2 = currApproxPoly[2] - currApproxPoly[1];
+    if (_v1.x*_v2.y - _v1.y*_v2.x < 0) { // Currently in counter-clockwise order; store in clockwise order
+      for (int i = 0; i < 4; i++) {
+        currQuad.corners[i].x = currApproxPoly[3-i].x;
+        currQuad.corners[i].y = currApproxPoly[3-i].y;
+      }
+    } else { // Already in clockwise order
+      for (int i = 0; i < 4; i++) {
+        currQuad.corners[i].x = currApproxPoly[i].x;
+        currQuad.corners[i].y = currApproxPoly[i].y;
+      }
+    }
+    currQuad.updateArea();
+    quads.push_back(currQuad);
+  }
 
   return quads;
 };

@@ -67,7 +67,6 @@ public:
       dynCfgSyncReq(false),
       latestProfTime(ros::Time::now()),
       profilerDelaySec(0) {
-    // Set default parameter values
     params.quadMinWidth = 15;
     params.quadMinAngleIntercept = 30.0;
     params.quadHashMapWidth = 10;
@@ -76,6 +75,7 @@ public:
     params.quadMaxCornerGapEndptDistRatio = 0.2;
     params.quadMaxEdgeGapDistRatio = 0.5;
     params.quadMaxEdgeGapAlignAngle = 10.0;
+    params.quadRefineCorners = true;
     params.quadMaxScans = 10;
     params.tagMaxStripAvgDiff = 15.0;
     params.tagBorderMeanMaxThresh = 80.0;
@@ -139,6 +139,7 @@ public:
     GET_PARAM(quadMaxCornerGapEndptDistRatio);
     GET_PARAM(quadMaxEdgeGapDistRatio);
     GET_PARAM(quadMaxEdgeGapAlignAngle);
+    GET_PARAM(quadRefineCorners);
     GET_PARAM(quadMaxScans);
     GET_PARAM(tagMaxStripAvgDiff);
     GET_PARAM(tagBorderMeanMaxThresh);
@@ -157,14 +158,13 @@ public:
 
 #ifdef CV_SHOW_IMAGES
     // Configure windows
-    //namedWindow("quad_1", CV_GUI_EXPANDED);
-    //namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
     namedWindow("segments", CV_GUI_EXPANDED);
     namedWindow("quads", CV_GUI_EXPANDED);
-    //namedWindow("hashquads", CV_GUI_EXPANDED);
+    namedWindow("hashquads", CV_GUI_EXPANDED);
+    namedWindow("contquads", CV_GUI_EXPANDED);
     //namedWindow("tags", CV_GUI_EXPANDED);
-
-    namedWindow("contours", CV_GUI_EXPANDED);
+    //namedWindow("quad_1", CV_GUI_EXPANDED);
+    //namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
 #endif
 
     _profilers["01_pp_duration"] = Profiler();
@@ -172,11 +172,8 @@ public:
     _profilers["10_pp_rgb2gray"] = Profiler();
     _profilers["20_pp_line"] = Profiler();
     _profilers["30_pp_quad"] = Profiler();
-    _profilers["31_quad_edgepair"] = Profiler();
-    _profilers["32_quad_dft"] = Profiler();
     _profilers["40_pp_hashquad"] = Profiler();
-    _profilers["41_hash_edgepair"] = Profiler();
-    _profilers["42_hash_dft"] = Profiler();
+    _profilers["50_pp_contquads"] = Profiler();
 
     // Resolve image topic names
     std::string imageTopic = local_nh.resolveName("image_in");
@@ -243,18 +240,6 @@ public:
 
 
   void processImage(const cv::Mat sourceImg, int ID) {
-    int blockSize = 7;
-    double meanWeightC = 7;
-    bool doErosion = false;
-    double _minQuadWidth = 10;
-    if (params.quadMaxScans >= 3 && params.quadMaxScans <= 9) {
-      blockSize = params.quadMaxScans;
-      if (blockSize % 2 == 0) blockSize += 1;
-    }
-    meanWeightC = params.quadMaxEdgeGapAlignAngle;
-    doErosion = (params.phaseVarWeightR != 0);
-    _minQuadWidth = params.quadHashMapWidth;
-
     // Update profiler
     _profilers["02_pp_rate"].try_toc();
     _profilers["02_pp_rate"].tic();
@@ -266,129 +251,7 @@ public:
     cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
     _profilers["10_pp_rgb2gray"].toc();
 
-    _profilers["20_pp_line"].tic();
-    // 2. Threshold image
-    cv::Mat threshImg;
-    cv::adaptiveThreshold(grayImg, threshImg, 255,
-        ADAPTIVE_THRESH_MEAN_C,
-        THRESH_BINARY_INV,
-        blockSize, meanWeightC);
-
-    // 3. Erode image
-    if (doErosion) {
-      cv::Mat threshImg2;
-      cv::erode(threshImg, threshImg2, cv::Mat());
-      threshImg = threshImg2;
-    }
-    _profilers["20_pp_line"].toc();
-#ifdef CV_SHOW_IMAGES
-    {
-      cv::imshow("segments", threshImg);
-    }
-#endif
-
-    // 4. Find all rectangles in thresholded image
-    _profilers["30_pp_quad"].tic();
-    std::list<Quad> quads;
-    unsigned int minContourSize=0.04 * std::max(threshImg.cols, threshImg.rows) * 4;
-    unsigned int maxContourSize=0.5 * std::max(threshImg.cols, threshImg.rows) * 4;
-    std::vector< std::vector<cv::Point> > contours;
-    std::vector<cv::Vec4i> hierarchy; // Throw-away var; unpopulated due to CV_RETR_LIST arg
-    std::vector<cv::Point> approxCurve;
-
-    cv::Mat threshImg2;
-    threshImg.copyTo(threshImg2); // cv::findContours will modify this image
-    cv::findContours(threshImg2, contours, hierarchy, CV_RETR_LIST, CV_CHAIN_APPROX_NONE);
-
-    for (unsigned int i=0; i < contours.size(); i++) {
-      // Reject small or large contours
-      if (contours[i].size() < minContourSize || contours[i].size() > maxContourSize) continue;
-
-      // Approximate to a polygon
-      double approxPolyEpsilon = double(contours[i].size())*0.05;
-      cv::approxPolyDP(contours[i], approxCurve, approxPolyEpsilon, true); // closed = true
-
-      // Reject non-quadrilaterals
-      if (approxCurve.size() != 4) continue;
-
-      // Reject non-convex polygons
-      if (!cv::isContourConvex(cv::Mat(approxCurve))) continue;
-
-      // Reject quads that have too small widths
-      double minQuadWidth = std::numeric_limits<double>::infinity();
-      for (int j=0; j<4; j++) {
-        double d = vc_math::dist(approxCurve[j].x, approxCurve[j].y, approxCurve[(j+1)%4].x, approxCurve[(j+1)%4].y);
-        if (d < minQuadWidth) minQuadWidth = d;
-      }
-
-      if (minQuadWidth > _minQuadWidth) {
-        Quad quad;
-        for (int j = 0; j < 4; j++) {
-          quad.corners[j].x = approxCurve[j].x;
-          quad.corners[j].y = approxCurve[j].y;
-        }
-        quad.updateArea();
-        quads.push_back(quad);
-      }
-    }
-    _profilers["30_pp_quad"].toc();
-#ifdef CV_SHOW_IMAGES
-    {
-      cv::Mat overlaidImg;
-      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-      for (const Quad& quad: quads) {
-        drawQuad(overlaidImg, quad.corners);
-      }
-      cv::imshow("quads", overlaidImg);
-    }
-#endif
-
-    // 5. Refine corners
-
-    // Update profiler
-    _profilers["01_pp_duration"].toc();
-    if (profilerDelaySec > 0) {
-      ros::Time currTime = ros::Time::now();
-      ros::Duration td = currTime - latestProfTime;
-      if (td.toSec() > profilerDelaySec) {
-        ROS_WARN_STREAM("===== PROFILERS =====");
-        for (std::map<std::string, Profiler>::iterator it = _profilers.begin();
-            it != _profilers.end(); it++) {
-          ROS_WARN_STREAM(it->first << ": " << it->second.getStatsString());
-        }
-        ROS_WARN_STREAM("");
-        latestProfTime = currTime;
-      }
-    }
-
-    // Allow OpenCV HighGUI events to process
-#ifdef CV_SHOW_IMAGES
-    char c = waitKey(1);
-    if (c == 'x' || c == 'X') {
-      ros::shutdown();
-    } else if (c == 'r' || c == 'R') {
-      for (std::map<std::string, Profiler>::iterator it = _profilers.begin();
-          it != _profilers.end(); it++) {
-        it->second.reset();
-      }
-    }
-#endif
-  };
-
-
-  void processImageNonAruco(const cv::Mat sourceImg, int ID) {
-    // Update profiler
-    _profilers["02_pp_rate"].try_toc();
-    _profilers["02_pp_rate"].tic();
-    _profilers["01_pp_duration"].tic();
-
-    // Convert source image to grayscale
-    _profilers["10_pp_rgb2gray"].tic();
-    cv::Mat grayImg;
-    cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
-    _profilers["10_pp_rgb2gray"].toc();
-
-    // 1. Detect line segments
+    // Detect line segments
     _profilers["20_pp_line"].tic();
     std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
     _profilers["20_pp_line"].toc();
@@ -401,9 +264,9 @@ public:
     }
 #endif
 
-    // 2. Detect quadrilaterals
+    // Detect quadrilaterals
     _profilers["30_pp_quad"].tic();
-    std::list<Quad> quads = detectAllQuads(segments,
+    std::list<Quad> quads = scanQuadsExhaustive(segments,
         params.quadMinAngleIntercept*degree,
         params.quadMaxTIntDistRatio,
         params.quadMaxEndptDistRatio,
@@ -411,6 +274,9 @@ public:
         params.quadMaxEdgeGapDistRatio,
         params.quadMaxEdgeGapAlignAngle*degree,
         params.quadMinWidth);
+    if (params.quadRefineCorners) {
+      refineQuadCorners(grayImg, quads);
+    }
     quads.sort(Quad::compareArea);
     _profilers["30_pp_quad"].toc();
 #ifdef CV_SHOW_IMAGES
@@ -424,9 +290,9 @@ public:
     }
 #endif
 
-    // 3. Detect quadrilaterals, new way
+    // Detect quadrilaterals using spatial hashing
     _profilers["40_pp_hashquad"].tic();
-    std::list<Quad> hashquads = detectEndptQuads(segments,
+    std::list<Quad> hashquads = scanQuadsSpatialHash(segments,
         grayImg.cols, grayImg.rows,
         params.quadMinAngleIntercept*degree,
         params.quadHashMapWidth,
@@ -436,6 +302,9 @@ public:
         params.quadMaxEdgeGapDistRatio,
         params.quadMaxEdgeGapAlignAngle*degree,
         params.quadMinWidth);
+    if (params.quadRefineCorners) {
+      refineQuadCorners(grayImg, hashquads);
+    }
     hashquads.sort(Quad::compareArea);
     _profilers["40_pp_hashquad"].toc();
 #ifdef CV_SHOW_IMAGES
@@ -448,6 +317,26 @@ public:
       cv::imshow("hashquads", overlaidImg);
     }
 #endif
+
+    // Detect quadrilaterals via contours
+    _profilers["50_pp_contquad"].tic();
+    std::list<Quad> contquads = detectQuadsViaContour(grayImg);
+    if (params.quadRefineCorners) {
+      refineQuadCorners(grayImg, contquads);
+    }
+    contquads.sort(Quad::compareArea);
+    _profilers["50_pp_contquad"].toc();
+#ifdef CV_SHOW_IMAGES
+    {
+      cv::Mat overlaidImg;
+      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
+      for (const Quad& quad: contquads) {
+        drawQuad(overlaidImg, quad.corners);
+      }
+      cv::imshow("contquads", overlaidImg);
+    }
+#endif
+
 
     // Update profiler
     _profilers["01_pp_duration"].toc();
@@ -478,6 +367,7 @@ public:
     }
 #endif
   };
+
 
   void processImageOLD(const cv::Mat sourceImg, int ID) {
     // Update profiler
@@ -504,7 +394,7 @@ public:
 
     // 2. Detect quadrilaterals
     quadP.tic();
-    std::list<Quad> quads = detectAllQuads(segments,
+    std::list<Quad> quads = scanQuadsExhaustive(segments,
         params.quadMinAngleIntercept*degree,
         params.quadMaxTIntDistRatio,
         params.quadMaxEndptDistRatio,
