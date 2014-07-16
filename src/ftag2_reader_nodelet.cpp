@@ -16,9 +16,6 @@
 #include "ftag2/TagDetections.h"
 
 
-#include "tracker/PayloadFilter.hpp" // TODO: 0 remove debug
-
-
 using namespace std;
 using namespace cv;
 using namespace vc_math;
@@ -71,14 +68,9 @@ public:
       latestProfTime(ros::Time::now()),
       profilerDelaySec(0) {
     // Set default parameter values
-    params.sobelThreshHigh = 100;
-    params.sobelThreshLow = 30;
-    params.sobelBlurWidth = 3;
-    params.lineAngleMargin = 20.0; // *degree
-    params.lineMinEdgelsCC = 50;
-    params.lineMinEdgelsSeg = 10;
     params.quadMinWidth = 15;
     params.quadMinAngleIntercept = 30.0;
+    params.quadHashMapWidth = 10;
     params.quadMaxEndptDistRatio = 0.1;
     params.quadMaxTIntDistRatio = 0.05;
     params.quadMaxCornerGapEndptDistRatio = 0.2;
@@ -139,14 +131,9 @@ public:
     // Parse static parameters and update dynamic reconfigure values
     #define GET_PARAM(v) \
       local_nh.param(std::string(#v), params.v, params.v)
-    GET_PARAM(sobelThreshHigh);
-    GET_PARAM(sobelThreshLow);
-    GET_PARAM(sobelBlurWidth);
-    GET_PARAM(lineAngleMargin);
-    GET_PARAM(lineMinEdgelsCC);
-    GET_PARAM(lineMinEdgelsSeg);
     GET_PARAM(quadMinWidth);
     GET_PARAM(quadMinAngleIntercept);
+    GET_PARAM(quadHashMapWidth);
     GET_PARAM(quadMaxEndptDistRatio);
     GET_PARAM(quadMaxTIntDistRatio);
     GET_PARAM(quadMaxCornerGapEndptDistRatio);
@@ -168,19 +155,16 @@ public:
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
 
-    //filter.setParams(0.0); // TODO: 0 remove debug
-
 #ifdef CV_SHOW_IMAGES
-    // TODO: 0 uncomment namedWindows
     // Configure windows
     //namedWindow("quad_1", CV_GUI_EXPANDED);
     //namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
     namedWindow("segments", CV_GUI_EXPANDED);
     namedWindow("quads", CV_GUI_EXPANDED);
+    namedWindow("hashquads", CV_GUI_EXPANDED);
     //namedWindow("tags", CV_GUI_EXPANDED);
 #endif
 
-    // TODO: 0 remove debug profiler hooks
     _profilers["01_pp_duration"] = Profiler();
     _profilers["02_pp_rate"] = Profiler();
     _profilers["10_pp_rgb2gray"] = Profiler();
@@ -188,6 +172,9 @@ public:
     _profilers["30_pp_quad"] = Profiler();
     _profilers["31_quad_edgepair"] = Profiler();
     _profilers["32_quad_dft"] = Profiler();
+    _profilers["40_pp_hashquad"] = Profiler();
+    _profilers["41_hash_edgepair"] = Profiler();
+    _profilers["42_hash_dft"] = Profiler();
 
     // Resolve image topic names
     std::string imageTopic = local_nh.resolveName("image_in");
@@ -280,7 +267,7 @@ public:
 
     // 2. Detect quadrilaterals
     _profilers["30_pp_quad"].tic();
-    std::list<Quad> quads = detectQuads(segments,
+    std::list<Quad> quads = detectAllQuads(segments,
         params.quadMinAngleIntercept*degree,
         params.quadMaxTIntDistRatio,
         params.quadMaxEndptDistRatio,
@@ -298,6 +285,31 @@ public:
         drawQuad(overlaidImg, quad.corners);
       }
       cv::imshow("quads", overlaidImg);
+    }
+#endif
+
+    // 3. Detect quadrilaterals, new way
+    _profilers["40_pp_hashquad"].tic();
+    std::list<Quad> hashquads = detectEndptQuads(segments,
+        grayImg.cols, grayImg.rows,
+        params.quadMinAngleIntercept*degree,
+        params.quadHashMapWidth,
+        params.quadMaxTIntDistRatio,
+        params.quadMaxEndptDistRatio,
+        params.quadMaxCornerGapEndptDistRatio,
+        params.quadMaxEdgeGapDistRatio,
+        params.quadMaxEdgeGapAlignAngle*degree,
+        params.quadMinWidth);
+    hashquads.sort(Quad::compareArea);
+    _profilers["40_pp_hashquad"].toc();
+#ifdef CV_SHOW_IMAGES
+    {
+      cv::Mat overlaidImg;
+      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
+      for (const Quad& quad: hashquads) {
+        drawQuad(overlaidImg, quad.corners);
+      }
+      cv::imshow("hashquads", overlaidImg);
     }
 #endif
 
@@ -356,7 +368,7 @@ public:
 
     // 2. Detect quadrilaterals
     quadP.tic();
-    std::list<Quad> quads = detectQuads(segments,
+    std::list<Quad> quads = detectAllQuads(segments,
         params.quadMinAngleIntercept*degree,
         params.quadMaxTIntDistRatio,
         params.quadMaxEndptDistRatio,
@@ -422,21 +434,6 @@ public:
       tags.push_back(currTag);
     } // Scan through all detected quads
 
-    /* UNCOMMENT TO ENABLE TRACKING (UNTESTED) */
-//    FT.step(tags);
-
-    // TODO: 5 remove notification
-    if (false) {
-      if (tags.size() > 0) {
-        NODELET_INFO_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
-      } else if (quads.size() > 0) {
-        NODELET_WARN_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
-      } else {
-        NODELET_ERROR_STREAM(ID << ": " << tags.size() << " tags (quads: " << quads.size() << ")");
-      }
-    }
-
-
     // Post-process largest detected tag
     if (tags.size() >= 1) {
       const FTag2Marker& firstTag = tags[0];
@@ -495,18 +492,6 @@ public:
       }
       tagDetectionsPub.publish(tagsMsg);
     }
-
-    // TODO: 0 remove debug
-    if (tags.size() > 0) {
-      cv::Mat phaseVars(tags[0].payload.phaseVariances, false);
-      NODELET_INFO_STREAM("payload:\n" << cv::format(tags[0].payload.phases/45.0, "matlab") << "\n" << cv::format(phaseVars, "matlab"));
-      filter.step(tags[0].payload);
-      FTag2Payload& filteredPayload = filter.getFilteredPayload();
-      cv::Mat filteredPhaseVars(filteredPayload.phaseVariances, false);
-      NODELET_WARN_STREAM("filter:\n" << cv::format(filteredPayload.phases/45.0, "matlab") << "\n" << cv::format(filteredPhaseVars, "matlab"));
-    }
-
-    //FT.step(tags);
 
     // Update profiler
     durationP.toc();

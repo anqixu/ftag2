@@ -357,7 +357,7 @@ public:
 
     // 2. Detect quadrilaterals
     quadP.tic();
-    std::list<Quad> quads = detectQuads(segments,
+    std::list<Quad> quads = detectAllQuads(segments,
         params.quadMinAngleIntercept*degree,
         params.quadMaxTIntDistRatio,
         params.quadMaxEndptDistRatio,

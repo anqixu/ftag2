@@ -100,8 +100,36 @@ std::vector<cv::Vec4i> detectLineSegmentsHough(cv::Mat grayImg,
     double houghMinSegmentLength, double houghMaxSegmentGap);
 
 
-std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
+/**
+ * Detect quadrilaterals formed by 4 (near-)intersecting line segments, where
+ * the intersections do not necessarily need to be near the endpoints of the
+ * segments
+ */
+std::list<Quad> detectAllQuads(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle = 30.0*vc_math::degree,
+    double maxTIntDistRatio = 0.25,
+    double maxEndptDistRatio = 0.1,
+    double maxCornerGapEndptDistRatio = 0.2,
+    double maxEdgeGapDistRatio = 0.5,
+    double maxEdgeGapAlignAngle = 15.0*vc_math::degree,
+    double minQuadWidth = 15.0);
+
+
+/**
+ * Detect quadrilaterals formed by 4 (near-)intersecting line segments, where
+ * the intersections must be near the endpoints of individual segments
+ *
+ * This function is much faster than detectAllQuads, mainly because it uses
+ * spatial hashing to drastically cut down the number of pairs of segments to
+ * check for proximity. In particular, all segment endpoints are binned into
+ * a hash map, whose resolution is (imWidth/hashMapWidth, imHeight/hashMapWidth).
+ * Only segments that have endpoints in 8-connected neighbouring bins are
+ * considered as neighbours.
+ */
+std::list<Quad> detectEndptQuads(const std::vector<cv::Vec4i>& segments,
+    unsigned int imWidth, unsigned int imHeight,
+    double intSegMinAngle = 30.0*vc_math::degree,
+    unsigned int hashMapWidth = 10,
     double maxTIntDistRatio = 0.25,
     double maxEndptDistRatio = 0.1,
     double maxCornerGapEndptDistRatio = 0.2,
@@ -241,7 +269,7 @@ void detect( cv::Mat sourceImg ) {
 #endif
 
 	// 2. Detect quadrilaterals
-	std::list<Quad> quads = detectQuads(segments,
+	std::list<Quad> quads = detectAllQuads(segments,
 			params.quadMinAngleIntercept*degree,
 			params.quadMaxTIntDistRatio,
 			params.quadMaxEndptDistRatio,

@@ -1,7 +1,26 @@
 #include "detector/FTag2Detector.hpp"
 #include <cmath>
+#include <list>
 
-#include <iostream> // TODO: 000 remove
+
+struct LineSegment {
+  double xa, ya, xb, yb;
+  unsigned int ha, hb; // hash bucket indices
+
+  double length;
+  double orientation;
+
+  std::list<unsigned int> neighIDs;
+};
+
+
+struct HashBucket {
+  std::list<unsigned int> segmentIDs; // sorted due to in-order insertion
+  int hx, hy; // hashmap row and column indices
+
+  HashBucket() : hx(-1), hy(-1) {};
+  HashBucket(int x, int y, int idx) : hx(x), hy(y) { segmentIDs.push_back(idx); };
+};
 
 
 /**
@@ -13,60 +32,137 @@
  */
 char getSegmentIntersection(const cv::Vec4i& segA, const cv::Vec4i& segB,
     cv::Point2d& intPt, double* distSegAInt = NULL, double* distSegBInt = NULL,
-    double* segAIntRatio = NULL, double* segBIntRatio = NULL) {
-  double s1_x, s1_y, s2_x, s2_y, det, dx, dy, s, t;
-  s1_x = segA[2] - segA[0]; s1_y = segA[3] - segA[1];
-  s2_x = segB[2] - segB[0]; s2_y = segB[3] - segB[1];
-  det = (-s2_x * s1_y + s1_x * s2_y);
+    double* segAIntRatio = NULL, double* segBIntRatio = NULL,
+    double* endptsDist = NULL) {
+  // Solution deduced from following equations:
+  // - xi = xa1 + ra (xa2 - xa1) = xb1 + rb (xb2 - xb1)
+  // - yi = ya1 + ra (ya2 - ya1) = yb1 + rb (yb2 - yb1)
+  //
+  // For convenience, define dxa = xa2 - xa1, dya = ya2 - ya1, etc.
+  double dxa = segA[2] - segA[0];
+  double dya = segA[3] - segA[1];
+  double dxb = segB[2] - segB[0];
+  double dyb = segB[3] - segB[1];
+  double det = dya*dxb - dxa*dyb;
   if (fabs(det) <= 10*std::numeric_limits<double>::epsilon()) {
     intPt.x = 0; intPt.y = 0;
+    if (distSegAInt != NULL) *distSegAInt = std::numeric_limits<double>::infinity();
+    if (distSegBInt != NULL) *distSegBInt = std::numeric_limits<double>::infinity();
+    if (segAIntRatio != NULL) *segAIntRatio = std::numeric_limits<double>::infinity();
+    if (segBIntRatio != NULL) *segBIntRatio = std::numeric_limits<double>::infinity();
+    if (endptsDist != NULL) *endptsDist = std::numeric_limits<double>::infinity();
     return -1;
   }
 
-  dx = segA[0] - segB[0];
-  dy = segA[1] - segB[1];
-  s = (-s1_y * dx + s1_x * dy) / det;
-  t = ( s2_x * dy - s2_y * dx) / det;
-  intPt.x = segA[0] + t*s1_x;
-  intPt.y = segA[1] + t*s1_y;
+  double dxba = segB[0] - segA[0];
+  double dyba = segB[1] - segA[1];
+  double ra = (-dyb*dxba + dxb*dyba) / det;
+  double rb = (-dya*dxba + dxa*dyba) / det;
+  intPt.x = segA[0] + ra * dxa;
+  intPt.y = segA[1] + ra * dya;
 
   if (distSegAInt != NULL) {
-    double tDist = (t <= 0.5) ? t : 1.0 - t;
-    *distSegAInt = std::fabs(tDist) * std::sqrt(s1_x*s1_x+s1_y*s1_y);
+    double raDist = (ra <= 0.5) ? ra : 1.0 - ra;
+    *distSegAInt = std::fabs(raDist) * std::sqrt(dxa*dxa + dya*dya);
   }
   if (distSegBInt != NULL) {
-    double sDist = (s <= 0.5) ? s : 1.0 - s;
-    *distSegBInt = std::fabs(sDist) * std::sqrt(s2_x*s2_x+s2_y*s2_y);
+    double rbDist = (rb <= 0.5) ? rb : 1.0 - rb;
+    *distSegBInt = std::fabs(rbDist) * std::sqrt(dxb*dxb + dyb*dyb);
   }
   if (segAIntRatio != NULL) {
-    *segAIntRatio = t;
+    *segAIntRatio = ra;
   }
   if (segBIntRatio != NULL) {
-    *segBIntRatio = s;
+    *segBIntRatio = rb;
+  }
+  if (endptsDist != NULL) {
+    if (ra < 0.5) {
+      if (rb < 0.5) {
+        *endptsDist = vc_math::dist(segA[0], segA[1], segB[0], segB[1]);
+      } else {
+        *endptsDist = vc_math::dist(segA[0], segA[1], segB[2], segB[3]);
+      }
+    } else {
+      if (rb < 0.5) {
+        *endptsDist = vc_math::dist(segA[2], segA[3], segB[0], segB[1]);
+      } else {
+        *endptsDist = vc_math::dist(segA[2], segA[3], segB[2], segB[3]);
+      }
+    }
   }
 
-  if (s >= 0 && s <= 1 && t >= 0 && t <= 1) {
+  if (ra >= 0 && ra <= 1 && rb >= 0 && rb <= 1) {
     return 1;
   }
   return 0;
 };
 
 
-inline bool areEndpointsNear(const cv::Vec4i& segA, const cv::Vec4i& segB,
-    double maxEndptDist) {
-  return ((vc_math::dist(segA[0], segA[1], segB[0], segB[1]) <= maxEndptDist) ||
-          (vc_math::dist(segA[0], segA[1], segB[2], segB[3]) <= maxEndptDist) ||
-          (vc_math::dist(segA[2], segA[3], segB[0], segB[1]) <= maxEndptDist) ||
-          (vc_math::dist(segA[2], segA[3], segB[2], segB[3]) <= maxEndptDist));
-};
+char getSegmentIntersection(const LineSegment& segA, const LineSegment& segB,
+    cv::Point2d& intPt, double* distSegAInt = NULL, double* distSegBInt = NULL,
+    double* segAIntRatio = NULL, double* segBIntRatio = NULL,
+    double* endptsDist = NULL) {
+  // Solution deduced from following equations:
+  // - xi = xa1 + ra (xa2 - xa1) = xb1 + rb (xb2 - xb1)
+  // - yi = ya1 + ra (ya2 - ya1) = yb1 + rb (yb2 - yb1)
+  //
+  // For convenience, define dxa = xa2 - xa1, dya = ya2 - ya1, etc.
+  double dxa = segA.xb - segA.xa;
+  double dya = segA.yb - segA.ya;
+  double dxb = segB.xb - segB.xa;
+  double dyb = segB.yb - segB.ya;
+  double det = dya*dxb - dxa*dyb;
+  if (fabs(det) <= 10*std::numeric_limits<double>::epsilon()) {
+    intPt.x = 0; intPt.y = 0;
+    if (distSegAInt != NULL) *distSegAInt = std::numeric_limits<double>::infinity();
+    if (distSegBInt != NULL) *distSegBInt = std::numeric_limits<double>::infinity();
+    if (segAIntRatio != NULL) *segAIntRatio = std::numeric_limits<double>::infinity();
+    if (segBIntRatio != NULL) *segBIntRatio = std::numeric_limits<double>::infinity();
+    if (endptsDist != NULL) *endptsDist = std::numeric_limits<double>::infinity();
+    return -1;
+  }
 
+  double dxba = segB.xa - segA.xa;
+  double dyba = segB.ya - segA.ya;
+  double ra = (-dyb*dxba + dxb*dyba) / det;
+  double rb = (-dya*dxba + dxa*dyba) / det;
+  intPt.x = segA.xa + ra * dxa;
+  intPt.y = segA.ya + ra * dya;
 
-inline bool overlap(const cv::Vec4i& a, const cv::Vec4i& b) {
-  return (
-    (a[0] == b[0]) || (a[0] == b[1]) || (a[0] == b[2]) || (a[0] == b[3]) ||
-    (a[1] == b[0]) || (a[1] == b[1]) || (a[1] == b[2]) || (a[1] == b[3]) ||
-    (a[2] == b[0]) || (a[2] == b[1]) || (a[2] == b[2]) || (a[2] == b[3]) ||
-    (a[3] == b[0]) || (a[3] == b[1]) || (a[3] == b[2]) || (a[3] == b[3]));
+  if (distSegAInt != NULL) {
+    double raDist = (ra <= 0.5) ? ra : 1.0 - ra;
+    *distSegAInt = std::fabs(raDist) * segA.length;
+  }
+  if (distSegBInt != NULL) {
+    double rbDist = (rb <= 0.5) ? rb : 1.0 - rb;
+    *distSegBInt = std::fabs(rbDist) * segB.length;
+  }
+  if (segAIntRatio != NULL) {
+    *segAIntRatio = ra;
+  }
+  if (segBIntRatio != NULL) {
+    *segBIntRatio = rb;
+  }
+  if (endptsDist != NULL) {
+    if (ra < 0.5) {
+      if (rb < 0.5) {
+        *endptsDist = vc_math::dist(segA.xa, segA.ya, segB.xa, segB.ya);
+      } else {
+        *endptsDist = vc_math::dist(segA.xa, segA.ya, segB.xb, segB.yb);
+      }
+    } else {
+      if (rb < 0.5) {
+        *endptsDist = vc_math::dist(segA.xb, segA.yb, segB.xa, segB.ya);
+      } else {
+        *endptsDist = vc_math::dist(segA.xb, segA.yb, segB.xb, segB.yb);
+      }
+    }
+  }
+
+  if (ra >= 0 && ra <= 1 && rb >= 0 && rb <= 1) {
+    return 1;
+  }
+  return 0;
 };
 
 
@@ -76,10 +172,10 @@ bool isClockwiseOrder(const cv::Vec4i& segA, const cv::Vec4i& segB, const cv::Po
   cv::Point2d endB1(segB[0], segB[1]);
   cv::Point2d endB2(segB[2], segB[3]);
   cv::Point2d vecA, vecB;
-  double distA1 = vc_math::dist(intPt, endA1);
-  double distA2 = vc_math::dist(intPt, endA2);
-  double distB1 = vc_math::dist(intPt, endB1);
-  double distB2 = vc_math::dist(intPt, endB2);
+  double distA1 = vc_math::distSqrd(intPt, endA1);
+  double distA2 = vc_math::distSqrd(intPt, endA2);
+  double distB1 = vc_math::distSqrd(intPt, endB1);
+  double distB2 = vc_math::distSqrd(intPt, endB2);
 
   if (distA1 >= distA2) {
     if (distB1 >= distB2) {
@@ -290,126 +386,7 @@ bool isFiveConnQuad(const PartialQuadDFTParams& data,
 };
 
 
-#ifdef DEPRECATED
-std::list<Quad> detectQuadsOld(const std::vector<cv::Vec4i>& segments,
-    double intSegMinAngle, double maxEndptDist) {
-  std::list<Quad> quads;
-
-  // Identify connected segments
-  std::vector< std::list<unsigned int> > adjList(segments.size());
-  std::vector<bool> incomingAdj(segments.size(), false); // whether segment has incoming adjacent segment(s)
-  unsigned int i, j;
-  cv::Point2d intPt;
-  char intersect;
-  double distSegAInt, distSegBInt;
-  for (i = 0; i < segments.size(); i++) {
-    for (j = i+1; j < segments.size(); j++) {
-      // Do not connect nearby segments with sharp (or near-180') angles in between them
-      double intAngle = vc_math::angularDist(vc_math::orientation(segments[i]),
-          vc_math::orientation(segments[j]), vc_math::pi);
-      if (intAngle < intSegMinAngle || intAngle > vc_math::pi - intSegMinAngle) { continue; }
-
-      intersect = getSegmentIntersection(segments[i], segments[j], intPt,
-          &distSegAInt, &distSegBInt);
-      // Connect segments whose endpoints are nearby, and also whose
-      // intersecting point is also near each of the segments' endpoints
-      // (specifically where the triangle between the 2 endpoints and the
-      // intersecting point is at most as sharp as a triangle with sides
-      // endptThresh, 2*endptThresh, 2*endptThresh)
-      if (intersect == 0 &&
-          distSegAInt <= 2*maxEndptDist &&
-          distSegBInt <= 2*maxEndptDist &&
-          areEndpointsNear(segments[i], segments[j], maxEndptDist)) {
-        intersect = 1;
-      }
-
-      // Determine adjacency order between the two segments
-      if (intersect > 0) {
-        if (isClockwiseOrder(segments[i], segments[j], intPt)) {
-          adjList[i].push_back(j);
-          incomingAdj[j] = true;
-        } else {
-          adjList[j].push_back(i);
-          incomingAdj[i] = true;
-        }
-      }
-    }
-  }
-
-  // Keep only intersecting edgels and create reduced adjacency matrix + list
-  std::vector<int> toIntSegIDs(segments.size(), -1);
-  std::vector<int> toOrigSegIDs;
-  for (i = 0; i < segments.size(); i++) {
-    if (adjList[i].size() > 0 || incomingAdj[i]) {
-      j = toOrigSegIDs.size();
-      toIntSegIDs[i] = j;
-      toOrigSegIDs.push_back(i);
-    }
-  }
-  //cv::Mat redAdj = cv::Mat::zeros(toOrigSegIDs.size(), toOrigSegIDs.size(), CV_32SC1);
-  std::vector< std::list<unsigned int> > redAdjList(toOrigSegIDs.size());
-  for (j = 0; j < toOrigSegIDs.size(); j++) {
-    std::list<unsigned int>& currAdj = redAdjList[j];
-    i = toOrigSegIDs[j];
-    for (unsigned int neighI: adjList[i]) {
-      unsigned int neighJ = toIntSegIDs[neighI];
-      //redAdj.at<int>(j, neighJ) = 1;
-      currAdj.push_back(neighJ);
-    }
-  }
-
-  // Traverse through adjascency list and search for 4-connected 'complete' quads
-  std::vector<cv::Vec4i> segQuads;
-  cv::Vec4i currSegQuad;
-  /*
-  // NOTE: 4-multiplying the adjacency matrix is costlier than the rest of this
-  //       function combined, so instead we will just perform DFT over all
-  //       segments
-  cv::Mat quadsCyclesAdj = redAdj*redAdj*redAdj*redAdj;
-  std::vector<unsigned int> quadCandIdx;
-  for (i = 0; i < toOrigSegIDs.size(); i++) {
-    if (quadsCyclesAdj.at<int>(i, i) > 0) {
-      quadCandVisited[i] = false;
-      quadCandIdx.push_back(i);
-    }
-  }
-  for (unsigned int currCandIdx: quadCandIdx) {
-    completeQuadDFT(redAdjList, segQuads, currSegQuad, currCandIdx, currCandIdx, 0);
-  }
-  */
-  for (unsigned int currCandIdx = 0; currCandIdx < toOrigSegIDs.size(); currCandIdx++) {
-    completeQuadDFT(redAdjList, segQuads, currSegQuad, currCandIdx, currCandIdx, 0);
-  }
-  vc_math::unique(segQuads);
-
-  // Compute corners of quads
-  cv::Point2d corner;
-  for (cv::Vec4i& segQuad: segQuads) {
-    const cv::Vec4i& segA = segments[toOrigSegIDs[segQuad[0]]];
-    const cv::Vec4i& segB = segments[toOrigSegIDs[segQuad[1]]];
-    const cv::Vec4i& segC = segments[toOrigSegIDs[segQuad[2]]];
-    const cv::Vec4i& segD = segments[toOrigSegIDs[segQuad[3]]];
-    Quad quad;
-    getSegmentIntersection(segA, segB, corner);
-    quad.corners[0].x = corner.x; quad.corners[0].y = corner.y;
-    getSegmentIntersection(segB, segC, corner);
-    quad.corners[1].x = corner.x; quad.corners[1].y = corner.y;
-    getSegmentIntersection(segC, segD, corner);
-    quad.corners[2].x = corner.x; quad.corners[2].y = corner.y;
-    getSegmentIntersection(segD, segA, corner);
-    quad.corners[3].x = corner.x; quad.corners[3].y = corner.y;
-    quad.updateArea();
-    if (quad.area > 0) {
-      quads.push_back(quad);
-    }
-  }
-
-  return quads;
-};
-#endif
-
-
-std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
+std::list<Quad> detectAllQuads(const std::vector<cv::Vec4i>& segments,
     double intSegMinAngle, double maxTIntDistRatio, double maxEndptDistRatio,
     double maxCornerGapEndptDistRatio,
     double maxEdgeGapDistRatio, double maxEdgeGapAlignAngle,
@@ -425,8 +402,6 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     segmentLengths.push_back(vc_math::dist(seg));
     segmentOrientations.push_back(vc_math::orientation(seg));
   }
-
-  unsigned long long __count; // TODO: 000 remove
 
   // Identify connected segments
   std::vector< std::list<unsigned int> > adjList(segments.size());
@@ -464,8 +439,6 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
 
       // Determine adjacency order between the two segments
       if (intersect > 0) {
-        __count += 1;
-
         if (isClockwiseOrder(segments[i], segments[j], intPt)) {
           adjList[i].push_back(j);
           incomingAdj[j] = true;
@@ -477,8 +450,6 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     }
   }
   _profilers["31_quad_edgepair"].toc();
-
-  std::cout << "D> " << segments.size() << " segments; " << segments.size()*(segments.size()-1)/2 << " checks; " << __count << " conn pairs" << std::endl; // TODO: 000 remove
 
   // Keep only intersecting edgels and create reduced adjacency matrix + list
   _profilers["32_quad_dft"].tic();
@@ -546,6 +517,240 @@ std::list<Quad> detectQuads(const std::vector<cv::Vec4i>& segments,
     }
   }
   _profilers["32_quad_dft"].toc();
+
+  return quads;
+};
+
+
+std::list<Quad> detectEndptQuads(const std::vector<cv::Vec4i>& segments,
+    unsigned int imWidth, unsigned int imHeight,
+    double intSegMinAngle, unsigned int hashMapWidth,
+    double maxTIntDistRatio, double maxEndptDistRatio,
+    double maxCornerGapEndptDistRatio,
+    double maxEdgeGapDistRatio, double maxEdgeGapAlignAngle,
+    double minQuadWidth) {
+  std::list<Quad> quads;
+
+  _profilers["41_hash_edgepair"].tic();
+  // Initialize augmented data structure for each segment
+  std::vector<LineSegment> segmentStructs(segments.size());
+  std::vector<double> segmentLengths;
+  std::vector<LineSegment>::iterator segmentIt = segmentStructs.begin();
+  for (const cv::Vec4i& seg: segments) {
+    segmentIt->xa = seg[0];
+    segmentIt->ya = seg[1];
+    segmentIt->xb = seg[2];
+    segmentIt->yb = seg[3];
+    segmentIt->length = vc_math::dist(seg);
+    segmentIt->orientation = vc_math::orientation(seg);
+    segmentLengths.push_back(segmentIt->length);
+    segmentIt++;
+  }
+
+  // Build spatial hashmap, to identify segment endpoints near each other
+  std::vector<HashBucket> buckets; buckets.push_back(HashBucket()); // First element is invalid by design
+  cv::Mat hashmap = cv::Mat::zeros(
+      std::ceil(double(imHeight)/hashMapWidth),
+      std::ceil(double(imWidth)/hashMapWidth),
+      CV_32SC1); // Stores 0-indices to hash bucket entries
+  int hx, hy; // Scratch vars
+  int newBucketIdx = 1;
+  unsigned int segmentID = 0;
+  for (LineSegment& currSegment: segmentStructs) {
+    // Process endpoint A
+    hx = std::floor(double(currSegment.xa)/hashMapWidth);
+    hy = std::floor(double(currSegment.ya)/hashMapWidth);
+    int& bucketIdxA = hashmap.at<int>(hy, hx);
+    if (bucketIdxA <= 0) { // Insert into new bucket
+      buckets.push_back(HashBucket(hx, hy, segmentID));
+      bucketIdxA = newBucketIdx;
+      currSegment.ha = bucketIdxA;
+      newBucketIdx += 1;
+    } else { // Insert into existing bucket
+      HashBucket& currBucket = buckets[bucketIdxA];
+      currSegment.ha = bucketIdxA;
+      currBucket.segmentIDs.push_back(segmentID);
+    }
+
+    // Process endpoint B
+    hx = std::floor(double(currSegment.xb)/hashMapWidth);
+    hy = std::floor(double(currSegment.yb)/hashMapWidth);
+    int& bucketIdxB = hashmap.at<int>(hy, hx);
+    if (bucketIdxB <= 0) { // Insert into new bucket
+      buckets.push_back(HashBucket(hx, hy, segmentID));
+      bucketIdxB = newBucketIdx;
+      currSegment.hb = bucketIdxB;
+      newBucketIdx += 1;
+    } else { // Insert into existing bucket
+      HashBucket& currBucket = buckets[bucketIdxB];
+      currSegment.hb = bucketIdxB;
+      if (currSegment.ha != currSegment.hb) { // Prevent registering segment at both endpoints in same bucket
+        currBucket.segmentIDs.push_back(segmentID);
+      }
+    }
+
+    segmentID += 1;
+  }
+
+  // Identify potential neighbours to each segment
+  segmentID = 0;
+  for (LineSegment& currSegment: segmentStructs) {
+    // List potential neighbours of endpoint A
+    hx = buckets[currSegment.ha].hx;
+    hy = buckets[currSegment.ha].hy;
+    for (int nhy = std::max(hy - 1, 0); nhy < std::min(hy + 2, hashmap.rows); nhy += 1) {
+      for (int nhx = std::max(hx - 1, 0); nhx < std::min(hx + 2, hashmap.cols); nhx += 1) {
+        unsigned int bucketIdx = hashmap.at<unsigned int>(nhy, nhx);
+        if (bucketIdx <= 0) continue; // No neighbours in current hashmap cell
+        for (unsigned int neighSegmentID: buckets[bucketIdx].segmentIDs) {
+          if (neighSegmentID <= segmentID) continue; // Skip ID of current segment or previously checked neighbour
+          currSegment.neighIDs.push_back(neighSegmentID);
+        }
+      }
+    }
+
+    // List potential neighbours of endpoint B
+    if (currSegment.ha != currSegment.hb) {
+      hx = buckets[currSegment.hb].hx;
+      hy = buckets[currSegment.hb].hy;
+      for (int nhy = std::max(hy - 1, 0); nhy < std::min(hy + 2, hashmap.rows); nhy += 1) {
+        for (int nhx = std::max(hx - 1, 0); nhx < std::min(hx + 2, hashmap.cols); nhx += 1) {
+          unsigned int bucketIdx = hashmap.at<unsigned int>(nhy, nhx);
+          if (bucketIdx <= 0) continue; // No neighbours in current hashmap cell
+          for (unsigned int neighSegmentID: buckets[bucketIdx].segmentIDs) {
+            if (neighSegmentID <= segmentID) continue; // Skip ID of current segment or previously checked neighbour
+            currSegment.neighIDs.push_back(neighSegmentID);
+          }
+        }
+      }
+    }
+
+    // Maintain a sorted set of neighbours
+    if (currSegment.neighIDs.empty()) continue;
+    currSegment.neighIDs.sort();
+    currSegment.neighIDs.erase(std::unique(currSegment.neighIDs.begin(),
+      currSegment.neighIDs.end()), currSegment.neighIDs.end());
+
+    segmentID += 1;
+  }
+
+  // Build adjacency list by checking nearby segments to each segment's endpoints
+  std::vector< std::list<unsigned int> > adjList(segments.size());
+  std::vector<bool> incomingAdj(segments.size(), false); // whether segment has incoming adjacent segment(s)
+  segmentID = 0;
+  int intersect;
+  cv::Point2d intPt;
+  double distSegAInt, distSegBInt, segAIntRatio, segBIntRatio, endptsDist;
+  for (LineSegment& currSegment: segmentStructs) {
+    for (unsigned int neighSegmentID: currSegment.neighIDs) {
+      // Do not connect nearby segments with sharp (or near-180') angles in between them
+      double intAngle = vc_math::angularDist(currSegment.orientation,
+        segmentStructs[neighSegmentID].orientation, vc_math::pi);
+      if (intAngle < intSegMinAngle || intAngle > vc_math::pi - intSegMinAngle) { continue; }
+
+      intersect = getSegmentIntersection(currSegment, segmentStructs[neighSegmentID],
+        intPt, &distSegAInt, &distSegBInt, &segAIntRatio, &segBIntRatio, &endptsDist);
+
+      // Do not connect T-shaped segments
+      if ((segAIntRatio >= maxTIntDistRatio && segAIntRatio < 1.0 - maxTIntDistRatio) ||
+          (segBIntRatio >= maxTIntDistRatio && segBIntRatio < 1.0 - maxTIntDistRatio)) {
+        continue;
+      }
+
+      // Connect segments whose endpoints are nearby, and also whose
+      // intersecting point is also near each of the segments' endpoints
+      // (specifically where the triangle between the 2 endpoints and the
+      // intersecting point is at most as sharp as a triangle with sides
+      // endptThresh, 2*endptThresh, 2*endptThresh)
+      if (intersect == 0 &&
+          (distSegAInt / (distSegAInt + currSegment.length) <= maxEndptDistRatio) &&
+          (distSegBInt / (distSegBInt + segmentStructs[neighSegmentID].length) <= maxEndptDistRatio)) {
+        intersect = 1;
+      }
+
+      // Determine adjacency order between the two segments
+      if (intersect > 0) {
+        if (isClockwiseOrder(segments[segmentID], segments[neighSegmentID], intPt)) {
+          adjList[segmentID].push_back(neighSegmentID);
+          incomingAdj[neighSegmentID] = true;
+        } else {
+          adjList[neighSegmentID].push_back(segmentID);
+          incomingAdj[segmentID] = true;
+        }
+      }
+    }
+
+    segmentID += 1;
+  }
+  _profilers["41_hash_edgepair"].toc();
+
+  // Keep only intersecting edgels and create reduced adjacency matrix + list
+  _profilers["42_hash_dft"].tic();
+  std::vector<int> toIntSegIDs(segments.size(), -1);
+  std::vector<int> toOrigSegIDs;
+  unsigned int i, j;
+  for (i = 0; i < segments.size(); i++) {
+    if (adjList[i].size() > 0 || incomingAdj[i]) {
+      j = toOrigSegIDs.size();
+      toIntSegIDs[i] = j;
+      toOrigSegIDs.push_back(i);
+    }
+  }
+  std::vector< std::list<unsigned int> > redAdjList(toOrigSegIDs.size());
+  for (j = 0; j < toOrigSegIDs.size(); j++) {
+    std::list<unsigned int>& currAdj = redAdjList[j];
+    i = toOrigSegIDs[j];
+    for (unsigned int neighI: adjList[i]) {
+      unsigned int neighJ = toIntSegIDs[neighI];
+      currAdj.push_back(neighJ);
+    }
+  }
+
+  // Traverse through adjascency list and search for complete (cyclic) and
+  // partial (single-corner-obstructed and single-edge-obstructed) quads
+  PartialQuadDFTParams partialQuadData(redAdjList, segments, segmentLengths,
+      toOrigSegIDs, maxCornerGapEndptDistRatio, maxEdgeGapDistRatio,
+      maxEdgeGapAlignAngle);
+  std::vector<cv::Vec4i> segQuads;
+  std::vector< std::array<int, 5> > segFiveConns;
+  std::array<int, 5> currQuadIDs;
+  for (unsigned int currCandIdx = 0; currCandIdx < toOrigSegIDs.size(); currCandIdx++) {
+    partialQuadDFT(partialQuadData, segQuads, segFiveConns, currQuadIDs, currCandIdx, 0);
+  }
+  vc_math::unique(segQuads);
+  vc_math::unique(segFiveConns);
+
+  // Compute corners of 4-connected quads
+  cv::Point2d corner;
+  Quad quad;
+  for (cv::Vec4i& segQuad: segQuads) {
+    const cv::Vec4i& segA = segments[toOrigSegIDs[segQuad[0]]];
+    const cv::Vec4i& segB = segments[toOrigSegIDs[segQuad[1]]];
+    const cv::Vec4i& segC = segments[toOrigSegIDs[segQuad[2]]];
+    const cv::Vec4i& segD = segments[toOrigSegIDs[segQuad[3]]];
+    getSegmentIntersection(segA, segB, corner);
+    quad.corners[0].x = corner.x; quad.corners[0].y = corner.y;
+    getSegmentIntersection(segB, segC, corner);
+    quad.corners[1].x = corner.x; quad.corners[1].y = corner.y;
+    getSegmentIntersection(segC, segD, corner);
+    quad.corners[2].x = corner.x; quad.corners[2].y = corner.y;
+    getSegmentIntersection(segD, segA, corner);
+    quad.corners[3].x = corner.x; quad.corners[3].y = corner.y;
+    quad.updateArea();
+    if (quad.area >= minQuadWidth*minQuadWidth && quad.checkMinWidth(minQuadWidth)) { // checking min width to prevent triangle+edge 4-conn segments from being accepted as quads
+      quads.push_back(quad);
+    }
+  }
+
+  // Construct single-edge-obstructed quads from 5-connected segments
+  for (const std::array<int, 5>& segFiveConn: segFiveConns) {
+    if (isFiveConnQuad(partialQuadData, segFiveConn, quad, minQuadWidth)) {
+      if (quad.area >= minQuadWidth*minQuadWidth && quad.checkMinWidth(minQuadWidth)) {
+        quads.push_back(quad);
+      }
+    }
+  }
+  _profilers["42_hash_dft"].toc();
 
   return quads;
 };
