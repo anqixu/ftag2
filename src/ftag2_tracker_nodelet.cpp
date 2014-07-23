@@ -246,9 +246,6 @@ public:
     std::string imageTopic = local_nh.resolveName("image_in");
     std::string cameraTopic = local_nh.resolveName("camera_in");
 
-    std::cout << "Image: " << imageTopic << ", transport: " << transportType << std::endl; // TODO: 0 remove
-    std::cout << "Camera: " << cameraTopic << ", transport: " << transportType << std::endl; // TODO: 0 remove
-
     // Setup ROS communication links
     image_transport::ImageTransport it(local_nh);
     rawTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
@@ -365,7 +362,8 @@ public:
         params.quadMaxEdgeGapDistRatio,
         params.quadMaxEdgeGapAlignAngle*degree,
         params.quadMinWidth);
-    quads.sort(Quad::compareArea);
+    quads.sort(Quad::greaterArea);
+    quads.erase(std::unique(quads.begin(), quads.end()), quads.end()); // Remove duplicates
     quadP.toc();
 #ifdef CV_SHOW_IMAGES
     {
@@ -387,7 +385,7 @@ public:
       // Reject quads that overlap with already-detected tags (which have larger area than current quad)
       bool overlap = false;
       for (const FTag2Marker& prevTag: tags) {
-        if (vc_math::checkPolygonOverlap(prevTag.corners, currQuad.corners)) {
+        if (vc_math::checkPolygonOverlap(prevTag.tagCorners, currQuad.corners)) {
           overlap = true;
           break;
         }
@@ -408,6 +406,7 @@ public:
       decodeQuadP.tic();
       try {
         currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
+            FTag2Payload::FTAG2_5F6S,
             params.markerWidthM,
             params.num_samples_per_row,
             cameraIntrinsic, cameraDistortion,
@@ -437,7 +436,7 @@ public:
 
       // Publish cropped tag image
       cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
-          sensor_msgs::image_encodings::MONO8, firstTag.img);
+          sensor_msgs::image_encodings::MONO8, firstTag.tagImg);
       cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
       firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
     }
@@ -445,7 +444,7 @@ public:
     // Publish image overlaid with detected markers
     cv::Mat processedImg = sourceImg.clone();
     for (const FTag2Marker& tag: tags) {
-      drawQuadWithCorner(processedImg, tag.corners);
+      drawQuadWithCorner(processedImg, tag.tagCorners);
     }
     cv_bridge::CvImage cvProcessedImg(std_msgs::Header(),
         sensor_msgs::image_encodings::RGB8, processedImg);
@@ -474,7 +473,7 @@ public:
         tagMsg.pose.orientation.x = tag.pose.orientation_x;
         tagMsg.pose.orientation.y = tag.pose.orientation_y;
         tagMsg.pose.orientation.z = tag.pose.orientation_z;
-        tagMsg.markerPixelWidth = tag.rectifiedWidth;
+        tagMsg.markerPixelWidth = tag.tagWidth;
         const double* magsPtr = (double*) tag.payload.mags.data;
         tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
         const double* phasesPtr = (double*) tag.payload.phases.data;
@@ -660,7 +659,7 @@ public:
       tagMsg.pose.orientation.x = tag.pose.orientation_x;
       tagMsg.pose.orientation.y = tag.pose.orientation_y;
       tagMsg.pose.orientation.z = tag.pose.orientation_z;
-      tagMsg.markerPixelWidth = tag.rectifiedWidth;
+      tagMsg.markerPixelWidth = tag.tagWidth;
       const double* magsPtr = (double*) tag.payload.mags.data;
       tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
       const double* phasesPtr = (double*) tag.payload.phases.data;

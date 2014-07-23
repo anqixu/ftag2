@@ -32,7 +32,7 @@ struct Quad {
     }
   };
 
-  static bool compareArea(const Quad& first, const Quad& second) {
+  static bool greaterArea(const Quad& first, const Quad& second) {
     return first.area > second.area;
   };
 
@@ -42,6 +42,17 @@ struct Quad {
         (vc_math::dist(corners[2], corners[3]) >= w) &&
         (vc_math::dist(corners[3], corners[0]) >= w));
   };
+
+  bool operator==(const Quad& other) {
+    if (area == other.area && corners.size() == 4 && other.corners.size() == 4) {
+      return (corners[0] == other.corners[0] &&
+          corners[1] == other.corners[1] &&
+          corners[2] == other.corners[2] &&
+          corners[3] == other.corners[3]);
+    }
+    return false;
+  };
+
 
   Quad() : corners(4, cv::Point2f(0, 0)), area(-1.0) {};
 };
@@ -263,7 +274,30 @@ cv::Mat extractQuadImg(const cv::Mat img, const Quad& quad, unsigned int minWidt
 cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff = 12.0);
 
 
-cv::Mat cropFTag2Border(cv::Mat tag, unsigned int numRays = 6, unsigned int borderBlocks = 1);
+inline bool validateTagBorder(cv::Mat tag, double meanPxMaxThresh = 80.0, double stdPxMaxThresh = 30.0,
+    unsigned int numRays = 6, unsigned int borderBlocks = 1) {
+  const unsigned int numBlocks = numRays + 2*borderBlocks;
+  double hBorder = double(tag.cols)/numBlocks*borderBlocks;
+  double vBorder = double(tag.rows)/numBlocks*borderBlocks;
+  cv::Mat borderMask = cv::Mat::ones(tag.size(), CV_8UC1);
+  borderMask(cv::Range(std::round(vBorder), std::round(tag.rows - vBorder)),
+      cv::Range(std::round(hBorder), std::round(tag.cols - hBorder))).setTo(0);
+  cv::Scalar meanPx;
+  cv::Scalar stdPx;
+  cv::meanStdDev(tag, meanPx, stdPx, borderMask);
+
+  return ((meanPx[0] <= meanPxMaxThresh) && (stdPx[0] <= stdPxMaxThresh));
+};
+
+
+inline cv::Mat cropFTag2Border(cv::Mat tag, unsigned int numRays = 6, unsigned int borderBlocks = 1) {
+  const unsigned int numBlocks = numRays + 2*borderBlocks;
+  double hBorder = double(tag.cols)/numBlocks*borderBlocks;
+  double vBorder = double(tag.rows)/numBlocks*borderBlocks;
+  cv::Mat croppedTag = tag(cv::Range(std::round(vBorder), std::round(tag.rows - vBorder)),
+      cv::Range(std::round(hBorder), std::round(tag.cols - hBorder)));
+  return croppedTag;
+};
 
 
 cv::Mat extractHorzRays(cv::Mat croppedTag, unsigned int numSamples,
@@ -299,14 +333,9 @@ std::vector<cv::Point2f> backProjectQuad(double cam_pose_in_tag_frame_x, double 
 		cv::Mat cameraIntrinsic, cv::Mat cameraDistortion);
 
 
-
 void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
                 double low_thresh, double high_thresh,
                 int aperture_size, cv::Mat& dx, cv::Mat& dy, bool L2gradient = false );
-
-
-bool validateTagBorder(cv::Mat tag, double meanPxMaxThresh = 80.0, double stdPxMaxThresh = 30.0,
-    unsigned int numRays = 6, unsigned int borderBlocks = 1);
 
 
 /**

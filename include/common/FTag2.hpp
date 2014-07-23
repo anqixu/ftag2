@@ -32,17 +32,14 @@ struct FTag2Pose{
 
 
 struct FTag2Payload {
-  constexpr static unsigned long long SIG_KEY = 0b00100011;
-  constexpr static unsigned int MAX_NUM_FREQS = 5;
+  enum {FTAG2_2F6S = 26, FTAG2_5F6S = 56};
+  int type;
 
-  static double WITHIN_PHASE_RANGE_N_SIGMA;
-  static int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES;
-  static double WITHIN_PHASE_RANGE_THRESHOLD;
-
+  cv::Mat mags;
+  cv::Mat phases;
   std::vector<double> phaseVariances;
 
   bool hasSignature;
-
   bool hasValidXORs;
 
   std::string bitChunksStr;
@@ -51,66 +48,50 @@ struct FTag2Payload {
   unsigned int numDecodedPhases;
   unsigned int numDecodedSections;
 
-  cv::Mat payloadChunks; // TODO: 1 remove?
+  // TODO: 1 move these outside of payload struct
+  static double WITHIN_PHASE_RANGE_N_SIGMA;
+  static int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES;
+  static double WITHIN_PHASE_RANGE_THRESHOLD;
 
-  // TODO: 2 remove TEMP VARS
-  unsigned long long signature;
+  static constexpr unsigned int SIG_PSK_SIZE() { return 3; }; // NOTE: in future, need to remove 'static constexpr' qualifier if sig PSK differs from 3 bits
+  static constexpr unsigned long long SIG_KEY() { return 0b00100011; }; // NOTE: in future, need to remove 'static constexpr' qualifier if sig depends on num slices
+  unsigned int NUM_FREQS() { return type/10; };
+  unsigned int NUM_SLICES() { return type % 10; };
 
-  cv::Mat horzRays;
-  cv::Mat vertRays;
-  cv::Mat horzMagSpec;
-  cv::Mat vertMagSpec;
-  cv::Mat horzPhaseSpec;
-  cv::Mat vertPhaseSpec;
+  static void updateParameters(double WITHIN_PHASE_RANGE_N_SIGMA_, int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES_, double WITHIN_PHASE_RANGE_THRESHOLD_ ) {
+    WITHIN_PHASE_RANGE_N_SIGMA = WITHIN_PHASE_RANGE_N_SIGMA_;
+    WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES = WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES_;
+    WITHIN_PHASE_RANGE_THRESHOLD = WITHIN_PHASE_RANGE_THRESHOLD_;
+  };
 
-  cv::Mat horzMags;
-  cv::Mat vertMags;
-  cv::Mat horzPhases;
-  cv::Mat vertPhases;
-
-  cv::Mat mags;
-  cv::Mat phases;
-  cv::Mat bitChunks; // TODO: 1 remove bitChunks and payloadChunks (since it's confusing whether they are storing decodedPayload contents, or single-tag contents)
-
-  FTag2Payload (): phaseVariances(), hasSignature(false),
-      hasValidXORs(false), bitChunksStr(""), decodedPayloadStr(""),
-      numDecodedPhases(0), numDecodedSections(0), signature(0) {
-    for (int i = 0; i < 5; i++) { phaseVariances.push_back(0); }
-        payloadChunks = cv::Mat::ones(6, 5, CV_8SC1) * -1;
+  FTag2Payload (int tagType = FTAG2_5F6S) :
+      type(tagType),
+      hasSignature(false), hasValidXORs(false),
+      bitChunksStr(""), decodedPayloadStr(""),
+      numDecodedPhases(0), numDecodedSections(0) {
+    const int MAX_NUM_FREQS = NUM_FREQS();
+    for (int i = 0; i < MAX_NUM_FREQS; i++) { phaseVariances.push_back(0); }
+    mags = cv::Mat::zeros(NUM_SLICES(), MAX_NUM_FREQS, CV_64FC1);
+    phases = cv::Mat::zeros(NUM_SLICES(), MAX_NUM_FREQS, CV_64FC1);
   };
   ~FTag2Payload() {};
 
   FTag2Payload(const FTag2Payload& other) :
+    type(other.type),
+    mags(other.mags.clone()),
+    phases(other.phases.clone()),
     phaseVariances(other.phaseVariances),
     hasSignature(other.hasSignature),
     hasValidXORs(other.hasValidXORs),
     bitChunksStr(other.bitChunksStr),
     decodedPayloadStr(other.decodedPayloadStr),
     numDecodedPhases(other.numDecodedPhases),
-    numDecodedSections(other.numDecodedSections),
-    payloadChunks(other.payloadChunks.clone()),
-    signature(other.signature),
-    horzRays(other.horzRays.clone()),
-    vertRays(other.vertRays.clone()),
-    horzMagSpec(other.horzMagSpec.clone()),
-    vertMagSpec(other.vertMagSpec.clone()),
-    horzPhaseSpec(other.horzPhaseSpec.clone()),
-    vertPhaseSpec(other.vertPhaseSpec.clone()),
-    horzMags(other.horzMags.clone()),
-    vertMags(other.vertMags.clone()),
-    horzPhases(other.horzPhases.clone()),
-    vertPhases(other.vertPhases.clone()),
-    mags(other.mags.clone()),
-    phases(other.phases.clone()),
-    bitChunks(other.bitChunks.clone()) {};
-
-  static void updateParameters(double WITHIN_PHASE_RANGE_N_SIGMA_, int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES_, double WITHIN_PHASE_RANGE_THRESHOLD_ ) {
-	  WITHIN_PHASE_RANGE_N_SIGMA = WITHIN_PHASE_RANGE_N_SIGMA_;
-	  WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES = WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES_;
-	  WITHIN_PHASE_RANGE_THRESHOLD = WITHIN_PHASE_RANGE_THRESHOLD_;
-  }
+    numDecodedSections(other.numDecodedSections) {};
 
   void operator=(const FTag2Payload& other) {
+    type = other.type;
+    mags = other.mags.clone();
+    phases = other.phases.clone();
     phaseVariances = other.phaseVariances;
     hasSignature = other.hasSignature;
     hasValidXORs = other.hasValidXORs;
@@ -118,76 +99,58 @@ struct FTag2Payload {
     decodedPayloadStr = other.decodedPayloadStr;
     numDecodedPhases = other.numDecodedPhases;
     numDecodedSections = other.numDecodedSections;
-    payloadChunks = other.payloadChunks.clone();
-    signature = other.signature;
-    horzRays = other.horzRays.clone();
-    vertRays = other.vertRays.clone();
-    horzMagSpec = other.horzMagSpec.clone();
-    vertMagSpec = other.vertMagSpec.clone();
-    horzPhaseSpec = other.horzPhaseSpec.clone();
-    vertPhaseSpec = other.vertPhaseSpec.clone();
-    horzMags = other.horzMags.clone();
-    vertMags = other.vertMags.clone();
-    horzPhases = other.horzPhases.clone();
-    vertPhases = other.vertPhases.clone();
-    mags = other.mags.clone();
-    phases = other.phases.clone();
-    bitChunks = other.bitChunks.clone();
   };
 
   bool withinPhaseRange(const FTag2Payload& marker);
 
   double sumOfStds() {
     double sum = 0.0;
-    for ( double d : phaseVariances )
-      sum += sqrt(d);
+    for (double& d: phaseVariances) sum += sqrt(d);
     return sum;
   };
 };
 
 
 struct FTag2Marker {
-  cv::Mat img;
-
-  double rectifiedWidth;
-
-  std::vector<cv::Point2f> corners;
-  std::vector<cv::Point2f> back_proj_corners;
-  cv::Mat cornersInCamSpace;
-  int imgRotDir; // counter-clockwise degrees
+  std::vector<cv::Point2f> tagCorners;
+  double tagWidth; /** in meters **/
 
   FTag2Pose pose;
   FTag2Payload payload;
 
-  FTag2Marker(double quadWidth = 0.0) : rectifiedWidth(quadWidth),
-      imgRotDir(0) { };
+  // DEBUG VARIABLES
+  cv::Mat tagImg;
+  int tagImgCCRotDeg;
+
+  std::vector<cv::Point2f> back_proj_corners; // TODO: 1 is this needed in final API?
+  cv::Mat cornersInCamSpace; // TODO: 1 is this needed in final API?
+
+  FTag2Marker(double quadWidth = 0.0, int tagType = FTag2Payload::FTAG2_5F6S) :
+    tagWidth(quadWidth),
+    payload(tagType),
+    tagImgCCRotDeg(0) { };
   virtual ~FTag2Marker() {};
 
   FTag2Marker(const FTag2Marker& other) :
-    img(other.img.clone()),
-    rectifiedWidth(other.rectifiedWidth),
-    corners(other.corners),
-    back_proj_corners(other.back_proj_corners),
-    imgRotDir(other.imgRotDir),
+    tagCorners(other.tagCorners),
+    tagWidth(other.tagWidth),
     pose(other.pose),
-    payload(other.payload) {};
+    payload(other.payload),
+    tagImg(other.tagImg.clone()),
+    tagImgCCRotDeg(other.tagImgCCRotDeg),
+    back_proj_corners(other.back_proj_corners),
+    cornersInCamSpace(cornersInCamSpace.clone()) {};
 
   void operator=(const FTag2Marker& other) {
-    img = other.img.clone();
-    rectifiedWidth = other.rectifiedWidth;
-    corners = other.corners;
-    back_proj_corners = other.back_proj_corners;
-    imgRotDir = other.imgRotDir;
+    tagCorners = other.tagCorners;
+    tagWidth = other.tagWidth;
     pose = other.pose;
     payload = other.payload;
+    tagImg = other.tagImg.clone();
+    tagImgCCRotDeg = other.tagImgCCRotDeg;
+    back_proj_corners = other.back_proj_corners;
+    cornersInCamSpace = other.cornersInCamSpace.clone();
   };
-};
-
-
-class FTag2 {
-public:
-  FTag2() {};
-  ~FTag2() {};
 };
 
 

@@ -220,11 +220,11 @@ public:
     rateP.tic();
     durationP.tic();
 
-    // Convert source image to grayscale
+    // 1. Convert source image to grayscale
     cv::Mat grayImg;
     cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
 
-    // Detect quadrilaterals in image
+    // 2. Detect quadrilaterals in image
     quadP.tic();
     std::list<Quad> quads;
     if (params.quadFastDetector) {
@@ -236,7 +236,55 @@ public:
     if (params.quadRefineCorners) {
       refineQuadCorners(grayImg, quads);
     }
-    quads.sort(Quad::compareArea);
+    quads.sort(Quad::greaterArea);
+    quads.erase(std::unique(quads.begin(), quads.end()), quads.end()); // Remove duplicates
+    quadP.toc();
+
+    // 3. Decode FTag2 markers
+    int quadCount = 0;
+    cv::Mat quadImg;
+    std::vector<FTag2Marker> tags;
+    FTag2Marker currTag;
+    for (const Quad& currQuad: quads) {
+      // Reject quads that overlap with already-detected tags (which have larger area than current quad)
+      bool overlap = false;
+      for (const FTag2Marker& prevTag: tags) {
+        if (vc_math::checkPolygonOverlap(prevTag.tagCorners, currQuad.corners)) {
+          overlap = true;
+          break;
+        }
+      }
+      if (overlap) continue;
+
+      // Check whether we have scanned enough quads
+      quadCount++;
+      if (quadCount > params.quadMaxScans) break;
+
+      // Extract rectified quad image from frame
+      quadExtractorP.tic();
+      quadImg = extractQuadImg(sourceImg, currQuad);
+      quadExtractorP.toc();
+      if (quadImg.empty()) { continue; }
+
+      // Decode tag
+      decoderP.tic();
+      try {
+        currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
+            FTag2Payload::FTAG2_5F6S,
+            params.markerWidthM,
+            1,
+            cameraIntrinsic, cameraDistortion,
+            params.tagMaxStripAvgDiff,
+            params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
+            phaseVariancePredictor);
+      } catch (const std::string& err) {
+        continue;
+      }
+      decoderP.toc();
+
+      // Store tag in list
+      tags.push_back(currTag);
+    } // Scan through all detected quads
 #ifdef CV_SHOW_IMAGES
     {
       cv::Mat overlaidImg;
@@ -244,12 +292,15 @@ public:
       for (const Quad& quad: quads) {
         drawQuad(overlaidImg, quad.corners);
       }
+      for (const FTag2Marker& tag: tags) {
+        drawQuadWithCorner(overlaidImg, tag.tagCorners);
+        drawMarkerLabel(overlaidImg, tag.tagCorners, tag.payload.bitChunksStr);
+      }
       cv::imshow("quads", overlaidImg);
     }
 #endif
-    quadP.toc();
 
-    // Update profiler
+    // -. Update profiler
     durationP.toc();
     if (profilerDelaySec > 0) {
       ros::Time currTime = ros::Time::now();
@@ -263,7 +314,7 @@ public:
       }
     }
 
-    // Allow OpenCV HighGUI events to process
+    // -. Allow OpenCV HighGUI events to process
 #ifdef CV_SHOW_IMAGES
     char c = waitKey(1);
     if (c == 'x' || c == 'X') {
@@ -299,7 +350,8 @@ public:
     // 2. Detect quadrilaterals
     quadP.tic();
     std::list<Quad> quads = scanQuadsExhaustive(segments);
-    quads.sort(Quad::compareArea);
+    quads.sort(Quad::greaterArea);
+    quads.erase(std::unique(quads.begin(), quads.end()), quads.end()); // Remove duplicates
     quadP.toc();
 #ifdef CV_SHOW_IMAGES
     {
@@ -321,7 +373,7 @@ public:
       // Reject quads that overlap with already-detected tags (which have larger area than current quad)
       bool overlap = false;
       for (const FTag2Marker& prevTag: tags) {
-        if (vc_math::checkPolygonOverlap(prevTag.corners, currQuad.corners)) {
+        if (vc_math::checkPolygonOverlap(prevTag.tagCorners, currQuad.corners)) {
           overlap = true;
           break;
         }
@@ -342,8 +394,9 @@ public:
       decoderP.tic();
       try {
         currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
+            FTag2Payload::FTAG2_5F6S,
             params.markerWidthM,
-            1, /* TODO: change for params.num_samples_per_row */
+            1,
             cameraIntrinsic, cameraDistortion,
             params.tagMaxStripAvgDiff,
             params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
@@ -364,13 +417,13 @@ public:
       // Show cropped tag image
 #ifdef CV_SHOW_IMAGES
       {
-        cv::imshow("quad_1_trimmed", firstTag.img);
+        cv::imshow("quad_1_trimmed", firstTag.tagImg);
       }
 #endif
 
       // Publish cropped tag image
       cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
-          sensor_msgs::image_encodings::MONO8, firstTag.img);
+          sensor_msgs::image_encodings::MONO8, firstTag.tagImg);
       cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
       firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
     }
@@ -378,7 +431,7 @@ public:
     // Publish image overlaid with detected markers
     cv::Mat processedImg = sourceImg.clone();
     for (const FTag2Marker& tag: tags) {
-      drawQuadWithCorner(processedImg, tag.corners);
+      drawQuadWithCorner(processedImg, tag.tagCorners);
     }
     cv_bridge::CvImage cvProcessedImg(std_msgs::Header(),
         sensor_msgs::image_encodings::RGB8, processedImg);
@@ -406,7 +459,7 @@ public:
         tagMsg.pose.orientation.x = tag.pose.orientation_x;
         tagMsg.pose.orientation.y = tag.pose.orientation_y;
         tagMsg.pose.orientation.z = tag.pose.orientation_z;
-        tagMsg.markerPixelWidth = tag.rectifiedWidth;
+        tagMsg.markerPixelWidth = tag.tagWidth;
         const double* magsPtr = (double*) tag.payload.mags.data;
         tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
         const double* phasesPtr = (double*) tag.payload.phases.data;

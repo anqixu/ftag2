@@ -5,10 +5,171 @@
 #include <iomanip>
 
 
+unsigned char bin2grayLUT[8] = {0, 1, 3, 2, 6, 7, 5, 4};
+unsigned char gray2binLUT[8] = {0, 1, 3, 2, 7, 6, 4, 5};
+
+
+unsigned char bin2gray(unsigned char num) {
+  if (num < 8) {
+    return bin2grayLUT[num];
+  } else {
+    return (num >> 1) ^ num;
+  }
+};
+
+
+unsigned char gray2bin(unsigned char num) {
+  if (num < 8) {
+    return gray2binLUT[num];
+  } else {
+    unsigned char mask;
+    for (mask = num >> 1; mask != 0; mask = mask >> 1) {
+      num = num ^ mask;
+    }
+    return num;
+  }
+};
+
+
+char computeXORChecksum(long long bitChunk, unsigned int numBits) {
+  char checksum = 0;
+  unsigned int i;
+  for (i = 0; i < numBits; i++) {
+    checksum = checksum ^ (bitChunk & 0b01);
+    bitChunk >>= 1;
+  }
+  return checksum;
+};
+
+
+// DEPRECATED FUNCTION
+void flipPSK(const cv::Mat& pskSrc, cv::Mat& pskFlipped, unsigned int pskSize) {
+  cv::flip(pskSrc, pskFlipped, 0);
+  double* pskFlippedPtr = (double*) pskFlipped.data;
+  for (int i = 0; i < pskFlipped.rows * pskFlipped.cols; i++, pskFlippedPtr++) {
+    *pskFlippedPtr = (pskSize - (unsigned int) *pskFlippedPtr) % pskSize;
+  }
+};
+
+
+void flipPhases(const cv::Mat& phasesSrc, cv::Mat& phasesFlipped) {
+  cv::flip(phasesSrc, phasesFlipped, 0);
+  double* phasesFlippedPtr = (double*) phasesFlipped.data;
+  for (int i = 0; i < phasesFlipped.rows * phasesFlipped.cols; i++, phasesFlippedPtr++) {
+    *phasesFlippedPtr = vc_math::wrapAngle(360.0 - *phasesFlippedPtr, 360.0);
+  }
+};
+
+
+// Extract the MSB of each slice at F=1Hz (all row entries on 2nd column)
+unsigned long long extractSigBits(const cv::Mat& phases, bool flipped, unsigned int pskSize) {
+  unsigned long long signature = 0;
+  int i;
+  double currPhase;
+  unsigned long long currBitChunk;
+
+  const unsigned int pskMaxCount = std::pow(2, pskSize);
+  const double PSKRange = (360.0/pskMaxCount);
+  const double PSKHalfRange = PSKRange/2;
+  const unsigned long long sigBitMask = (0b01 << (pskSize - 1));
+
+  if (phases.cols <= 1) throw std::string("Insufficient spectra content for extractSigBits; expecting 2+ columns");
+
+  if (flipped) {
+    for (i = 0; i < phases.rows; i++) {
+      signature <<= 1;
+
+      currPhase = std::floor(vc_math::wrapAngle(
+          phases.at<double>(phases.rows - 1 - i, 1) + PSKHalfRange, 360.0)/PSKRange);
+      currBitChunk = (pskMaxCount - (unsigned int) currPhase) % pskMaxCount;
+
+      if ((currBitChunk & sigBitMask) == sigBitMask) {
+        signature += 1;
+      }
+    }
+  } else {
+    for (i = 0; i < phases.rows; i++) {
+      signature <<= 1;
+
+      currPhase = std::floor(vc_math::wrapAngle(
+          phases.at<double>(i, 1) + PSKHalfRange, 360.0)/PSKRange);
+      currBitChunk = currPhase;
+
+      if ((currBitChunk & sigBitMask) == sigBitMask) {
+        signature += 1;
+      }
+    }
+  }
+
+  return signature;
+};
+
+
+bool extractPhasesAndSig(const cv::Mat& img, FTag2Marker& tag, unsigned int numSamplesPerRow, unsigned int sigPskSize) {
+  assert(img.channels() == 1);
+  const unsigned int MAX_NUM_FREQS = tag.payload.NUM_FREQS();
+
+  img.copyTo(tag.tagImg);
+
+  // Extract rays
+  cv::Mat horzRays = extractHorzRays(tag.tagImg, numSamplesPerRow);
+  cv::Mat vertRays = extractVertRays(tag.tagImg, numSamplesPerRow);
+  if (horzRays.cols < int(MAX_NUM_FREQS*2+1) ||
+      vertRays.cols < int(MAX_NUM_FREQS*2+1)) {
+    throw std::string("Insufficient number of frequencies in tag spectra");
+    return false;
+  }
+
+  // Compute magnitude and phase spectra for both horizontal and vertical rays
+  cv::Mat flippedRays, fft;
+  cv::Mat horzMagSpec, vertMagSpec, horzPhaseSpec, vertPhaseSpec;
+  cv::vector<cv::Mat> fftChannels(2);
+
+  cv::dft(horzRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, horzRays.rows);
+  cv::split(fft, fftChannels);
+  cv::magnitude(fftChannels[0], fftChannels[1], horzMagSpec);
+  cv::phase(fftChannels[0], fftChannels[1], horzPhaseSpec, true);
+
+  cv::flip(vertRays, flippedRays, 1);
+  cv::dft(flippedRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, flippedRays.rows);
+  cv::split(fft, fftChannels);
+  cv::magnitude(fftChannels[0], fftChannels[1], vertMagSpec);
+  cv::phase(fftChannels[0], fftChannels[1], vertPhaseSpec, true);
+
+
+  // Extract and validate phase signature, and determine orientation
+  const unsigned long long sigKey = tag.payload.SIG_KEY();
+  const cv::Range freqSpecRange(1, MAX_NUM_FREQS+1);
+  if (extractSigBits(horzPhaseSpec, false, sigPskSize) == sigKey) {
+    tag.tagImgCCRotDeg = 0;
+    tag.payload.mags = horzMagSpec(cv::Range::all(), freqSpecRange).clone();
+    tag.payload.phases = horzPhaseSpec(cv::Range::all(), freqSpecRange).clone();
+  } else if (extractSigBits(vertPhaseSpec, false, sigPskSize) == sigKey) {
+    tag.tagImgCCRotDeg = 270;
+    tag.payload.mags = vertMagSpec(cv::Range::all(), freqSpecRange).clone();
+    tag.payload.phases = vertPhaseSpec(cv::Range::all(), freqSpecRange).clone();
+
+  } else if (extractSigBits(horzPhaseSpec, true, sigPskSize) == sigKey) {
+    tag.tagImgCCRotDeg = 180;
+    cv::flip(horzMagSpec(cv::Range::all(), freqSpecRange), tag.payload.mags, 0);
+    flipPhases(horzPhaseSpec(cv::Range::all(), freqSpecRange), tag.payload.phases);
+  } else if (extractSigBits(vertPhaseSpec, true, 3) == sigKey) {
+    tag.tagImgCCRotDeg = 90;
+    cv::flip(vertMagSpec(cv::Range::all(), freqSpecRange), tag.payload.mags, 0);
+    flipPhases(vertPhaseSpec(cv::Range::all(), freqSpecRange), tag.payload.phases);
+  } else { // No signatures matched
+    return false;
+  }
+
+  return true;
+};
+
+
 FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
     const Quad& quad,
+    int tagType,
     double markerWidthM,
-    unsigned int num_samples_per_row,
+    unsigned int numSamplesPerRow,
     const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
     double quadMaxStripAvgDiff,
     double tagBorderMeanMaxThresh, double tagBorderStdMaxThresh,
@@ -25,45 +186,42 @@ FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
   cv::Mat croppedTagImg = cropFTag2Border(trimmedTagImg);
 
   // Initialize tag data structure
-  FTag2Marker tagBuffer(trimmedTagImg.rows);
+  FTag2Marker tagBuffer(trimmedTagImg.rows, tagType);
 
-  // Extract rays, and decode frequency and phase spectra
-  analyzeRays(croppedTagImg, &tagBuffer, num_samples_per_row);
-
-  // Decode signature
-  if (!checkSignature(&tagBuffer)) {
-    throw std::string("could not identify signature");
+  // Extract rays, decode frequency and phase spectra, and validate signature
+  if (!extractPhasesAndSig(croppedTagImg, tagBuffer, numSamplesPerRow, tagBuffer.payload.SIG_PSK_SIZE())) { // NOTE: last argument (3) is the PSK size for the signature frequency
+    throw std::string("failed to validate phase signature");
+  } else {
+    // Update image of tag based on detected orientation
+    BaseCV::rotate90(trimmedTagImg, tagBuffer.tagImg, tagBuffer.tagImgCCRotDeg/90);
   }
-
-  // Store properly-rotated image of tag
-  BaseCV::rotate90(trimmedTagImg, tagBuffer.img, tagBuffer.imgRotDir/90);
 
   // Compute pose of tag
-  tagBuffer.corners.clear();
-  switch ((tagBuffer.imgRotDir/90) % 4) {
+  //tagBuffer.tagCorners.clear(); // redundant
+  switch ((tagBuffer.tagImgCCRotDeg/90) % 4) {
   case 1:
-    tagBuffer.corners.push_back(quad.corners[1]);
-    tagBuffer.corners.push_back(quad.corners[2]);
-    tagBuffer.corners.push_back(quad.corners[3]);
-    tagBuffer.corners.push_back(quad.corners[0]);
+    tagBuffer.tagCorners.push_back(quad.corners[1]);
+    tagBuffer.tagCorners.push_back(quad.corners[2]);
+    tagBuffer.tagCorners.push_back(quad.corners[3]);
+    tagBuffer.tagCorners.push_back(quad.corners[0]);
     break;
   case 2:
-    tagBuffer.corners.push_back(quad.corners[2]);
-    tagBuffer.corners.push_back(quad.corners[3]);
-    tagBuffer.corners.push_back(quad.corners[0]);
-    tagBuffer.corners.push_back(quad.corners[1]);
+    tagBuffer.tagCorners.push_back(quad.corners[2]);
+    tagBuffer.tagCorners.push_back(quad.corners[3]);
+    tagBuffer.tagCorners.push_back(quad.corners[0]);
+    tagBuffer.tagCorners.push_back(quad.corners[1]);
     break;
   case 3:
-    tagBuffer.corners.push_back(quad.corners[3]);
-    tagBuffer.corners.push_back(quad.corners[0]);
-    tagBuffer.corners.push_back(quad.corners[1]);
-    tagBuffer.corners.push_back(quad.corners[2]);
+    tagBuffer.tagCorners.push_back(quad.corners[3]);
+    tagBuffer.tagCorners.push_back(quad.corners[0]);
+    tagBuffer.tagCorners.push_back(quad.corners[1]);
+    tagBuffer.tagCorners.push_back(quad.corners[2]);
     break;
   default:
-    tagBuffer.corners = quad.corners;
+    tagBuffer.tagCorners = quad.corners;
     break;
   }
-  solvePose(tagBuffer.corners, markerWidthM,
+  solvePose(tagBuffer.tagCorners, markerWidthM,
       cameraIntrinsic, cameraDistortion,
       tagBuffer.pose.position_x, tagBuffer.pose.position_y, tagBuffer.pose.position_z,
       tagBuffer.pose.orientation_w, tagBuffer.pose.orientation_x, tagBuffer.pose.orientation_y,
@@ -73,173 +231,6 @@ FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
   phaseVariancePredictor.predict(&tagBuffer);
 
   return tagBuffer;
-};
-
-
-void FTag2Decoder::analyzeRays(const cv::Mat& img, FTag2Marker* tag, unsigned int num_samples_per_row) {
-  assert(img.channels() == 1);
-
-  img.copyTo(tag->img);
-
-  // Extract rays
-  tag->payload.horzRays = extractHorzRays(tag->img, num_samples_per_row);
-  tag->payload.vertRays = extractVertRays(tag->img, num_samples_per_row);
-
-  // Compute magnitude and phase spectra for both horizontal and vertical rays
-  cv::Mat flippedRays;
-  cv::Mat fft;
-  cv::vector<cv::Mat> fftChannels(2);
-
-  cv::dft(tag->payload.horzRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, tag->payload.horzRays.rows);
-  cv::split(fft, fftChannels);
-  cv::magnitude(fftChannels[0], fftChannels[1], tag->payload.horzMagSpec);
-  cv::phase(fftChannels[0], fftChannels[1], tag->payload.horzPhaseSpec, true);
-
-  cv::flip(tag->payload.vertRays, flippedRays, 1);
-  cv::dft(flippedRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, flippedRays.rows);
-  cv::split(fft, fftChannels);
-  cv::magnitude(fftChannels[0], fftChannels[1], tag->payload.vertMagSpec);
-  cv::phase(fftChannels[0], fftChannels[1], tag->payload.vertPhaseSpec, true);
-
-  // Extract spectra responses at relevant frequencies
-  int colMax = std::min(int(1+FTag2Payload::MAX_NUM_FREQS), tag->payload.horzMagSpec.cols/2);
-  tag->payload.horzMags = tag->payload.horzMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-  tag->payload.vertMags = tag->payload.vertMagSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-  tag->payload.horzPhases = tag->payload.horzPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-  tag->payload.vertPhases = tag->payload.vertPhaseSpec(cv::Range::all(), cv::Range(1, colMax)).clone();
-};
-
-
-bool FTag2Decoder::checkSignature(FTag2Marker* tag) {
-  tag->payload.hasSignature = false;
-
-  // Extract and validate phase signature, and determine orientation
-  if (tag->payload.horzMags.cols < 5 || tag->payload.vertMags.cols < 5) {
-    throw std::string("Insufficient number of frequencies in tag spectra");
-    return false;
-  }
-  const int colMax = 5;
-
-  unsigned long long sigKey = tag->payload.SIG_KEY;
-
-  if ((tag->payload.signature = FTag2Decoder::_extractSigBits(tag->payload.horzPhases, false, 3)) == sigKey) {
-    tag->imgRotDir = 0;
-    tag->payload.mags = tag->payload.horzMags(cv::Range::all(), cv::Range(0, colMax)).clone();
-    tag->payload.phases = tag->payload.horzPhases(cv::Range::all(), cv::Range(0, colMax)).clone();
-  } else if ((tag->payload.signature = FTag2Decoder::_extractSigBits(tag->payload.vertPhases, false, 3)) == sigKey) {
-    tag->imgRotDir = 270;
-    tag->payload.mags = tag->payload.vertMags(cv::Range::all(), cv::Range(0, colMax)).clone();
-    tag->payload.phases = tag->payload.vertPhases(cv::Range::all(), cv::Range(0, colMax)).clone();
-  } else if ((tag->payload.signature = FTag2Decoder::_extractSigBits(tag->payload.horzPhases, true, 3)) == sigKey) {
-    tag->imgRotDir = 180;
-    cv::flip(tag->payload.horzMags(cv::Range::all(), cv::Range(0, colMax)), tag->payload.mags, 0);
-    FTag2Decoder::flipPhases(tag->payload.horzPhases(cv::Range::all(), cv::Range(0, colMax)), tag->payload.phases);
-  } else if ((tag->payload.signature = FTag2Decoder::_extractSigBits(tag->payload.vertPhases, true, 3)) == sigKey) {
-    tag->imgRotDir = 90;
-    cv::flip(tag->payload.vertMags(cv::Range::all(), cv::Range(0, colMax)), tag->payload.mags, 0);
-    FTag2Decoder::flipPhases(tag->payload.vertPhases(cv::Range::all(), cv::Range(0, colMax)), tag->payload.phases);
-  } else { // No signatures matched
-    return false;
-  }
-
-  tag->payload.hasSignature = true;
-  return true;
-};
-
-
-unsigned char bin2grayLUT[8] = {0, 1, 3, 2, 6, 7, 5, 4};
-unsigned char gray2binLUT[8] = {0, 1, 3, 2, 7, 6, 4, 5};
-
-
-unsigned char FTag2Decoder::bin2gray(unsigned char num) {
-  if (num < 8) {
-    return bin2grayLUT[num];
-  } else {
-    return (num >> 1) ^ num;
-  }
-};
-
-
-unsigned char FTag2Decoder::gray2bin(unsigned char num) {
-  if (num < 8) {
-    return gray2binLUT[num];
-  } else {
-    unsigned char mask;
-    for (mask = num >> 1; mask != 0; mask = mask >> 1) {
-      num = num ^ mask;
-    }
-    return num;
-  }
-};
-
-
-char FTag2Decoder::computeXORChecksum(long long bitChunk, unsigned int numBits) {
-  char checksum = 0;
-  unsigned int i;
-  for (i = 0; i < numBits; i++) {
-    checksum = checksum ^ (bitChunk & 0b01);
-    bitChunk >>= 1;
-  }
-  return checksum;
-};
-
-
-long long FTag2Decoder::_extractSigBits(const cv::Mat& phases, bool flipped, unsigned int pskSize) {
-  long long signature = 0;
-  int i;
-  double currPhase;
-  long long currBitChunk;
-
-  const int pskMaxCount = pow(2, pskSize);
-  const double PSKRange = (360.0/pskMaxCount);
-  const double PSKHalfRange = PSKRange/2;
-  const long long sigBitMask = (0b01 << (pskSize - 1));
-
-  if (flipped) {
-    for (i = 0; i < phases.rows; i++) {
-      signature <<= 1;
-
-      currPhase = std::floor(vc_math::wrapAngle(
-          phases.at<double>(phases.rows - 1 - i, 0) + PSKHalfRange, 360.0)/PSKRange);
-      currBitChunk = (pskMaxCount - int(currPhase)) % pskMaxCount;
-
-      if ((currBitChunk & sigBitMask) == sigBitMask) {
-        signature += 1;
-      }
-    }
-  } else {
-    for (i = 0; i < phases.rows; i++) {
-      signature <<= 1;
-
-      currPhase = std::floor(vc_math::wrapAngle(
-          phases.at<double>(i, 0) + PSKHalfRange, 360.0)/PSKRange);
-      currBitChunk = currPhase;
-
-      if ((currBitChunk & sigBitMask) == sigBitMask) {
-        signature += 1;
-      }
-    }
-  }
-
-  return signature;
-};
-
-
-void FTag2Decoder::flipPhases(const cv::Mat& phasesSrc, cv::Mat& phasesFlipped) {
-  cv::flip(phasesSrc, phasesFlipped, 0);
-  double* phasesFlippedPtr = (double*) phasesFlipped.data;
-  for (int i = 0; i < phasesFlipped.rows * phasesFlipped.cols; i++, phasesFlippedPtr++) {
-    *phasesFlippedPtr = vc_math::wrapAngle(360.0 - *phasesFlippedPtr, 360.0);
-  }
-};
-
-
-void FTag2Decoder::flipPSK(const cv::Mat& pskSrc, cv::Mat& pskFlipped, unsigned int pskSize) {
-  cv::flip(pskSrc, pskFlipped, 0);
-  double* pskFlippedPtr = (double*) pskFlipped.data;
-  for (int i = 0; i < pskFlipped.rows * pskFlipped.cols; i++, pskFlippedPtr++) {
-    *pskFlippedPtr = (pskSize - (unsigned int) *pskFlippedPtr) % pskSize;
-  }
 };
 
 
@@ -257,7 +248,6 @@ void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
   tag.numDecodedPhases = 0;
   tag.hasValidXORs = false;
   tag.numDecodedSections = 0;
-  tag.bitChunks = cv::Mat();
 
   // 1. Convert phases to bit chunks
   cv::Mat bitChunks = cv::Mat::ones(NUM_RAYS, NUM_FREQS, CV_8SC1) * -1;
@@ -304,7 +294,6 @@ std::cout << "(ray, freq)" << "(" << ray << ", " << freq << ") = " << temp << "(
   tag.bitChunksStr = bitChunksStr.str();
   std::cout << bitChunksStr.str() << std::endl;
   tag.numDecodedPhases = numDecodedPhases;
-  tag.bitChunks = bitChunks;
 
   // 3. Validate XORs in FTag2MarkerV2 payload structure
   cv::Mat decodedSections = cv::Mat::ones(NUM_RAYS, 2, CV_8SC1) * -1; // -1: missing; -2: xor failed

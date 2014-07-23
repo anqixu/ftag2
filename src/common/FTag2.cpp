@@ -2,10 +2,6 @@
 #include "common/BaseCV.hpp"
 
 
-//#define WITHIN_PHASE_RANGE_N_SIGMA 10
-//#define WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES 10
-//#define WITHIN_PASHE_RANGE_THRESHOLD 170.0
-
 using namespace std;
 
 double FTag2Pose::getAngleFromCamera() {
@@ -16,19 +12,40 @@ double FTag2Pose::getAngleFromCamera() {
 
 double FTag2Payload::WITHIN_PHASE_RANGE_N_SIGMA = 10.0;
 int FTag2Payload::WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES = 10;
-double FTag2Payload::WITHIN_PHASE_RANGE_THRESHOLD = 50;
+double FTag2Payload::WITHIN_PHASE_RANGE_THRESHOLD = 50.0;
 
 
+// streamlined implementation using WITHIN_PHASE_RANGE_THRESHOLD
+bool FTag2Payload::withinPhaseRange(const FTag2Payload& other) {
+  if (type != other.type ||
+      phases.rows != other.phases.rows ||
+      phases.cols != other.phases.cols) {
+    throw std::string("tag type mismatch (from withinPhaseRange)");
+    return false;
+  }
+
+  double* thisPhases = (double*) phases.data;
+  double* otherPhases = (double*) other.phases.data;
+  const unsigned int numPhases = phases.rows * phases.cols;
+
+  double avgPhaseDiff = 0.0;
+  for (unsigned int i = 0; i < numPhases; i++, thisPhases++, otherPhases++) {
+    avgPhaseDiff += vc_math::angularDist(*thisPhases, *otherPhases, 360.0);
+  }
+  avgPhaseDiff /= numPhases;
+  return (avgPhaseDiff < WITHIN_PHASE_RANGE_THRESHOLD);
+};
+
+
+/*
+// original implementation using WITHIN_PHASE_RANGE_THRESHOLD
 bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
   cout << "WPRT: " << WITHIN_PHASE_RANGE_THRESHOLD << endl;
   double avg_abs_diff = 0.0;
   int k = 0;
   for ( int ray=0 ; ray<phases.rows; ray++ )
   {
-	/* TODO: RETURN TO:
-	 * for ( int freq=0 ; freq<phases.cols; freq++ )
-	 */
-    for ( int freq=0 ; freq<1; freq++ )
+    for ( int freq=0 ; freq<phases.cols; freq++ )
     {
 //      cout << "Phase variance (" << ray << ", " << freq << ") = " << phaseVariances[freq] << endl;
       double phObs = phases.at<double>(ray,freq);
@@ -51,7 +68,7 @@ bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
     }
   }
   avg_abs_diff /= k;
-  cout << "k = " << k << "\tAvg. phase diff = " << avg_abs_diff << endl;
+  //cout << "k = " << k << "\tAvg. phase diff = " << avg_abs_diff << endl;
   if ( avg_abs_diff > WITHIN_PHASE_RANGE_THRESHOLD )
   {
 //    cout << "Did not match!" << endl;
@@ -61,9 +78,10 @@ bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
   return true;
 //  return is_within;
 };
-
+*/
 
 /*
+// Old version, using WITHIN_PHASE_RANGE_N_SIGMA and WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES
 bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
   bool is_within = true;
    int count_missmatches = 0;

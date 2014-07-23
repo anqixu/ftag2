@@ -26,7 +26,7 @@ MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 void MarkerFilter::step( FTag2Marker detection, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion ) {
 	got_detection_in_current_frame = true;
 //	PF.step(detection.pose);
-	hypothesis.corners = detection.corners;
+	hypothesis.tagCorners = detection.tagCorners;
 	hypothesis.pose = detection.pose;
 //	hypothesis.pose = PF.getEstimatedPose();
 

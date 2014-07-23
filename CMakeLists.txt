@@ -1,4 +1,5 @@
 set(FTAG2_LIB_NAME "ftag2" CACHE STRING "FTag v2 API library name")
+option(USE_OPENMP "Enable parallelism with OpenMP" ON) 
 set(FTAG2_READER_NODELET_NAME "ftag2_reader_nodelet")
 set(FTAG2_TRACKER_NODELET_NAME "ftag2_tracker_nodelet")
 
@@ -23,10 +24,19 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
 )
 
-#find_package(OMPL REQUIRED)
-
 find_package(Boost REQUIRED COMPONENTS date_time system thread serialization program_options)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
+
+if(USE_OPENMP)
+  FIND_PACKAGE(OpenMP REQUIRED)
+  if(OPENMP_FOUND)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+  else()
+    message("Could not find OpenMP libraries")
+  endif()
+endif()
 
 #######################################
 ## Declare ROS messages and services ##
@@ -108,8 +118,7 @@ add_library(${FTAG2_LIB_NAME}
   ${KALMAN_SOURCES}
 )
 target_link_libraries( ${FTAG2_LIB_NAME}
-#  ${OMPL_LIBRARIES}
-#  ${OpenCV_LIBRARIES}
+  ${OpenCV_LIBRARIES}
 )
 
 add_library(${FTAG2_READER_NODELET_NAME} src/ftag2_reader_nodelet.cpp)
@@ -120,13 +129,13 @@ target_link_libraries(${FTAG2_READER_NODELET_NAME}
 )
 add_dependencies(${FTAG2_READER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 
-#add_library(${FTAG2_TRACKER_NODELET_NAME} src/ftag2_tracker_nodelet.cpp)
-#target_link_libraries(${FTAG2_TRACKER_NODELET_NAME}
-#  ${FTAG2_LIB_NAME}
-#  ${OpenCV_LIBRARIES}
-#  ${catkin_LIBRARIES}
-#)
-#add_dependencies(${FTAG2_TRACKER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
+add_library(${FTAG2_TRACKER_NODELET_NAME} src/ftag2_tracker_nodelet.cpp)
+target_link_libraries(${FTAG2_TRACKER_NODELET_NAME}
+  ${FTAG2_LIB_NAME}
+  ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(${FTAG2_TRACKER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 
 #add_executable(ros_cam_testbench src/ros_cam_testbench.cpp)
 #target_link_libraries(ros_cam_testbench

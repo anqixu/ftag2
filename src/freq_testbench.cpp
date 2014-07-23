@@ -318,7 +318,8 @@ public:
             params.quadMaxEdgeGapDistRatio,
             params.quadMaxEdgeGapAlignAngle*degree,
             params.quadMinWidth);
-        quads.sort(Quad::compareArea);
+        quads.sort(Quad::greaterArea);
+        quads.erase(std::unique(quads.begin(), quads.end()), quads.end()); // Remove duplicates
         quadP.toc();
 
         // 3. Decode tags from quads
@@ -352,7 +353,7 @@ public:
           try {
             currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
                 params.markerWidthM,
-                1, /* TODO change for params.num_samples_per_row */
+                1,
                 cameraIntrinsic, cameraDistortion,
                 params.tagMaxStripAvgDiff,
                 params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
