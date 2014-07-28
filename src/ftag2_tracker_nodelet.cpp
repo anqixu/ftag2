@@ -17,13 +17,14 @@
 #include <ftag2/CamTestbenchConfig.h>
 #include "ftag2/TagDetections.h"
 
-#include "tracker/ParticleFilter.hpp"
 #include "std_msgs/Float64MultiArray.h"
 
 #include <ftag2/FreqTBMarkerInfo.h>
 
 #include "ftag2/ARMarkerFT.h"
 #include "ftag2/ARMarkersFT.h"
+
+#include <tf/transform_broadcaster.h>
 
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -39,7 +40,6 @@ typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer
 #undef DISPLAY_DECODED_TAG_PAYLOADS
 #define PROFILER
 
-#undef PARTICLE_FILTER
 
 /* TODO: I changed DECODE_PAYLOAD_N_STD_THRESH from 3 to 1. Check! */
 #define DECODE_PAYLOAD_N_STD_THRESH (0.01)
@@ -83,16 +83,6 @@ protected:
 
   PhaseVariancePredictor phaseVariancePredictor;
 
-#ifdef PARTICLE_FILTER
-  std::vector<FTag2Pose> tag_observations;
-  bool tracking;
-  ParticleFilter PF;
-  ParticleFilter::time_point last_frame_time;
-  ParticleFilter::time_point starting_time;
-  ros::Publisher pubTrack;
-#endif
-
-
   // DEBUG VARIABLES
   Profiler lineSegP, quadP, quadExtractorP, decodeQuadP, trackerP, decodePayloadP, durationP, rateP;
   ros::Time latestProfTime;
@@ -131,14 +121,6 @@ public:
     params.phaseVarWeightAngle = 0;
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
-    params.numberOfParticles = 1000;
-    params.position_std = 0.1;
-    params.orientation_std = 0.1;
-    params.position_noise_std = 0.2;
-    params.orientation_noise_std = 0.2;
-    params.velocity_noise_std = 0.05;
-    params.acceleration_noise_std = 0.01;
-    params.run_id = 1;
     params.within_phase_range_n_sigma = 10.0;
     params.within_phase_range_allowed_missmatches = 10;
     params.within_phase_range_threshold = 70.0;
@@ -214,12 +196,6 @@ public:
     GET_PARAM(phaseVarWeightAngle);
     GET_PARAM(phaseVarWeightFreq);
     GET_PARAM(phaseVarWeightBias);
-    GET_PARAM(numberOfParticles);
-    GET_PARAM(position_std);
-    GET_PARAM(orientation_std);
-    GET_PARAM(position_noise_std);
-    GET_PARAM(orientation_noise_std);
-    GET_PARAM(run_id);
     GET_PARAM(within_phase_range_n_sigma);
     GET_PARAM(within_phase_range_allowed_missmatches);
     GET_PARAM(within_phase_range_threshold);
@@ -228,10 +204,7 @@ public:
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
-#ifdef PARTICLE_FILTER
-    PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
-#endif
-    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
+//    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
     FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
 #ifdef CV_SHOW_IMAGES
     // Configure windows
@@ -257,14 +230,6 @@ public:
     imageSub = it.subscribe(imageTopic, 1, &FTag2TrackerNodelet::imageCallback, this, transportType);
     cameraSub = it.subscribeCamera(cameraTopic, 1, &FTag2TrackerNodelet::cameraCallback, this, transportType);
 
-#ifdef PARTICLE_FILTER
-    tag_observations = std::vector<FTag2Pose>();
-    tracking = false;
-    starting_time = ParticleFilter::clock::now();
-    last_frame_time = ParticleFilter::clock::now();
-    pubTrack = local_nh.advertise<std_msgs::Float64MultiArray>("detected_and_tracked_pose", 1);
-#endif
-
     markerInfoPub = local_nh.advertise<ftag2::FreqTBMarkerInfo>("marker_info", 1);
 //    vis_pub = local_nh.advertise<visualization_msgs::MarkerArray>( "ftag2_array", 1);
 
@@ -280,10 +245,7 @@ public:
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
-#ifdef PARTICLE_FILTER
-    PF.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
-#endif
-    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
+    //FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
     FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
   };
 
@@ -516,21 +478,11 @@ public:
 //      transform.setRotation( rMat );
 //      br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "last_obs" ) );
 //      }
-#ifdef PARTICLE_FILTER
-      for ( FTag2Marker tag: tags )
-        tag_observations.push_back(tag.pose);
-      if ( tracking == false )
-      {
-        tracking = true;
-        PF = ParticleFilter(params.numberOfParticles, tag_observations );
-        //        cv::waitKey();
-      }
-#endif
     }
 
     // Udpate marker filter (with or without new tags)
     trackerP.tic();
-    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
+//    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
     FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
     FT.step( tags, params.markerWidthM, cameraIntrinsic, cameraDistortion );
     trackerP.toc();
@@ -670,52 +622,6 @@ public:
     }
     decodedTagDetectionsPub.publish(tagsMsg);
 
-#ifdef PARTICLE_FILTER
-    if (tracking == true)
-    {
-      PF.motionUpdate();
-      //cv::waitKey();
-      PF.measurementUpdate(tag_observations);
-      PF.normalizeWeights();
-      //PF.computeMeanPose();
-      FTag2Pose track = PF.computeModePose();
-      //PF.displayParticles();
-      PF.resample();
-
-      tag_observations.clear();
-
-      std_msgs::Float64MultiArray array;
-      array.data.clear();
-
-      array.data.push_back(params.run_id);
-      array.data.push_back(params.position_noise_std);
-      array.data.push_back(params.velocity_noise_std);
-      array.data.push_back(params.acceleration_noise_std);
-      array.data.push_back(params.orientation_noise_std);
-      array.data.push_back(params.position_std);
-      array.data.push_back(params.orientation_noise_std);
-      array.data.push_back(track.position_x);
-      array.data.push_back(track.position_y);
-      array.data.push_back(track.position_z);
-      array.data.push_back(track.orientation_x);
-      array.data.push_back(track.orientation_y);
-      array.data.push_back(track.orientation_z);
-      array.data.push_back(track.orientation_w);
-
-      if (tag_observations.size()>0)
-      {
-        array.data.push_back(tag_observations[0].position_x);
-        array.data.push_back(tag_observations[0].position_y);
-        array.data.push_back(tag_observations[0].position_z);
-        array.data.push_back(tag_observations[0].orientation_x);
-        array.data.push_back(tag_observations[0].orientation_y);
-        array.data.push_back(tag_observations[0].orientation_z);
-        array.data.push_back(tag_observations[0].orientation_w);
-      }
-      pubTrack.publish(array);
-
-    }
-#endif
 
     // Visualize tag hypotheses
 #ifdef CV_SHOW_IMAGES

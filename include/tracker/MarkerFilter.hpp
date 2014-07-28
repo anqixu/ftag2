@@ -9,7 +9,6 @@
 #define MARKERFILTER_HPP_
 
 #include "common/FTag2.hpp"
-#include "tracker/ParticleFilter.hpp"
 #include "tracker/PayloadFilter.hpp"
 #include "detector/FTag2Detector.hpp"
 #include "tracker/KalmanTrack.hpp"
@@ -21,7 +20,6 @@ class MarkerFilter {
 private:
 	FTag2Marker detectedTag;
 	int frames_without_detection;
-	ParticleFilter PF;
 	PayloadFilter IF;
 	KalmanTrack KF;
 	static int num_Markers;
@@ -37,7 +35,7 @@ public:
 	int get_frames_without_detection() { return frames_without_detection; }
 	void step( FTag2Marker detection, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion );
 	void step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion );
-	void updateParameters(int numberOfParticles_, double position_std_, double orientation_std_, double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_);
+	void updateParameters();
 };
 
 #endif /* MARKERFILTER_HPP_ */

@@ -18,7 +18,6 @@ MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 //	observations.push_back(detection.pose);
 	KF = KalmanTrack(detection.pose);
 
-//	PF = ParticleFilter(detection.pose);
 	IF = PayloadFilter();
 	frames_without_detection = 0;
 };
@@ -48,7 +47,6 @@ void MarkerFilter::step( FTag2Marker detection, double quadSizeM, cv::Mat camera
 //			quadSizeM, cameraIntrinsic, cameraDistortion );
 
 //	PF.publishTrackedPose(marker_id);
-//	PF.displayParticles(marker_id);
 
 	IF.step(detection.payload);
 	IF.getFilteredPayload();
@@ -68,8 +66,6 @@ void MarkerFilter::step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat came
 //				hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,
 //				hypothesis.pose.orientation_y, hypothesis.pose.orientation_z,
 //				quadSizeM, cameraIntrinsic, cameraDistortion );
-//	PF.publishTrackedPose(marker_id);
-//	PF.displayParticles(marker_id);
 
 	IF.step();
 	hypothesis.payload = IF.getFilteredPayload();
@@ -77,6 +73,5 @@ void MarkerFilter::step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat came
 	frames_without_detection++;
 };
 
-void MarkerFilter::updateParameters(int numberOfParticles_, double position_std_, double orientation_std_, double position_noise_std_, double orientation_noise_std_, double velocity_noise_std_, double acceleration_noise_std_) {
-	PF.updateParameters(numberOfParticles_, position_std_, orientation_std_, position_noise_std_, orientation_noise_std_, velocity_noise_std_, acceleration_noise_std_);
+void MarkerFilter::updateParameters() {
 }
