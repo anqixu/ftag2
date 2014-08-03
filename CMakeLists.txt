@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   geometry_msgs
   sensor_msgs
+  visualization_msgs
   tf
   image_geometry
   image_transport
@@ -78,7 +79,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME} ${FTAG2_TRACKER_NODELET_NAME}
-  CATKIN_DEPENDS roscpp rospy message_runtime nodelet dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs tf
+  CATKIN_DEPENDS roscpp rospy message_runtime nodelet dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs visualization_msgs tf
 #  DEPENDS system_lib
 )
 
