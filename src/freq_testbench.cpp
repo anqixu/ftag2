@@ -351,7 +351,7 @@ public:
           // Decode tag
           decoderP.tic();
           try {
-            currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
+            currTag = decodeQuad(quadImg, currQuad,
                 params.markerWidthM,
                 1,
                 cameraIntrinsic, cameraDistortion,

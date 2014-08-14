@@ -40,7 +40,7 @@ struct FTag2Payload {
   // - FTag2Payload::NUM_FREQS()
   // - FTag2Payload::NUM_SLICES()
   //
-  // - FTag2Decoder::decodePayload(...)
+  // - FTag2Decoder's decodePayload(...)
   enum {FTAG2_6S5F3B = 653, FTAG2_6S5F33322B = 6533322, FTAG2_6S2F21B = 6221, FTAG2_6S2F22B = 6222, FTAG2_6S3F211B = 63211};
   int type;
 
@@ -67,31 +67,19 @@ struct FTag2Payload {
     std::vector<unsigned int> result;
     switch (type) {
     case FTAG2_6S5F3B:
-      result = std::vector<unsigned int>({3, 3, 3, 3, 3}); // TODO: 0 if this compiles and works, conver the others
+      result = std::vector<unsigned int>({3, 3, 3, 3, 3});
       break;
     case FTAG2_6S5F33322B:
-    {
-      unsigned int bpf[] = {3, 3, 3, 2, 2};
-      result = std::vector<unsigned int>(std::begin(bpf), std::end(bpf));
-    }
+      result = std::vector<unsigned int>({3, 3, 3, 2, 2});
       break;
     case FTAG2_6S2F21B:
-    {
-      unsigned int bpf[] = {2, 1};
-      result = std::vector<unsigned int>(std::begin(bpf), std::end(bpf));
-    }
+      result = std::vector<unsigned int>({2, 1});
       break;
     case FTAG2_6S2F22B:
-    {
-      unsigned int bpf[] = {2, 2};
-      result = std::vector<unsigned int>(std::begin(bpf), std::end(bpf));
-    }
+      result = std::vector<unsigned int>({2, 2});
       break;
     case FTAG2_6S3F211B:
-    {
-      unsigned int bpf[] = {2, 1, 1};
-      result = std::vector<unsigned int>(std::begin(bpf), std::end(bpf));
-    }
+      result = std::vector<unsigned int>({2, 1, 1});
       break;
     default:
       break;

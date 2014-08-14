@@ -5,9 +5,6 @@
 #include <iomanip>
 
 
-#include <ros/ros.h> // TODO: 0 remove
-
-
 unsigned char bin2grayLUT[8] = {0, 1, 3, 2, 6, 7, 5, 4};
 unsigned char gray2binLUT[8] = {0, 1, 3, 2, 7, 6, 4, 5};
 
@@ -168,7 +165,7 @@ bool extractPhasesAndSig(const cv::Mat& img, FTag2Marker& tag, unsigned int numS
 };
 
 
-FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
+FTag2Marker decodeQuad(const cv::Mat quadImg,
     const Quad& quad,
     int tagType,
     double markerWidthM,
@@ -242,7 +239,7 @@ FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
 };
 
 
-void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
+void decodePayload(FTag2Payload& tag, double nStdThresh) {
   const cv::Mat& phases = tag.phases;
   const std::vector<double>& phaseVars = tag.phaseVariances;
   const int NUM_RAYS = phases.rows;
@@ -400,23 +397,3 @@ void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
     tag.numDecodedSections = 0;
   }
 };
-
-
-int FTag2Decoder::davinqiDist(const FTag2Payload& tag1, const FTag2Payload& tag2) {
-  // TODO: re-implement for different tag types
-	int davinqi_dist = 0;
-//	std::cout << tag1.bitChunksStr << std::endl;
-//	std::cout << tag2.bitChunksStr << std::endl;
-	std::string::const_iterator it1 = tag1.bitChunksStr.begin();
-	std::string::const_iterator it2 = tag2.bitChunksStr.begin();
-	while( it1 != tag1.bitChunksStr.end() && it2 != tag2.bitChunksStr.end() )
-	{
-		if ( *it1 >= '0' && *it1 < '8' && *it2 >= '0' && *it2 < '8' )
-		{
-			if ( *it1 != *it2 )
-				davinqi_dist++;
-		}
-		it1++; it2++;
-	}
-	return davinqi_dist;
-}

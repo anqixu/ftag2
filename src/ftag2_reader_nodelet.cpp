@@ -273,7 +273,7 @@ public:
       // Decode tag
       decoderP.tic();
       try {
-        currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
+        currTag = decodeQuad(quadImg, currQuad,
             tagType,
             params.markerWidthM,
             1,
@@ -281,7 +281,7 @@ public:
             params.tagMaxStripAvgDiff,
             params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
             phaseVariancePredictor);
-        FTag2Decoder::decodePayload(currTag.payload, params.tempTagDecodeStd);
+        decodePayload(currTag.payload, params.tempTagDecodeStd);
       } catch (const std::string& err) {
         continue;
       }

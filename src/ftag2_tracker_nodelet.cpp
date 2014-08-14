@@ -41,7 +41,6 @@ typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer
 #define PROFILER
 
 
-/* TODO: I changed DECODE_PAYLOAD_N_STD_THRESH from 3 to 1. Check! */
 #define DECODE_PAYLOAD_N_STD_THRESH (0.01)
 #define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES (8)
 #define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS (2)
@@ -367,8 +366,8 @@ public:
       // Decode tag
       decodeQuadP.tic();
       try {
-        currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
-            FTag2Payload::FTAG2_6S5F3B, // TODO: 0 switch to reader nodelet's version, where the type is passed as a roslaunch param
+        currTag = decodeQuad(quadImg, currQuad,
+            FTag2Payload::FTAG2_6S5F3B, // TODO: 1 switch to reader nodelet's version, where the type is passed as a roslaunch param
             params.markerWidthM,
             params.num_samples_per_row,
             cameraIntrinsic, cameraDistortion,
@@ -505,7 +504,7 @@ public:
     decodePayloadP.tic();
     bool first = true;
     for (MarkerFilter& tracked_tag: FT.filters) {
-      FTag2Decoder::decodePayload(tracked_tag.hypothesis.payload, DECODE_PAYLOAD_N_STD_THRESH);
+      decodePayload(tracked_tag.hypothesis.payload, DECODE_PAYLOAD_N_STD_THRESH);
       if (first) {
         first = false;
 //        NODELET_INFO_STREAM("bitChunks: " << cv::format(tracked_tag.hypothesis.payload.bitChunks, "matlab"));
@@ -638,7 +637,6 @@ public:
 
       // Draw matched tag hypotheses: blue border, cyan-on-blue text
 #ifdef DISPLAY_DECODED_TAG_PAYLOADS
-      // TODO: 1 passive tag hypotheses: grey border, grey-on-white text (and also for #else clause)
       for (const MarkerFilter& trackedTag: FT.filters) {
         const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
         if (trackedPayload.numDecodedSections >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS) {
