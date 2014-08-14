@@ -3,6 +3,8 @@
 
 
 #include <opencv2/core/core.hpp>
+#include <iterator>
+#include <vector>
 
 
 struct FTag2Pose{
@@ -32,7 +34,14 @@ struct FTag2Pose{
 
 
 struct FTag2Payload {
-  enum {FTAG2_2F6S = 26, FTAG2_5F6S = 56};
+  // NOTE: when adding a new tag type, make sure to update the following fns:
+  // - FTag2Payload::SIG_KEY()
+  // - FTag2Payload::BITS_PER_FREQ()
+  // - FTag2Payload::NUM_FREQS()
+  // - FTag2Payload::NUM_SLICES()
+  //
+  // - FTag2Decoder::decodePayload(...)
+  enum {FTAG2_6S5F3B = 653, FTAG2_6S5F33322B = 6533322, FTAG2_6S2F21B = 6221, FTAG2_6S2F22B = 6222, FTAG2_6S3F211B = 63211};
   int type;
 
   cv::Mat mags;
@@ -53,10 +62,76 @@ struct FTag2Payload {
   static int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES;
   static double WITHIN_PHASE_RANGE_THRESHOLD;
 
-  static constexpr unsigned int SIG_PSK_SIZE() { return 3; }; // NOTE: in future, need to remove 'static constexpr' qualifier if sig PSK differs from 3 bits
-  static constexpr unsigned long long SIG_KEY() { return 0b00100011; }; // NOTE: in future, need to remove 'static constexpr' qualifier if sig depends on num slices
-  unsigned int NUM_FREQS() { return type/10; };
-  unsigned int NUM_SLICES() { return type % 10; };
+  static constexpr unsigned long long SIG_KEY() { return 0b00100011; };
+  std::vector<unsigned int> BITS_PER_FREQ() {
+    std::vector<unsigned int> result;
+    switch (type) {
+    case FTAG2_6S5F3B:
+      result = std::vector<unsigned int>({3, 3, 3, 3, 3}); // TODO: 0 if this compiles and works, conver the others
+      break;
+    case FTAG2_6S5F33322B:
+    {
+      unsigned int bpf[] = {3, 3, 3, 2, 2};
+      result = std::vector<unsigned int>(std::begin(bpf), std::end(bpf));
+    }
+      break;
+    case FTAG2_6S2F21B:
+    {
+      unsigned int bpf[] = {2, 1};
+      result = std::vector<unsigned int>(std::begin(bpf), std::end(bpf));
+    }
+      break;
+    case FTAG2_6S2F22B:
+    {
+      unsigned int bpf[] = {2, 2};
+      result = std::vector<unsigned int>(std::begin(bpf), std::end(bpf));
+    }
+      break;
+    case FTAG2_6S3F211B:
+    {
+      unsigned int bpf[] = {2, 1, 1};
+      result = std::vector<unsigned int>(std::begin(bpf), std::end(bpf));
+    }
+      break;
+    default:
+      break;
+    }
+    return result;
+  };
+  unsigned int NUM_FREQS() {
+    unsigned int result = 0;
+    switch (type) {
+    case FTAG2_6S5F3B:
+    case FTAG2_6S5F33322B:
+      result = 5;
+      break;
+    case FTAG2_6S2F21B:
+    case FTAG2_6S2F22B:
+      result = 2;
+      break;
+    case FTAG2_6S3F211B:
+      result = 3;
+      break;
+    default:
+      break;
+    }
+    return result;
+  };
+  unsigned int NUM_SLICES() {
+    unsigned int result = 0;
+    switch (type) {
+    case FTAG2_6S5F3B:
+    case FTAG2_6S5F33322B:
+    case FTAG2_6S2F21B:
+    case FTAG2_6S2F22B:
+    case FTAG2_6S3F211B:
+      result = 6;
+      break;
+    default:
+      break;
+    }
+    return result;
+  };
 
   static void updateParameters(double WITHIN_PHASE_RANGE_N_SIGMA_, int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES_, double WITHIN_PHASE_RANGE_THRESHOLD_ ) {
     WITHIN_PHASE_RANGE_N_SIGMA = WITHIN_PHASE_RANGE_N_SIGMA_;
@@ -64,7 +139,7 @@ struct FTag2Payload {
     WITHIN_PHASE_RANGE_THRESHOLD = WITHIN_PHASE_RANGE_THRESHOLD_;
   };
 
-  FTag2Payload (int tagType = FTAG2_5F6S) :
+  FTag2Payload (int tagType = FTAG2_6S5F3B) :
       type(tagType),
       hasSignature(false), hasValidXORs(false),
       bitChunksStr(""), decodedPayloadStr(""),
@@ -125,7 +200,7 @@ struct FTag2Marker {
   std::vector<cv::Point2f> back_proj_corners; // TODO: 1 is this needed in final API?
   cv::Mat cornersInCamSpace; // TODO: 1 is this needed in final API?
 
-  FTag2Marker(double quadWidth = 0.0, int tagType = FTag2Payload::FTAG2_5F6S) :
+  FTag2Marker(double quadWidth = 0.0, int tagType = FTag2Payload::FTAG2_6S5F3B) :
     tagWidth(quadWidth),
     payload(tagType),
     tagImgCCRotDeg(0) { };

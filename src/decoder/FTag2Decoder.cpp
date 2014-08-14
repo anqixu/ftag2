@@ -5,6 +5,9 @@
 #include <iomanip>
 
 
+#include <ros/ros.h> // TODO: 0 remove
+
+
 unsigned char bin2grayLUT[8] = {0, 1, 3, 2, 6, 7, 5, 4};
 unsigned char gray2binLUT[8] = {0, 1, 3, 2, 7, 6, 4, 5};
 
@@ -189,7 +192,12 @@ FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
   FTag2Marker tagBuffer(trimmedTagImg.rows, tagType);
 
   // Extract rays, decode frequency and phase spectra, and validate signature
-  if (!extractPhasesAndSig(croppedTagImg, tagBuffer, numSamplesPerRow, tagBuffer.payload.SIG_PSK_SIZE())) { // NOTE: last argument (3) is the PSK size for the signature frequency
+  std::vector<unsigned int> bitsPerFreq = tagBuffer.payload.BITS_PER_FREQ();
+  if (bitsPerFreq.size() < 1) {
+    throw std::string("INTERNAL ERROR: could not identify tag's bits per freq due to unexpected type");
+  }
+  unsigned int sigPSKSize = bitsPerFreq[0];
+  if (!extractPhasesAndSig(croppedTagImg, tagBuffer, numSamplesPerRow, sigPSKSize)) { // NOTE: last argument (3) is the PSK size for the signature frequency
     throw std::string("failed to validate phase signature");
   } else {
     // Update image of tag based on detected orientation
@@ -235,13 +243,11 @@ FTag2Marker FTag2Decoder::decodeQuad(const cv::Mat quadImg,
 
 
 void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
-  // WARNING: this function only applies to FTag2MarkerV2
   const cv::Mat& phases = tag.phases;
   const std::vector<double>& phaseVars = tag.phaseVariances;
   const int NUM_RAYS = phases.rows;
   const int NUM_FREQS = phases.cols;
-  assert(NUM_FREQS == 5);
-  const std::vector<int> bitsPerFreq{3, 3, 3, 2, 2};
+  const std::vector<unsigned int> bitsPerFreq = tag.BITS_PER_FREQ();
 
   // 0. Reset decoded contents
   tag.bitChunksStr = "";
@@ -257,20 +263,9 @@ void FTag2Decoder::decodePayload(FTag2Payload& tag, double nStdThresh) {
     double phaseBinDeg = 360.0/maxBitValue;
     double phaseStdBinNormed = sqrt(phaseVars[freq]) / phaseBinDeg;
     for (int ray = 0; ray < NUM_RAYS; ray++) {
-        double phaseBinNormed = vc_math::wrapAngle(phases.at<double>(ray, freq), 360) / phaseBinDeg + 0.5;
-        if( freq == 0 ){
-            std::cout << "(freq , ray) = " << "( " << freq << ", " << ray << " )" << std::endl;
-            std::cout << "PhaseBinNormed = " << phaseBinNormed << std::endl;
-            std::cout << "stdThresh = " << nStdThresh << std::endl;
-            std::cout << "PhaseStdBinNormed = " << phaseStdBinNormed << std::endl;
-        }
+      double phaseBinNormed = vc_math::wrapAngle(phases.at<double>(ray, freq), 360) / phaseBinDeg + 0.5;
       if (floor(phaseBinNormed - nStdThresh*phaseStdBinNormed) == floor(phaseBinNormed + nStdThresh*phaseStdBinNormed)) {
         bitChunks.at<char>(ray, freq) = (unsigned char) phaseBinNormed % (unsigned char) maxBitValue;
-
-        if (freq == 0) {
-        int temp = (unsigned char) phaseBinNormed % (unsigned char) maxBitValue;
-std::cout << "(ray, freq)" << "(" << ray << ", " << freq << ") = " << temp << "(" << (int) bitChunks.at<char>(ray, freq) << "), phaseBinNormed: " << phaseBinNormed << ", maxBitValue: " << maxBitValue << std::endl;
-        }
       }
     }
   }
@@ -290,92 +285,125 @@ std::cout << "(ray, freq)" << "(" << ray << ", " << freq << ") = " << temp << "(
       numDecodedPhases += 1;
     }
   }
-  std::cout << cv::format(bitChunks,"matlab") << std::endl;
   tag.bitChunksStr = bitChunksStr.str();
-  std::cout << bitChunksStr.str() << std::endl;
   tag.numDecodedPhases = numDecodedPhases;
 
-  // 3. Validate XORs in FTag2MarkerV2 payload structure
-  cv::Mat decodedSections = cv::Mat::ones(NUM_RAYS, 2, CV_8SC1) * -1; // -1: missing; -2: xor failed
-  for (int ray = 0; ray < NUM_RAYS; ray++) {
-    char sigXORBits = bitChunks.at<char>(ray, 0);
+  // 3. Convert bit chunks to type-specific payload strings
+  if (tag.type == FTag2Payload::FTAG2_6S5F3B) {
+    tag.hasValidXORs = true;
+    tag.decodedPayloadStr = tag.bitChunksStr;
+    tag.numDecodedSections = tag.numDecodedPhases;
 
-    // If XOR chunk is not valid, then cannot validate XORs at all
-    if (sigXORBits < 0) {
-      return;
-    }
 
-    // Decode 2-3Hz payload
-    char bitChunk2Hz = bitChunks.at<char>(ray, 1);
-    char bitChunk3Hz = bitChunks.at<char>(ray, 2);
-    if (bitChunk2Hz >= 0 && bitChunk3Hz >= 0) {
-      unsigned char bitChunk23Hz = ((bitChunk2Hz << 3) | bitChunk3Hz) & 0x3F;
-      unsigned char greyChunk23Hz = bin2gray(bitChunk23Hz);
-      char decodedXOR23Hz = computeXORChecksum(greyChunk23Hz, 6);
-      char expectedXOR23Hz = ((sigXORBits & 0x02) == 0x02);
-      if (decodedXOR23Hz == expectedXOR23Hz) {
-        decodedSections.at<char>(ray, 0) = bitChunk23Hz;
-      } else {
-        decodedSections.at<char>(ray, 0) = -2;
+  } else if (tag.type == FTag2Payload::FTAG2_6S5F33322B) { // Special type: has defined XORs
+    // 3.1 Validate XORs in FTag2MarkerV2 payload structure
+    cv::Mat decodedSections = cv::Mat::ones(NUM_RAYS, 2, CV_8SC1) * -1; // -1: missing; -2: xor failed
+    for (int ray = 0; ray < NUM_RAYS; ray++) {
+      char sigXORBits = bitChunks.at<char>(ray, 0);
+
+      // If XOR chunk is not valid, then cannot validate XORs at all
+      if (sigXORBits < 0) {
+        return;
+      }
+
+      // Decode 2-3Hz payload
+      char bitChunk2Hz = bitChunks.at<char>(ray, 1);
+      char bitChunk3Hz = bitChunks.at<char>(ray, 2);
+      if (bitChunk2Hz >= 0 && bitChunk3Hz >= 0) {
+        unsigned char bitChunk23Hz = ((bitChunk2Hz << 3) | bitChunk3Hz) & 0x3F;
+        unsigned char greyChunk23Hz = bin2gray(bitChunk23Hz);
+        char decodedXOR23Hz = computeXORChecksum(greyChunk23Hz, 6);
+        char expectedXOR23Hz = ((sigXORBits & 0x02) == 0x02);
+        if (decodedXOR23Hz == expectedXOR23Hz) {
+          decodedSections.at<char>(ray, 0) = bitChunk23Hz;
+        } else {
+          decodedSections.at<char>(ray, 0) = -2;
+        }
+      }
+
+      // Decode 4-5Hz payload
+      char bitChunk4Hz = bitChunks.at<char>(ray, 3);
+      char bitChunk5Hz = bitChunks.at<char>(ray, 4);
+      if (bitChunk4Hz >= 0 && bitChunk5Hz >= 0) {
+        unsigned char bitChunk45Hz = ((bitChunk4Hz << 2) | bitChunk5Hz) & 0x0F;
+        unsigned char greyChunk45Hz = bin2gray(bitChunk45Hz);
+        char decodedXOR45Hz = computeXORChecksum(greyChunk45Hz, 4);
+        char expectedXOR45Hz = ((sigXORBits & 0x01) == 0x01);
+        if (decodedXOR45Hz == expectedXOR45Hz) {
+          decodedSections.at<char>(ray, 1) = bitChunk45Hz;
+        } else {
+          decodedSections.at<char>(ray, 1) = -2;
+        }
       }
     }
 
-    // Decode 4-5Hz payload
-    char bitChunk4Hz = bitChunks.at<char>(ray, 3);
-    char bitChunk5Hz = bitChunks.at<char>(ray, 4);
-    if (bitChunk4Hz >= 0 && bitChunk5Hz >= 0) {
-      unsigned char bitChunk45Hz = ((bitChunk4Hz << 2) | bitChunk5Hz) & 0x0F;
-      unsigned char greyChunk45Hz = bin2gray(bitChunk45Hz);
-      char decodedXOR45Hz = computeXORChecksum(greyChunk45Hz, 4);
-      char expectedXOR45Hz = ((sigXORBits & 0x01) == 0x01);
-      if (decodedXOR45Hz == expectedXOR45Hz) {
-        decodedSections.at<char>(ray, 1) = bitChunk45Hz;
+    // 3.2 String-ify payload sections
+    tag.hasValidXORs = true;
+    std::ostringstream decodedSectionsStr;
+    unsigned int numDecodedSections = 0;
+    char* decodedSectionsPtr = (char*) decodedSections.data;
+    for (int i = 0; i < NUM_RAYS; i++, decodedSectionsPtr++) {
+      if (i > 0) {
+        decodedSectionsStr << "_";
+      }
+
+      if (*decodedSectionsPtr == -2) {
+        decodedSectionsStr << "XX";
+      } else if (*decodedSectionsPtr < 0) {
+        decodedSectionsStr << "??";
       } else {
-        decodedSections.at<char>(ray, 1) = -2;
+        decodedSectionsStr << std::setfill('0') << std::hex << std::uppercase << \
+            std::setw(2) << (unsigned short) *decodedSectionsPtr;
+        numDecodedSections += 1;
+      }
+
+      decodedSectionsStr << ".";
+      decodedSectionsPtr++;
+
+      if (*decodedSectionsPtr == -2) {
+        decodedSectionsStr << "X";
+        tag.hasValidXORs = false;
+      } else if (*decodedSectionsPtr < 0) {
+        decodedSectionsStr << "?";
+      } else {
+        decodedSectionsStr << std::hex << std::uppercase << std::setw(1) << \
+            (unsigned short) *decodedSectionsPtr;
+        numDecodedSections += 1;
       }
     }
+    tag.decodedPayloadStr = decodedSectionsStr.str();
+    tag.numDecodedSections = numDecodedSections;
+
+
+  } else if (tag.type == FTag2Payload::FTAG2_6S2F21B) {
+    tag.hasValidXORs = true;
+    tag.decodedPayloadStr = tag.bitChunksStr;
+    tag.numDecodedSections = tag.numDecodedPhases;
+
+
+  } else if (tag.type == FTag2Payload::FTAG2_6S2F22B) {
+    tag.hasValidXORs = true;
+    tag.decodedPayloadStr = tag.bitChunksStr;
+    tag.numDecodedSections = tag.numDecodedPhases;
+
+
+  } else if (tag.type == FTag2Payload::FTAG2_6S3F211B) {
+    tag.hasValidXORs = true;
+    tag.decodedPayloadStr = tag.bitChunksStr;
+    tag.numDecodedSections = tag.numDecodedPhases;
+
+
+  } else { // Unexpected type
+    std::ostringstream oss;
+    oss << "Unknown tag type: " << tag.type;
+    tag.decodedPayloadStr = oss.str();
+    tag.numDecodedSections = 0;
   }
-
-  // 4. String-ify payload sections
-  tag.hasValidXORs = true;
-  std::ostringstream decodedSectionsStr;
-  unsigned int numDecodedSections = 0;
-  char* decodedSectionsPtr = (char*) decodedSections.data;
-  for (int i = 0; i < NUM_RAYS; i++, decodedSectionsPtr++) {
-    if (i > 0) {
-      decodedSectionsStr << "_";
-    }
-
-    if (*decodedSectionsPtr == -2) {
-      decodedSectionsStr << "XX";
-    } else if (*decodedSectionsPtr < 0) {
-      decodedSectionsStr << "??";
-    } else {
-      decodedSectionsStr << std::setfill('0') << std::hex << std::uppercase << \
-          std::setw(2) << (unsigned short) *decodedSectionsPtr;
-      numDecodedSections += 1;
-    }
-
-    decodedSectionsStr << ".";
-    decodedSectionsPtr++;
-
-    if (*decodedSectionsPtr == -2) {
-      decodedSectionsStr << "X";
-      tag.hasValidXORs = false;
-    } else if (*decodedSectionsPtr < 0) {
-      decodedSectionsStr << "?";
-    } else {
-      decodedSectionsStr << std::hex << std::uppercase << std::setw(1) << \
-          (unsigned short) *decodedSectionsPtr;
-      numDecodedSections += 1;
-    }
-  }
-  tag.decodedPayloadStr = decodedSectionsStr.str();
-  tag.numDecodedSections = numDecodedSections;
 };
 
 
 int FTag2Decoder::davinqiDist(const FTag2Payload& tag1, const FTag2Payload& tag2) {
+  // TODO: re-implement for different tag types
 	int davinqi_dist = 0;
 //	std::cout << tag1.bitChunksStr << std::endl;
 //	std::cout << tag2.bitChunksStr << std::endl;

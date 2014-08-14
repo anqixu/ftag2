@@ -368,7 +368,7 @@ public:
       decodeQuadP.tic();
       try {
         currTag = FTag2Decoder::decodeQuad(quadImg, currQuad,
-            FTag2Payload::FTAG2_5F6S,
+            FTag2Payload::FTAG2_6S5F3B, // TODO: 0 switch to reader nodelet's version, where the type is passed as a roslaunch param
             params.markerWidthM,
             params.num_samples_per_row,
             cameraIntrinsic, cameraDistortion,

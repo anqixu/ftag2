@@ -4,6 +4,8 @@
 
 using namespace std;
 
+
+// TODO: deprecate this fn (check with David first)
 double FTag2Pose::getAngleFromCamera() {
   cv::Mat rotMat = vc_math::quat2RotMat(orientation_w, orientation_x, orientation_y, orientation_z);
   return acos(rotMat.at<double>(2, 2));
