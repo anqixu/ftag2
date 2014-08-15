@@ -14,6 +14,8 @@ FTag2Marker decodeQuad(const cv::Mat quadImg, const Quad& quad,
     const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
     double quadMaxStripAvgDiff,
     double tagBorderMeanMaxThresh, double tagBorderStdMaxThresh,
+    double magFilGainNeg, double magFilGainPos,
+    double magFilPowNeg, double magFilPowPos,
     PhaseVariancePredictor& phaseVariancePredictor);
 
 

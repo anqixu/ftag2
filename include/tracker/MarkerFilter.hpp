@@ -28,7 +28,10 @@ private:
 public:
 	bool got_detection_in_current_frame;
 	FTag2Marker hypothesis;
-	MarkerFilter(){ frames_without_detection = 0; got_detection_in_current_frame = false; };
+	MarkerFilter(int tagType) :
+	    detectedTag(tagType),
+	    IF(tagType),
+	    hypothesis(tagType) { frames_without_detection = 0; got_detection_in_current_frame = false; };
 	MarkerFilter(FTag2Marker detection);
 	virtual ~MarkerFilter() {};
 	FTag2Marker getHypothesis() { return hypothesis; }

@@ -31,6 +31,9 @@ inline double markerDistance( FTag2Pose m1, FTag2Pose m2 ) {
 }
 
 void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
+  int tagType = -1;
+  if (detectedTags.size() > 0) tagType = detectedTags[0].payload.type;
+
 // bitChunksStr = 01234_01234_01234_01234_01234_01234 format
 	std::sort(filters.begin(), filters.end(), compareMarkerFilters);
 
@@ -40,7 +43,7 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 	while( it1 != filters.end() )
 	{
 		FTag2Marker hypothesis = it1->getHypothesis();
-		FTag2Marker found_match;
+		FTag2Marker found_match(tagType);
 		double min_dist = std::numeric_limits<double>::max();
 		bool found = false;
 		vector <FTag2Marker>::iterator it2 = detectedTags.begin();

@@ -22,6 +22,11 @@ bool FTag2Payload::withinPhaseRange(const FTag2Payload& other) {
   if (type != other.type ||
       phases.rows != other.phases.rows ||
       phases.cols != other.phases.cols) {
+    cout << "ERROR! withinPhaseRange tag type mismatch!" << endl <<
+        "- type: " << type << " | " << other.type << endl <<
+        "- phases.rows: " << phases.rows << " | " << other.phases.rows << endl <<
+        "- phases.cols: " << phases.cols << " | " << other.phases.cols << endl << endl;
+
     throw std::string("tag type mismatch (from withinPhaseRange)");
     return false;
   }

@@ -42,6 +42,34 @@ char computeXORChecksum(long long bitChunk, unsigned int numBits) {
 };
 
 
+bool filterMagnitudePoly(cv::Mat mags, double gainNeg, double gainPos, double powNeg, double powPos) {
+  double* currMagRow;
+  double mag1Hz;
+  double normMag;
+  std::vector<double> lowerThresh(5, 1.0);
+  std::vector<double> upperThresh(5, 1.0);
+
+  for (int f = 1; f < mags.cols; f++) { // f == 1 represents 2Hz
+    lowerThresh[f] = 1.0 - gainNeg*pow(f, powNeg);
+    upperThresh[f] = 1.0 + gainPos*pow(f, powPos);
+  }
+
+  for (int i = 0; i < mags.rows; i++) {
+    currMagRow = (double*) mags.ptr<double>(i);
+    mag1Hz = *currMagRow;
+    if (mag1Hz == 0) return false;
+    currMagRow++;
+
+    for (int j = 1; j < mags.cols; j++, currMagRow++) {
+      normMag = *currMagRow/mag1Hz;
+      if (normMag < lowerThresh[j] || normMag > upperThresh[j]) return false;
+    }
+  }
+
+  return true;
+};
+
+
 // DEPRECATED FUNCTION
 void flipPSK(const cv::Mat& pskSrc, cv::Mat& pskFlipped, unsigned int pskSize) {
   cv::flip(pskSrc, pskFlipped, 0);
@@ -106,6 +134,7 @@ unsigned long long extractSigBits(const cv::Mat& phases, bool flipped, unsigned 
 
 
 bool extractPhasesAndSig(const cv::Mat& img, FTag2Marker& tag, unsigned int numSamplesPerRow, unsigned int sigPskSize) {
+  assert(numSamplesPerRow > 0);
   assert(img.channels() == 1);
   const unsigned int MAX_NUM_FREQS = tag.payload.NUM_FREQS();
 
@@ -135,7 +164,6 @@ bool extractPhasesAndSig(const cv::Mat& img, FTag2Marker& tag, unsigned int numS
   cv::split(fft, fftChannels);
   cv::magnitude(fftChannels[0], fftChannels[1], vertMagSpec);
   cv::phase(fftChannels[0], fftChannels[1], vertPhaseSpec, true);
-
 
   // Extract and validate phase signature, and determine orientation
   const unsigned long long sigKey = tag.payload.SIG_KEY();
@@ -173,6 +201,8 @@ FTag2Marker decodeQuad(const cv::Mat quadImg,
     const cv::Mat cameraIntrinsic, const cv::Mat cameraDistortion,
     double quadMaxStripAvgDiff,
     double tagBorderMeanMaxThresh, double tagBorderStdMaxThresh,
+    double magFilGainNeg, double magFilGainPos,
+    double magFilPowNeg, double magFilPowPos,
     PhaseVariancePredictor& phaseVariancePredictor) {
   // Trim tag borders
   cv::Mat trimmedTagImg = trimFTag2Quad(quadImg, quadMaxStripAvgDiff);
@@ -186,7 +216,7 @@ FTag2Marker decodeQuad(const cv::Mat quadImg,
   cv::Mat croppedTagImg = cropFTag2Border(trimmedTagImg);
 
   // Initialize tag data structure
-  FTag2Marker tagBuffer(trimmedTagImg.rows, tagType);
+  FTag2Marker tagBuffer(tagType, trimmedTagImg.rows);
 
   // Extract rays, decode frequency and phase spectra, and validate signature
   std::vector<unsigned int> bitsPerFreq = tagBuffer.payload.BITS_PER_FREQ();
@@ -199,6 +229,11 @@ FTag2Marker decodeQuad(const cv::Mat quadImg,
   } else {
     // Update image of tag based on detected orientation
     BaseCV::rotate90(trimmedTagImg, tagBuffer.tagImg, tagBuffer.tagImgCCRotDeg/90);
+  }
+
+  // Run magnitude filter
+  if (!filterMagnitudePoly(tagBuffer.payload.mags, magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos)) {
+    throw std::string("failed to pass through polynomial magnitude filter");
   }
 
   // Compute pose of tag

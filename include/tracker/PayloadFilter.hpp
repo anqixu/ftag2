@@ -15,6 +15,8 @@ public:
   typedef std::chrono::time_point<std::chrono::system_clock> time_point;
 
 protected:
+  int tagType;
+
   double minTimeBetweenSteps;
   time_point lastStepTime;
 
@@ -27,10 +29,12 @@ protected:
 
 
 public:
-  PayloadFilter(double _minTimeBetweenSteps = 0.0) :
+  PayloadFilter(int tagType, double _minTimeBetweenSteps = 0.0) :
+      tagType(tagType),
       minTimeBetweenSteps(_minTimeBetweenSteps),
       lastStepTime(clock::now()),
-      numObservations(0) {
+      numObservations(0),
+      filteredPayload(tagType) {
   };
 
 

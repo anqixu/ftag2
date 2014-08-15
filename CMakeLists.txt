@@ -45,7 +45,7 @@ endif()
 
 add_message_files(
   DIRECTORY msg
-  FILES FreqTBMarkerInfo.msg FreqTBPhaseStats.msg TagDetection.msg TagDetections.msg ARMarkerFT.msg ARMarkersFT.msg
+  FILES TagDetection.msg TagDetections.msg ARMarkerFT.msg ARMarkersFT.msg
 )
 
 ## Generate services in the 'srv' folder
@@ -62,8 +62,7 @@ generate_messages(
 
 generate_dynamic_reconfigure_options(
   cfg/FTag2Reader.cfg
-  cfg/CamTestbench.cfg
-  cfg/FreqTestbench.cfg
+  cfg/FTag2Tracker.cfg
   )
 
 
@@ -137,23 +136,6 @@ target_link_libraries(${FTAG2_TRACKER_NODELET_NAME}
   ${catkin_LIBRARIES}
 )
 add_dependencies(${FTAG2_TRACKER_NODELET_NAME} ${PROJECT_NAME}_gencfg)
-
-#add_executable(ros_cam_testbench src/ros_cam_testbench.cpp)
-#target_link_libraries(ros_cam_testbench
-#  ${FTAG2_LIB_NAME}
-#  ${OpenCV_LIBRARIES}
-#  ${catkin_LIBRARIES}
-#  yaml-cpp
-# )
-#add_dependencies(ros_cam_testbench ${PROJECT_NAME}_gencfg)
-
-#add_executable(freq_testbench src/freq_testbench.cpp)
-#target_link_libraries(freq_testbench
-#  ${FTAG2_LIB_NAME}
-#  ${OpenCV_LIBRARIES}
-#  ${catkin_LIBRARIES}
-#)
-#add_dependencies(freq_testbench ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_generate_messages_cpp)
 
 
 #############

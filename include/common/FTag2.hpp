@@ -127,7 +127,7 @@ struct FTag2Payload {
     WITHIN_PHASE_RANGE_THRESHOLD = WITHIN_PHASE_RANGE_THRESHOLD_;
   };
 
-  FTag2Payload (int tagType = FTAG2_6S5F3B) :
+  FTag2Payload (int tagType) :
       type(tagType),
       hasSignature(false), hasValidXORs(false),
       bitChunksStr(""), decodedPayloadStr(""),
@@ -188,7 +188,7 @@ struct FTag2Marker {
   std::vector<cv::Point2f> back_proj_corners; // TODO: 1 is this needed in final API?
   cv::Mat cornersInCamSpace; // TODO: 1 is this needed in final API?
 
-  FTag2Marker(double quadWidth = 0.0, int tagType = FTag2Payload::FTAG2_6S5F3B) :
+  FTag2Marker(int tagType, double quadWidth = 0.0) :
     tagWidth(quadWidth),
     payload(tagType),
     tagImgCCRotDeg(0) { };

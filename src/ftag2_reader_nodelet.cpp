@@ -52,8 +52,6 @@ protected:
 
   PhaseVariancePredictor phaseVariancePredictor;
 
-  PayloadFilter filter;
-
   // DEBUG VARIABLES
   Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
   ros::Time latestProfTime;
@@ -74,6 +72,10 @@ public:
     params.tagMaxStripAvgDiff = 15.0;
     params.tagBorderMeanMaxThresh = 80.0;
     params.tagBorderStdMaxThresh = 30.0;
+    params.tagMagFilGainNeg = 0.6;
+    params.tagMagFilGainPos = 0.6;
+    params.tagMagFilPowNeg = 1.0;
+    params.tagMagFilPowPos = 1.0;
     params.phaseVarWeightR = 0;
     params.phaseVarWeightZ = 0;
     params.phaseVarWeightAngle = 0;
@@ -135,6 +137,10 @@ public:
     GET_PARAM(tagMaxStripAvgDiff);
     GET_PARAM(tagBorderMeanMaxThresh);
     GET_PARAM(tagBorderStdMaxThresh);
+    GET_PARAM(tagMagFilGainNeg);
+    GET_PARAM(tagMagFilGainPos);
+    GET_PARAM(tagMagFilPowNeg);
+    GET_PARAM(tagMagFilPowPos);
     GET_PARAM(phaseVarWeightR);
     GET_PARAM(phaseVarWeightZ);
     GET_PARAM(phaseVarWeightAngle);
@@ -248,7 +254,7 @@ public:
     int quadCount = 0;
     cv::Mat quadImg;
     std::vector<FTag2Marker> tags;
-    FTag2Marker currTag;
+    FTag2Marker currTag(tagType);
     for (const Quad& currQuad: quads) {
       // Reject quads that overlap with already-detected tags (which have larger area than current quad)
       bool overlap = false;
@@ -280,6 +286,10 @@ public:
             cameraIntrinsic, cameraDistortion,
             params.tagMaxStripAvgDiff,
             params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
+            params.tagMagFilGainNeg,
+            params.tagMagFilGainPos,
+            params.tagMagFilPowNeg,
+            params.tagMagFilPowPos,
             phaseVariancePredictor);
         decodePayload(currTag.payload, params.tempTagDecodeStd);
       } catch (const std::string& err) {
@@ -299,7 +309,7 @@ public:
       }
       for (const FTag2Marker& tag: tags) {
         drawQuadWithCorner(overlaidImg, tag.tagCorners);
-        drawMarkerLabel(overlaidImg, tag.tagCorners, tag.payload.decodedPayloadStr);
+        drawMarkerLabel(overlaidImg, tag.tagCorners, tag.payload.bitChunksStr);
       }
       cv::imshow("tags", overlaidImg);
     }

@@ -3,10 +3,8 @@
 
 #include "common/Profiler.hpp"
 #include "common/VectorAndCircularMath.hpp"
-#include "common/FTag2.hpp"
 
 #include "tracker/FTag2Tracker.hpp"
-#include "tracker/MarkerFilter.hpp"
 
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
@@ -14,12 +12,10 @@
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 #include <nodelet/nodelet.h>
-#include <ftag2/CamTestbenchConfig.h>
+#include "ftag2/FTag2TrackerConfig.h"
 #include "ftag2/TagDetections.h"
 
 #include "std_msgs/Float64MultiArray.h"
-
-#include <ftag2/FreqTBMarkerInfo.h>
 
 #include "ftag2/ARMarkerFT.h"
 #include "ftag2/ARMarkersFT.h"
@@ -32,13 +28,12 @@ using namespace std;
 using namespace cv;
 using namespace vc_math;
 
-typedef dynamic_reconfigure::Server<ftag2::CamTestbenchConfig> ReconfigureServer;
+typedef dynamic_reconfigure::Server<ftag2::FTag2TrackerConfig> ReconfigureServer;
 
 
-#undef CV_SHOW_IMAGES
-//#define CV_SHOW_IMAGES
+//#undef CV_SHOW_IMAGES
+#define CV_SHOW_IMAGES
 #undef DISPLAY_DECODED_TAG_PAYLOADS
-#define PROFILER
 
 
 #define DECODE_PAYLOAD_N_STD_THRESH (0.01)
@@ -52,10 +47,11 @@ namespace ftag2 {
 
 class FTag2TrackerNodelet : public nodelet::Nodelet {
 protected:
-
   FTag2Tracker FT;
 
   bool alive;
+
+  int tagType;
 
   ReconfigureServer* dynCfgServer;
   boost::recursive_mutex dynCfgMutex;
@@ -72,11 +68,10 @@ protected:
   image_transport::Publisher processedImagePub;
   image_transport::Publisher firstTagImagePub;
 
-  ros::Publisher markerInfoPub;
 //  ros::Publisher vis_pub;
   int frameID;
 
-  ftag2::CamTestbenchConfig params;
+  ftag2::FTag2TrackerConfig params;
 
   cv::Mat cameraIntrinsic, cameraDistortion;
 
@@ -89,37 +84,31 @@ protected:
 
 public:
   FTag2TrackerNodelet() : nodelet::Nodelet(),
-  alive(false),
-  dynCfgServer(NULL),
-  dynCfgSyncReq(false),
-  frameID(0),
-  latestProfTime(ros::Time::now()),
-  profilerDelaySec(0) {
+      alive(false),
+      tagType(FTag2Payload::FTAG2_6S5F3B),
+      dynCfgServer(NULL),
+      dynCfgSyncReq(false),
+      frameID(0),
+      latestProfTime(ros::Time::now()),
+      profilerDelaySec(0) {
     // Set default parameter values
-    params.sobelThreshHigh = 100;
-    params.sobelThreshLow = 30;
-    params.sobelBlurWidth = 3;
-    params.lineAngleMargin = 20.0; // *degree
-    params.lineMinEdgelsCC = 50;
-    params.lineMinEdgelsSeg = 10;
-    params.quadMinWidth = 15;
-    params.quadMinAngleIntercept = 30.0;
-    params.quadMaxEndptDistRatio = 0.1;
-    params.quadMaxTIntDistRatio = 0.05;
-    params.quadMaxCornerGapEndptDistRatio = 0.2;
-    params.quadMaxEdgeGapDistRatio = 0.5;
-    params.quadMaxEdgeGapAlignAngle = 10.0;
+    params.quadFastDetector = false;
+    params.quadRefineCorners = true;
     params.quadMaxScans = 10;
-    params.markerWidthM = 0.07;
-    params.num_samples_per_row = 3;
     params.tagMaxStripAvgDiff = 15.0;
-    params.tagBorderMeanMaxThresh = 150.0;
+    params.tagBorderMeanMaxThresh = 80.0;
     params.tagBorderStdMaxThresh = 30.0;
+    params.tagMagFilGainNeg = 0.6;
+    params.tagMagFilGainPos = 0.6;
+    params.tagMagFilPowNeg = 1.0;
+    params.tagMagFilPowPos = 1.0;
     params.phaseVarWeightR = 0;
     params.phaseVarWeightZ = 0;
     params.phaseVarWeightAngle = 0;
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
+    params.num_samples_per_row = 1;
+    params.markerWidthM = 0.055;
     params.within_phase_range_n_sigma = 10.0;
     params.within_phase_range_allowed_missmatches = 10;
     params.within_phase_range_threshold = 70.0;
@@ -164,37 +153,33 @@ public:
       cameraDistortion = cv::Mat::zeros(1, 5, CV_64FC1); // prepare buffer for camera_info
     }
 
+    // Obtain expected tag type to decode
+    local_nh.param("tag_type", tagType, tagType);
+
     // Setup and initialize dynamic reconfigure server
     dynCfgServer = new ReconfigureServer(dynCfgMutex, local_nh);
     dynCfgServer->setCallback(bind(&FTag2TrackerNodelet::configCallback, this, _1, _2));
 
     // Parse static parameters and update dynamic reconfigure values
-#define GET_PARAM(v) \
-    local_nh.param(std::string(#v), params.v, params.v)
-    GET_PARAM(sobelThreshHigh);
-    GET_PARAM(sobelThreshLow);
-    GET_PARAM(sobelBlurWidth);
-    GET_PARAM(lineAngleMargin);
-    GET_PARAM(lineMinEdgelsCC);
-    GET_PARAM(lineMinEdgelsSeg);
-    GET_PARAM(quadMinWidth);
-    GET_PARAM(quadMinAngleIntercept);
-    GET_PARAM(quadMaxEndptDistRatio);
-    GET_PARAM(quadMaxTIntDistRatio);
-    GET_PARAM(quadMaxCornerGapEndptDistRatio);
-    GET_PARAM(quadMaxEdgeGapDistRatio);
-    GET_PARAM(quadMaxEdgeGapAlignAngle);
+    #define GET_PARAM(v) \
+      local_nh.param(std::string(#v), params.v, params.v)
+    GET_PARAM(quadFastDetector);
+    GET_PARAM(quadRefineCorners);
     GET_PARAM(quadMaxScans);
-    GET_PARAM(markerWidthM);
-    GET_PARAM(num_samples_per_row);
     GET_PARAM(tagMaxStripAvgDiff);
     GET_PARAM(tagBorderMeanMaxThresh);
     GET_PARAM(tagBorderStdMaxThresh);
+    GET_PARAM(tagMagFilGainNeg);
+    GET_PARAM(tagMagFilGainPos);
+    GET_PARAM(tagMagFilPowNeg);
+    GET_PARAM(tagMagFilPowPos);
     GET_PARAM(phaseVarWeightR);
     GET_PARAM(phaseVarWeightZ);
     GET_PARAM(phaseVarWeightAngle);
     GET_PARAM(phaseVarWeightFreq);
     GET_PARAM(phaseVarWeightBias);
+    GET_PARAM(num_samples_per_row);
+    GET_PARAM(markerWidthM);
     GET_PARAM(within_phase_range_n_sigma);
     GET_PARAM(within_phase_range_allowed_missmatches);
     GET_PARAM(within_phase_range_threshold);
@@ -207,11 +192,9 @@ public:
     FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
 #ifdef CV_SHOW_IMAGES
     // Configure windows
-    namedWindow("quad_1_trimmed", CV_GUI_EXPANDED);
-    namedWindow("segments", CV_GUI_EXPANDED);
-    namedWindow("quads", CV_GUI_EXPANDED);
-    namedWindow("tags", CV_GUI_EXPANDED);
+    //namedWindow("quads", CV_GUI_EXPANDED);
     namedWindow("hypotheses", CV_GUI_EXPANDED);
+    namedWindow("tags", CV_GUI_EXPANDED);
 #endif
 
     // Resolve image topic names
@@ -229,7 +212,6 @@ public:
     imageSub = it.subscribe(imageTopic, 1, &FTag2TrackerNodelet::imageCallback, this, transportType);
     cameraSub = it.subscribeCamera(cameraTopic, 1, &FTag2TrackerNodelet::cameraCallback, this, transportType);
 
-    markerInfoPub = local_nh.advertise<ftag2::FreqTBMarkerInfo>("marker_info", 1);
 //    vis_pub = local_nh.advertise<visualization_msgs::MarkerArray>( "ftag2_array", 1);
 
     // Finish initialization
@@ -238,7 +220,7 @@ public:
   };
 
 
-  void configCallback(ftag2::CamTestbenchConfig& config, uint32_t level) {
+  void configCallback(ftag2::FTag2TrackerConfig& config, uint32_t level) {
     if (!alive) return;
     params = config;
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
@@ -289,59 +271,36 @@ public:
 
 
   void processImage(const cv::Mat sourceImg, int ID) {
-
-  //  cout << "Params position_std = " << params.position_std << endl;
     // Update profiler
     rateP.try_toc();
     rateP.tic();
     durationP.tic();
 
-    // Convert source image to grayscale
+    // 1. Convert source image to grayscale
     cv::Mat grayImg;
     cv::cvtColor(sourceImg, grayImg, CV_RGB2GRAY);
 
-    // 1. Detect line segments
-    lineSegP.tic();
-    std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
-    lineSegP.toc();
-#ifdef CV_SHOW_IMAGES
-    {
-      cv::Mat overlaidImg;
-      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-      drawLineSegments(overlaidImg, segments);
-      cv::imshow("segments", overlaidImg);
-    }
-#endif
-
-    // 2. Detect quadrilaterals
+    // 2. Detect quadrilaterals in image
     quadP.tic();
-    std::list<Quad> quads = scanQuadsExhaustive(segments,
-        params.quadMinAngleIntercept*degree,
-        params.quadMaxTIntDistRatio,
-        params.quadMaxEndptDistRatio,
-        params.quadMaxCornerGapEndptDistRatio,
-        params.quadMaxEdgeGapDistRatio,
-        params.quadMaxEdgeGapAlignAngle*degree,
-        params.quadMinWidth);
+    std::list<Quad> quads;
+    if (params.quadFastDetector) {
+      quads = detectQuadsViaContour(grayImg);
+    } else {
+      std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
+      quads = scanQuadsSpatialHash(segments, grayImg.cols, grayImg.rows);
+    }
+    if (params.quadRefineCorners) {
+      refineQuadCorners(grayImg, quads);
+    }
     quads.sort(Quad::greaterArea);
     quads.erase(std::unique(quads.begin(), quads.end()), quads.end()); // Remove duplicates
     quadP.toc();
-#ifdef CV_SHOW_IMAGES
-    {
-      cv::Mat overlaidImg;
-      cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-      for (const Quad& quad: quads) {
-        drawQuad(overlaidImg, quad.corners);
-      }
-      cv::imshow("quads", overlaidImg);
-    }
-#endif
 
-    // 3. Decode tags from quads
+    // 3. Decode FTag2 markers
     int quadCount = 0;
     cv::Mat quadImg;
     std::vector<FTag2Marker> tags;
-    FTag2Marker currTag;
+    FTag2Marker currTag(tagType);
     for (const Quad& currQuad: quads) {
       // Reject quads that overlap with already-detected tags (which have larger area than current quad)
       bool overlap = false;
@@ -359,7 +318,7 @@ public:
 
       // Extract rectified quad image from frame
       quadExtractorP.tic();
-      quadImg = extractQuadImg(sourceImg, currQuad, params.quadMinWidth*(8/6));
+      quadImg = extractQuadImg(sourceImg, currQuad);
       quadExtractorP.toc();
       if (quadImg.empty()) { continue; }
 
@@ -367,12 +326,16 @@ public:
       decodeQuadP.tic();
       try {
         currTag = decodeQuad(quadImg, currQuad,
-            FTag2Payload::FTAG2_6S5F3B, // TODO: 1 switch to reader nodelet's version, where the type is passed as a roslaunch param
+            tagType,
             params.markerWidthM,
             params.num_samples_per_row,
             cameraIntrinsic, cameraDistortion,
             params.tagMaxStripAvgDiff,
             params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
+            params.tagMagFilGainNeg,
+            params.tagMagFilGainPos,
+            params.tagMagFilPowNeg,
+            params.tagMagFilPowPos,
             phaseVariancePredictor);
       } catch (const std::string& err) {
         continue;
@@ -388,13 +351,6 @@ public:
     if (tags.size() >= 1) {
       const FTag2Marker& firstTag = tags[0];
 
-      // Show cropped tag image
-#ifdef CV_SHOW_IMAGES
-      {
-        cv::imshow("quad_1_trimmed", firstTag.img);
-      }
-#endif
-
       // Publish cropped tag image
       cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
           sensor_msgs::image_encodings::MONO8, firstTag.tagImg);
@@ -404,8 +360,12 @@ public:
 
     // Publish image overlaid with detected markers
     cv::Mat processedImg = sourceImg.clone();
+    for (const Quad& quad: quads) {
+      drawQuad(processedImg, quad.corners);
+    }
     for (const FTag2Marker& tag: tags) {
       drawQuadWithCorner(processedImg, tag.tagCorners);
+      drawMarkerLabel(processedImg, tag.tagCorners, tag.payload.bitChunksStr);
     }
     cv_bridge::CvImage cvProcessedImg(std_msgs::Header(),
         sensor_msgs::image_encodings::RGB8, processedImg);
@@ -443,32 +403,6 @@ public:
       }
       rawTagDetectionsPub.publish(tagsMsg);
 
-      FTag2Marker tag = tags[0];
-      ftag2::FreqTBMarkerInfo markerInfoMsg;
-      markerInfoMsg.frameID = frameID;
-      markerInfoMsg.radius = sqrt(tag.pose.position_x*tag.pose.position_x + tag.pose.position_y*tag.pose.position_y);
-      markerInfoMsg.z = tag.pose.position_z;
-      markerInfoMsg.oop_rotation = tag.pose.getAngleFromCamera()*vc_math::radian;
-      markerInfoMsg.pose.position.x = tag.pose.position_x;
-      markerInfoMsg.pose.position.y = tag.pose.position_y;
-      markerInfoMsg.pose.position.z = tag.pose.position_z;
-      markerInfoMsg.pose.orientation.w = tag.pose.orientation_w;
-      markerInfoMsg.pose.orientation.x = tag.pose.orientation_x;
-      markerInfoMsg.pose.orientation.y = tag.pose.orientation_y;
-      markerInfoMsg.pose.orientation.z = tag.pose.orientation_z;
-      markerInfoMsg.markerPixelWidth = quadImg.rows;
-      const double* magsPtr = (double*) tag.payload.mags.data;
-      markerInfoMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
-      const double* phasesPtr = (double*) tag.payload.phases.data;
-      markerInfoMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
-      markerInfoMsg.phaseVars = tag.payload.phaseVariances;
-      markerInfoMsg.hasSignature = tag.payload.hasSignature;
-      markerInfoMsg.hasValidXORs = tag.payload.hasValidXORs;
-      markerInfoMsg.bitChunksStr = tag.payload.bitChunksStr;
-      markerInfoMsg.decodedPayloadStr = tag.payload.decodedPayloadStr;
-      markerInfoMsg.numDecodedPhases = tag.payload.numDecodedPhases;
-      markerInfoMsg.numDecodedSections = tag.payload.numDecodedSections;
-      markerInfoPub.publish(markerInfoMsg);
 //      {
 //      tf::Quaternion rMat(tags[0].pose.orientation_x,tags[0].pose.orientation_y,tags[0].pose.orientation_z,tags[0].pose.orientation_w);
 //      static tf::TransformBroadcaster br;
@@ -632,7 +566,7 @@ public:
 
       // Draw detected tag observations: red
       for (const FTag2Marker& tagObs: tags) {
-        drawQuadWithCorner(overlaidImg, tagObs.corners);
+        drawQuadWithCorner(overlaidImg, tagObs.tagCorners);
       }
 
       // Draw matched tag hypotheses: blue border, cyan-on-blue text
@@ -658,7 +592,7 @@ public:
       for (const MarkerFilter& trackedTag: FT.filters) {
         const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
         if (trackedPayload.numDecodedPhases >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES) {
-          drawQuadWithCorner(overlaidImg, trackedTag.hypothesis.corners,
+          drawQuadWithCorner(overlaidImg, trackedTag.hypothesis.tagCorners,
               CV_RGB(255, 0, 0), CV_RGB(0, 255, 255),
               CV_RGB(0, 255, 255), CV_RGB(255, 0, 0));
         }
@@ -666,7 +600,7 @@ public:
       for (const MarkerFilter& trackedTag: FT.filters) {
         const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
         if (trackedPayload.numDecodedPhases >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES) {
-          drawMarkerLabel(overlaidImg, trackedTag.hypothesis.corners,
+          drawMarkerLabel(overlaidImg, trackedTag.hypothesis.tagCorners,
               trackedPayload.bitChunksStr,
               cv::FONT_HERSHEY_SIMPLEX, 1, 0.4,
               CV_RGB(0, 255, 255), CV_RGB(0, 0, 255));
@@ -678,28 +612,25 @@ public:
     }
 #endif
 
-#ifdef PROFILER
-    // Update profiler
+    // -. Update profiler
     durationP.toc();
     if (profilerDelaySec > 0) {
       ros::Time currTime = ros::Time::now();
       ros::Duration td = currTime - latestProfTime;
       if (td.toSec() > profilerDelaySec) {
-        cout << "detectLineSegments: " << lineSegP.getStatsString() << endl;
-        cout << "detectQuads: " << quadP.getStatsString() << endl;
-        cout << "extractTags: " << quadExtractorP.getStatsString() << endl;
-        cout << "decodeQuad: " << decodeQuadP.getStatsString() << endl;
-        cout << "tracker: " << trackerP.getStatsString() << endl;
-        cout << "decodePayload: " << decodePayloadP.getStatsString() << endl;
-
-        cout << "Pipeline Duration: " << durationP.getStatsString() << endl;
-        cout << "Pipeline Rate: " << rateP.getStatsString() << endl;
+        ROS_WARN_STREAM("===== PROFILERS =====");
+        ROS_WARN_STREAM("detectQuads: " << quadP.getStatsString());
+        ROS_WARN_STREAM("extractTags: " << quadExtractorP.getStatsString());
+        ROS_WARN_STREAM("decodeQuad: " << decodeQuadP.getStatsString());
+        ROS_WARN_STREAM("tracker: " << trackerP.getStatsString());
+        ROS_WARN_STREAM("decodePayload: " << decodePayloadP.getStatsString());
+        ROS_WARN_STREAM("Pipeline Duration:: " << durationP.getStatsString());
+        ROS_WARN_STREAM("Pipeline Rate: " << rateP.getStatsString());
         latestProfTime = currTime;
       }
     }
-#endif
 
-    // Allow OpenCV HighGUI events to process
+    // -. Allow OpenCV HighGUI events to process
 #ifdef CV_SHOW_IMAGES
     char c = waitKey(1);
     if (c == 'x' || c == 'X') {

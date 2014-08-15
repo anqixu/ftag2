@@ -10,7 +10,10 @@
 int MarkerFilter::num_Markers = 0;
 using namespace Kalman;
 
-MarkerFilter::MarkerFilter( FTag2Marker detection ) {
+MarkerFilter::MarkerFilter( FTag2Marker detection ) :
+    detectedTag(detection.payload.type),
+    IF(detection.payload.type),
+    hypothesis(detection.payload.type) {
 	got_detection_in_current_frame = true;
 	num_Markers++;
 	marker_id = num_Markers;
@@ -18,7 +21,7 @@ MarkerFilter::MarkerFilter( FTag2Marker detection ) {
 //	observations.push_back(detection.pose);
 	KF = KalmanTrack(detection.pose);
 
-	IF = PayloadFilter();
+	IF = PayloadFilter(detection.payload.type);
 	frames_without_detection = 0;
 };
 
