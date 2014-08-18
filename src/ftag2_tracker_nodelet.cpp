@@ -107,12 +107,10 @@ public:
     params.phaseVarWeightAngle = 0;
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
-    params.num_samples_per_row = 1;
+    params.numSamplesPerRow = 1;
     params.markerWidthM = 0.055;
-    params.within_phase_range_n_sigma = 10.0;
-    params.within_phase_range_allowed_missmatches = 10;
     params.within_phase_range_threshold = 70.0;
-    FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
+    FTag2Payload::updateParameters(params.within_phase_range_threshold);
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
@@ -178,10 +176,8 @@ public:
     GET_PARAM(phaseVarWeightAngle);
     GET_PARAM(phaseVarWeightFreq);
     GET_PARAM(phaseVarWeightBias);
-    GET_PARAM(num_samples_per_row);
+    GET_PARAM(numSamplesPerRow);
     GET_PARAM(markerWidthM);
-    GET_PARAM(within_phase_range_n_sigma);
-    GET_PARAM(within_phase_range_allowed_missmatches);
     GET_PARAM(within_phase_range_threshold);
 #undef GET_PARAM
     dynCfgSyncReq = true;
@@ -189,7 +185,7 @@ public:
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
 //    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
-    FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
+    FTag2Payload::updateParameters(params.within_phase_range_threshold);
 #ifdef CV_SHOW_IMAGES
     // Configure windows
     //namedWindow("quads", CV_GUI_EXPANDED);
@@ -227,7 +223,7 @@ public:
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
     //FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
-    FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
+    FTag2Payload::updateParameters(params.within_phase_range_threshold);
   };
 
 
@@ -328,7 +324,7 @@ public:
         currTag = decodeQuad(quadImg, currQuad,
             tagType,
             params.markerWidthM,
-            params.num_samples_per_row,
+            params.numSamplesPerRow,
             cameraIntrinsic, cameraDistortion,
             params.tagMaxStripAvgDiff,
             params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,
@@ -416,7 +412,7 @@ public:
     // Udpate marker filter (with or without new tags)
     trackerP.tic();
 //    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
-    FTag2Payload::updateParameters(params.within_phase_range_n_sigma, params.within_phase_range_allowed_missmatches, params.within_phase_range_threshold);
+    FTag2Payload::updateParameters(params.within_phase_range_threshold);
     FT.step( tags, params.markerWidthM, cameraIntrinsic, cameraDistortion );
     trackerP.toc();
 

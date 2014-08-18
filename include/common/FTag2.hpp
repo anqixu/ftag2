@@ -57,10 +57,11 @@ struct FTag2Payload {
   unsigned int numDecodedPhases;
   unsigned int numDecodedSections;
 
-  // TODO: 1 move these outside of payload struct
-  static double WITHIN_PHASE_RANGE_N_SIGMA;
-  static int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES;
+  // TODO: 8 since this is a param governed by tracker, ideally tracker.step() or the tracker object should take in this value, then use it in correspondence and pass directly to FTag2Payload::withinPhaseRange()
   static double WITHIN_PHASE_RANGE_THRESHOLD;
+  static void updateParameters(double WITHIN_PHASE_RANGE_THRESHOLD_) {
+    WITHIN_PHASE_RANGE_THRESHOLD = WITHIN_PHASE_RANGE_THRESHOLD_;
+  };
 
   static constexpr unsigned long long SIG_KEY() { return 0b00100011; };
   std::vector<unsigned int> BITS_PER_FREQ() {
@@ -119,12 +120,6 @@ struct FTag2Payload {
       break;
     }
     return result;
-  };
-
-  static void updateParameters(double WITHIN_PHASE_RANGE_N_SIGMA_, int WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES_, double WITHIN_PHASE_RANGE_THRESHOLD_ ) {
-    WITHIN_PHASE_RANGE_N_SIGMA = WITHIN_PHASE_RANGE_N_SIGMA_;
-    WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES = WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES_;
-    WITHIN_PHASE_RANGE_THRESHOLD = WITHIN_PHASE_RANGE_THRESHOLD_;
   };
 
   FTag2Payload (int tagType) :

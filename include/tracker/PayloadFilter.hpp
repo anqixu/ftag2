@@ -10,7 +10,6 @@ class PayloadFilter {
   // NOTE: all thetas are expressed in degrees
 
 public:
-  // TODO: 2 integrate with David's usage, and put into common header
   typedef std::chrono::system_clock clock;
   typedef std::chrono::time_point<std::chrono::system_clock> time_point;
 
@@ -87,7 +86,7 @@ public:
       sumInverseVars[freq] += 1.0/tag.phaseVariances[freq];
       filteredPayload.phaseVariances[freq] = 1.0/sumInverseVars[freq];
     }
-    // TODO: 2 make following code more efficient
+    // TODO: 2 why is following code commented out? it seems more efficient, but it might be broken... check
     /*
     double* tagPhasesPtr = (double*) tag.phases.data;
     double* sumWeightedCosThetaPtr = (double*) sumWeightedCosTheta.data;

@@ -81,6 +81,7 @@ public:
     params.phaseVarWeightAngle = 0;
     params.phaseVarWeightFreq = 0;
     params.phaseVarWeightBias = 10*10;
+    params.numSamplesPerRow = 1;
     params.markerWidthM = 0.055;
     params.tempTagDecodeStd = 3;
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
@@ -146,6 +147,7 @@ public:
     GET_PARAM(phaseVarWeightAngle);
     GET_PARAM(phaseVarWeightFreq);
     GET_PARAM(phaseVarWeightBias);
+    GET_PARAM(numSamplesPerRow);
     GET_PARAM(markerWidthM);
     GET_PARAM(tempTagDecodeStd);
     #undef GET_PARAM
@@ -238,7 +240,7 @@ public:
     quadP.tic();
     std::list<Quad> quads;
     if (params.quadFastDetector) {
-      quads = detectQuadsViaContour(grayImg);
+      quads = detectQuadsViaContour(grayImg); // TODO: 9 consider using downsized image to speed up search of quads
     } else {
       std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
       quads = scanQuadsSpatialHash(segments, grayImg.cols, grayImg.rows);
@@ -268,7 +270,7 @@ public:
 
       // Check whether we have scanned enough quads
       quadCount++;
-      if (quadCount > params.quadMaxScans) break;
+      if (quadCount > params.quadMaxScans) break; // TODO: 1 measure how much impact does this limiting have (i.e. if we simply tried to decode all quads); suspect little additional computing + no false positive (when using magn filter)
 
       // Extract rectified quad image from frame
       quadExtractorP.tic();
@@ -282,7 +284,7 @@ public:
         currTag = decodeQuad(quadImg, currQuad,
             tagType,
             params.markerWidthM,
-            1,
+            params.numSamplesPerRow,
             cameraIntrinsic, cameraDistortion,
             params.tagMaxStripAvgDiff,
             params.tagBorderMeanMaxThresh, params.tagBorderStdMaxThresh,

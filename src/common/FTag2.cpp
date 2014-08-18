@@ -12,8 +12,6 @@ double FTag2Pose::getAngleFromCamera() {
 };
 
 
-double FTag2Payload::WITHIN_PHASE_RANGE_N_SIGMA = 10.0;
-int FTag2Payload::WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES = 10;
 double FTag2Payload::WITHIN_PHASE_RANGE_THRESHOLD = 50.0;
 
 
@@ -84,44 +82,5 @@ bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
 //  cout << "Matched!" << endl;
   return true;
 //  return is_within;
-};
-*/
-
-/*
-// Old version, using WITHIN_PHASE_RANGE_N_SIGMA and WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES
-bool FTag2Payload::withinPhaseRange( const FTag2Payload& marker ) {
-  bool is_within = true;
-   int count_missmatches = 0;
-  cout << "WPRNS: " << WITHIN_PHASE_RANGE_N_SIGMA << endl;
-  cout << "WPRAM: " << WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES << endl;
-  for ( int ray=0 ; ray<phases.rows; ray++ )
-  {
-    for ( int freq=0 ; freq<phases.cols; freq++ )
-    {
-//      cout << "Phase variance (" << ray << ", " << freq << ") = " << phaseVariances[freq] << endl;
-      double phObs = phases.at<double>(ray,freq);
-      double phFilt = marker.phases.at<double>(ray,freq);
-      if (phFilt < 0)
-        phFilt += 360;
-      else
-        phFilt = fmod(phFilt,360.0);
-//      cout << "Obs phase: " << phObs << "\t Filt. phase: " << phFilt << endl;
-      double phMin = phObs-WITHIN_PHASE_RANGE_N_SIGMA*sqrt(phaseVariances[freq]);
-      if ( phMin < 0 )
-        phMin += 360;
-      double phMax = fmod(phObs+WITHIN_PHASE_RANGE_N_SIGMA*sqrt(phaseVariances[freq]),360.0);
-//      cout << "Min/max phase (wrapped around 360): (" << phMin << ", " << phMax << ")" << endl;
-      if ( phFilt < phMin || phFilt > phMax )
-      {
-        count_missmatches ++;
-        if ( count_missmatches >= WITHIN_PHASE_RANGE_ALLOWED_MISSMATCHES )
-        {
-        	is_within = false;
-        	break;
-        }
-      }
-    }
-  }
-  return is_within;
 };
 */
