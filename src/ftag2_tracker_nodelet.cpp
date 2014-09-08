@@ -395,6 +395,8 @@ public:
         tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
         const double* phasesPtr = (double*) tag.payload.phases.data;
         tagMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+        tagMsg.bitChunksStr = tag.payload.bitChunksStr;
+        tagMsg.decodedPayloadStr = tag.payload.decodedPayloadStr;
         tagsMsg.tags.push_back(tagMsg);
       }
       rawTagDetectionsPub.publish(tagsMsg);

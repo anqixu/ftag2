@@ -14,18 +14,16 @@
 #include <nodelet/nodelet.h>
 #include "ftag2/FTag2ReaderConfig.h"
 #include "ftag2/TagDetections.h"
-
+#include "ftag2/TagDetection.h"
 
 using namespace std;
 using namespace cv;
 using namespace vc_math;
 
-
 typedef dynamic_reconfigure::Server<ftag2::FTag2ReaderConfig> ReconfigureServer;
 
-
 #define CV_SHOW_IMAGES
-
+#define ROS_PUBLISHING_DETECTIONS
 
 namespace ftag2 {
 
@@ -33,6 +31,8 @@ namespace ftag2 {
 class FTag2ReaderNodelet : public nodelet::Nodelet {
 protected:
   bool alive;
+
+  int frameID;
 
   int tagType;
 
@@ -43,6 +43,7 @@ protected:
   image_transport::Subscriber imageSub;
   image_transport::CameraSubscriber cameraSub;
   ros::Publisher tagDetectionsPub;
+  ros::Publisher firstTagDetectionPub;
   image_transport::Publisher processedImagePub;
   image_transport::Publisher firstTagImagePub;
 
@@ -62,6 +63,7 @@ public:
   FTag2ReaderNodelet() : nodelet::Nodelet(),
       alive(false),
       tagType(FTag2Payload::FTAG2_6S5F3B),
+//      tagType(FTag2Payload::FTAG2_6S5F33322B),
       dynCfgServer(NULL),
       dynCfgSyncReq(false),
       latestProfTime(ros::Time::now()),
@@ -96,6 +98,7 @@ public:
 
 
   virtual void onInit() {
+	frameID = 0;
     // Obtain node handles
     //ros::NodeHandle& nh = getNodeHandle();
     ros::NodeHandle& local_nh = getPrivateNodeHandle();
@@ -169,6 +172,7 @@ public:
     // Setup ROS communication links
     image_transport::ImageTransport it(local_nh);
     tagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
+    firstTagDetectionPub = local_nh.advertise<ftag2::TagDetection>("first_tag", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
     imageSub = it.subscribe(imageTopic, 1, &FTag2ReaderNodelet::imageCallback, this, transportType);
@@ -252,6 +256,11 @@ public:
     quads.erase(std::unique(quads.begin(), quads.end()), quads.end()); // Remove duplicates
     quadP.toc();
 
+    // TODO: Delete after gathering data for training variance model and mags.
+    cv::Mat first_quad_img;
+    bool first_tag = true;
+    /////////////////////////////////////////////////////////////////////////
+
     // 3. Decode FTag2 markers
     int quadCount = 0;
     cv::Mat quadImg;
@@ -294,6 +303,34 @@ public:
             params.tagMagFilPowPos,
             phaseVariancePredictor);
         decodePayload(currTag.payload, params.tempTagDecodeStd);
+//        std::cout << "ROTATION: " << currTag.tagImgCCRotDeg << ",\t/90 = " << currTag.tagImgCCRotDeg/90 << endl;
+        // TODO: Delete after gathering data for training variance model and mags.
+        if ( first_tag )
+        {
+          first_quad_img = quadImg.clone();
+          first_tag = false;
+
+          ftag2::TagDetection tag_msg;
+
+          tag_msg.pose.position.x = currTag.pose.position_x;
+          tag_msg.pose.position.y = currTag.pose.position_y;
+          tag_msg.pose.position.z = currTag.pose.position_z;
+          tag_msg.pose.orientation.w = currTag.pose.orientation_w;
+          tag_msg.pose.orientation.x = currTag.pose.orientation_x;
+          tag_msg.pose.orientation.y = currTag.pose.orientation_y;
+          tag_msg.pose.orientation.z = currTag.pose.orientation_z;
+          tag_msg.markerPixelWidth = currTag.tagWidth;
+
+          const double* magsPtr = (double*) currTag.payload.mags.data;
+          tag_msg.mags = std::vector<double>(magsPtr, magsPtr + currTag.payload.mags.rows * currTag.payload.mags.cols);
+          const double* phasesPtr = (double*) currTag.payload.phases.data;
+          tag_msg.phases = std::vector<double>(phasesPtr, phasesPtr + currTag.payload.phases.rows * currTag.payload.phases.cols);
+          tag_msg.bitChunksStr = currTag.payload.bitChunksStr;
+          tag_msg.decodedPayloadStr = currTag.payload.decodedPayloadStr;
+
+          firstTagDetectionPub.publish(tag_msg);
+        }
+        /////////////////////////////////////////////////////////////////////////
       } catch (const std::string& err) {
         continue;
       }
@@ -315,6 +352,42 @@ public:
       }
       cv::imshow("tags", overlaidImg);
     }
+#endif
+
+#ifdef ROS_PUBLISHING_DETECTIONS
+    if ( first_tag == false )
+    {
+		cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
+				sensor_msgs::image_encodings::MONO8, first_quad_img);
+		cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
+		firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
+    }
+
+    ftag2::TagDetections tags_msg;
+    tags_msg.frameID = frameID;
+    frameID++;
+    for (const FTag2Marker& tag: tags) {
+    	ftag2::TagDetection tag_msg;
+
+        tag_msg.pose.position.x = tag.pose.position_x;
+        tag_msg.pose.position.y = tag.pose.position_y;
+        tag_msg.pose.position.z = tag.pose.position_z;
+        tag_msg.pose.orientation.w = tag.pose.orientation_w;
+        tag_msg.pose.orientation.x = tag.pose.orientation_x;
+        tag_msg.pose.orientation.y = tag.pose.orientation_y;
+        tag_msg.pose.orientation.z = tag.pose.orientation_z;
+        tag_msg.markerPixelWidth = tag.tagWidth;
+
+    	const double* magsPtr = (double*) tag.payload.mags.data;
+    	tag_msg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+    	const double* phasesPtr = (double*) tag.payload.phases.data;
+    	tag_msg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+    	tag_msg.bitChunksStr = tag.payload.bitChunksStr;
+    	tag_msg.decodedPayloadStr = tag.payload.decodedPayloadStr;
+
+    	tags_msg.tags.push_back(tag_msg);
+    }
+    tagDetectionsPub.publish(tags_msg);
 #endif
 
     // -. Update profiler

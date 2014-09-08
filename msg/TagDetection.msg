@@ -7,3 +7,7 @@ string IDString
 # Debug
 float64[] mags
 float64[] phases
+float64[] phaseVariances
+
+string bitChunksStr
+string decodedPayloadStr
