@@ -303,6 +303,7 @@ public:
             params.tagMagFilPowPos,
             phaseVariancePredictor);
         decodePayload(currTag.payload, params.tempTagDecodeStd);
+        
 //        std::cout << "ROTATION: " << currTag.tagImgCCRotDeg << ",\t/90 = " << currTag.tagImgCCRotDeg/90 << endl;
         // TODO: Delete after gathering data for training variance model and mags.
         if ( first_tag )
@@ -357,17 +358,17 @@ public:
 #ifdef ROS_PUBLISHING_DETECTIONS
     if ( first_tag == false )
     {
-		cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
-				sensor_msgs::image_encodings::MONO8, first_quad_img);
-		cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
-		firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
+    cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
+        sensor_msgs::image_encodings::MONO8, first_quad_img);
+    cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
+    firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
     }
 
     ftag2::TagDetections tags_msg;
     tags_msg.frameID = frameID;
     frameID++;
     for (const FTag2Marker& tag: tags) {
-    	ftag2::TagDetection tag_msg;
+      ftag2::TagDetection tag_msg;
 
         tag_msg.pose.position.x = tag.pose.position_x;
         tag_msg.pose.position.y = tag.pose.position_y;
@@ -378,14 +379,14 @@ public:
         tag_msg.pose.orientation.z = tag.pose.orientation_z;
         tag_msg.markerPixelWidth = tag.tagWidth;
 
-    	const double* magsPtr = (double*) tag.payload.mags.data;
-    	tag_msg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
-    	const double* phasesPtr = (double*) tag.payload.phases.data;
-    	tag_msg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
-    	tag_msg.bitChunksStr = tag.payload.bitChunksStr;
-    	tag_msg.decodedPayloadStr = tag.payload.decodedPayloadStr;
+      const double* magsPtr = (double*) tag.payload.mags.data;
+      tag_msg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+      const double* phasesPtr = (double*) tag.payload.phases.data;
+      tag_msg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+      tag_msg.bitChunksStr = tag.payload.bitChunksStr;
+      tag_msg.decodedPayloadStr = tag.payload.decodedPayloadStr;
 
-    	tags_msg.tags.push_back(tag_msg);
+      tags_msg.tags.push_back(tag_msg);
     }
     tagDetectionsPub.publish(tags_msg);
 #endif

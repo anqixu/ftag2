@@ -23,6 +23,7 @@
     <param name="profiler_delay_sec" value="0.0" /> <!-- 0: disable -->
     
     <param name="tagBorderMeanMaxThresh" value="120.0" />
-
+    
+    <param name="tempTagDecodeStd" value="0.0" /> <!-- WARNING: this completely disables variance-based phase error checker -->
   </node>
 </launch>
