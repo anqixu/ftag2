@@ -11,7 +11,7 @@ set(CMAKE_CXX_FLAGS "-std=c++0x ${CMAKE_CXX_FLAGS} -g -Wall -O2")
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
-  message_generation
+  ftag2_core
   nodelet
   dynamic_reconfigure
   image_transport
@@ -43,10 +43,10 @@ endif()
 ## Declare ROS messages and services ##
 #######################################
 
-add_message_files(
-  DIRECTORY msg
-  FILES TagDetection.msg TagDetections.msg ARMarkerFT.msg ARMarkersFT.msg
-)
+#add_message_files(
+#  DIRECTORY msg
+#  FILES TagDetection.msg TagDetections.msg ARMarkerFT.msg ARMarkersFT.msg
+#)
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -55,10 +55,10 @@ add_message_files(
 # )
 
 ## Generate added messages and services with any dependencies listed here
-generate_messages(
-  DEPENDENCIES
-  geometry_msgs sensor_msgs std_msgs
-)
+#generate_messages(
+#  DEPENDENCIES
+#  geometry_msgs sensor_msgs std_msgs
+#)
 
 generate_dynamic_reconfigure_options(
   cfg/FTag2Reader.cfg
@@ -78,7 +78,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${FTAG2_LIB_NAME} ${FTAG2_READER_NODELET_NAME} ${FTAG2_TRACKER_NODELET_NAME}
-  CATKIN_DEPENDS roscpp rospy message_runtime nodelet dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs visualization_msgs tf
+  CATKIN_DEPENDS roscpp rospy ftag2_core nodelet dynamic_reconfigure image_transport cv_bridge std_msgs geometry_msgs sensor_msgs visualization_msgs tf
 #  DEPENDS system_lib
 )
 

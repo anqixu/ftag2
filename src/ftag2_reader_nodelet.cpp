@@ -13,8 +13,8 @@
 #include <sensor_msgs/image_encodings.h>
 #include <nodelet/nodelet.h>
 #include "ftag2/FTag2ReaderConfig.h"
-#include "ftag2/TagDetections.h"
-#include "ftag2/TagDetection.h"
+#include "ftag2_core/TagDetections.h"
+#include "ftag2_core/TagDetection.h"
 
 using namespace std;
 using namespace cv;
@@ -171,8 +171,8 @@ public:
 
     // Setup ROS communication links
     image_transport::ImageTransport it(local_nh);
-    tagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
-    firstTagDetectionPub = local_nh.advertise<ftag2::TagDetection>("first_tag", 1);
+    tagDetectionsPub = local_nh.advertise<ftag2_core::TagDetections>("detected_tags", 1);
+    firstTagDetectionPub = local_nh.advertise<ftag2_core::TagDetection>("first_tag", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
     imageSub = it.subscribe(imageTopic, 1, &FTag2ReaderNodelet::imageCallback, this, transportType);
@@ -311,7 +311,7 @@ public:
           first_quad_img = quadImg.clone();
           first_tag = false;
 
-          ftag2::TagDetection tag_msg;
+          ftag2_core::TagDetection tag_msg;
 
           tag_msg.pose.position.x = currTag.pose.position_x;
           tag_msg.pose.position.y = currTag.pose.position_y;
@@ -364,11 +364,11 @@ public:
     firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
     }
 
-    ftag2::TagDetections tags_msg;
+    ftag2_core::TagDetections tags_msg;
     tags_msg.frameID = frameID;
     frameID++;
     for (const FTag2Marker& tag: tags) {
-      ftag2::TagDetection tag_msg;
+      ftag2_core::TagDetection tag_msg;
 
         tag_msg.pose.position.x = tag.pose.position_x;
         tag_msg.pose.position.y = tag.pose.position_y;

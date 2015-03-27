@@ -17,8 +17,8 @@
 
 #include "std_msgs/Float64MultiArray.h"
 
-#include "ftag2/ARMarkerFT.h"
-#include "ftag2/ARMarkersFT.h"
+#include "ftag2_core/ARMarkerFT.h"
+#include "ftag2_core/ARMarkersFT.h"
 
 #include <tf/transform_broadcaster.h>
 
@@ -201,7 +201,7 @@ public:
     image_transport::ImageTransport it(local_nh);
     rawTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
     decodedTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("decoded_tags", 1);
-    arMarkerPub_ = local_nh.advertise < ARMarkersFT > ("ft_pose_markers", 1);
+    arMarkerPub_ = local_nh.advertise < ftag2_core::ARMarkersFT > ("ft_pose_markers", 1);
     rvizMarkerPub_ = local_nh.advertise < visualization_msgs::Marker > ("ftag2_vis_Marker", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
@@ -444,7 +444,7 @@ public:
     }
     decodePayloadP.toc();
 
-    ARMarkersFT arPoseMarkers_;
+    ftag2_core::ARMarkersFT arPoseMarkers_;
     for ( const MarkerFilter &filter: FT.filters )
     {
       if ( !filter.got_detection_in_current_frame ) {
@@ -509,7 +509,7 @@ public:
 
     rvizMarkerPub_.publish(rvizMarker_);
 
-    ARMarkerFT ar_pose_marker_;
+    ftag2_core::ARMarkerFT ar_pose_marker_;
     ar_pose_marker_.header.frame_id = tf_frame;
     ar_pose_marker_.header.stamp    = ros::Time::now();
 
