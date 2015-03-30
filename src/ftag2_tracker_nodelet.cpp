@@ -13,10 +13,10 @@
 #include <sensor_msgs/image_encodings.h>
 #include <nodelet/nodelet.h>
 #include "ftag2/FTag2TrackerConfig.h"
-#include "ftag2/TagDetections.h"
 
 #include "std_msgs/Float64MultiArray.h"
 
+#include "ftag2_core/TagDetections.h"
 #include "ftag2_core/ARMarkerFT.h"
 #include "ftag2_core/ARMarkersFT.h"
 
@@ -199,8 +199,8 @@ public:
 
     // Setup ROS communication links
     image_transport::ImageTransport it(local_nh);
-    rawTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("detected_tags", 1);
-    decodedTagDetectionsPub = local_nh.advertise<ftag2::TagDetections>("decoded_tags", 1);
+    rawTagDetectionsPub = local_nh.advertise<ftag2_core::TagDetections>("detected_tags", 1);
+    decodedTagDetectionsPub = local_nh.advertise<ftag2_core::TagDetections>("decoded_tags", 1);
     arMarkerPub_ = local_nh.advertise < ftag2_core::ARMarkersFT > ("ft_pose_markers", 1);
     rvizMarkerPub_ = local_nh.advertise < visualization_msgs::Marker > ("ftag2_vis_Marker", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
@@ -377,12 +377,12 @@ public:
 
     // Publish tag detections
     if (tags.size() > 0) {
-      ftag2::TagDetections tagsMsg;
+      ftag2_core::TagDetections tagsMsg;
       tagsMsg.frameID = ID;
 
       //      double k=10.0;
       for (const FTag2Marker& tag: tags) {
-        ftag2::TagDetection tagMsg;
+        ftag2_core::TagDetection tagMsg;
         tagMsg.pose.position.x = tag.pose.position_x;
         tagMsg.pose.position.y = tag.pose.position_y;
         tagMsg.pose.position.z = tag.pose.position_z;
@@ -530,10 +530,10 @@ public:
     arMarkerPub_.publish(arPoseMarkers_);
 
 
-    ftag2::TagDetections tagsMsg;
+    ftag2_core::TagDetections tagsMsg;
     tagsMsg.frameID = ID;
     for (const MarkerFilter& filter: FT.filters ) {
-      ftag2::TagDetection tagMsg;
+      ftag2_core::TagDetection tagMsg;
       FTag2Marker tag = filter.hypothesis;
       tagMsg.pose.position.x = tag.pose.position_x;
       tagMsg.pose.position.y = tag.pose.position_y;
