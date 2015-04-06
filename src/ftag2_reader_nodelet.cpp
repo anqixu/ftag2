@@ -321,6 +321,7 @@ public:
           tag_msg.pose.orientation.y = currTag.pose.orientation_y;
           tag_msg.pose.orientation.z = currTag.pose.orientation_z;
           tag_msg.markerPixelWidth = currTag.tagWidth;
+          tag_msg.tagImgRot = currTag.tagImgCCRotDeg/90;
 
           const double* magsPtr = (double*) currTag.payload.mags.data;
           tag_msg.mags = std::vector<double>(magsPtr, magsPtr + currTag.payload.mags.rows * currTag.payload.mags.cols);
@@ -378,6 +379,7 @@ public:
         tag_msg.pose.orientation.y = tag.pose.orientation_y;
         tag_msg.pose.orientation.z = tag.pose.orientation_z;
         tag_msg.markerPixelWidth = tag.tagWidth;
+        tag_msg.tagImgRot = tag.tagImgCCRotDeg/90;
 
       const double* magsPtr = (double*) tag.payload.mags.data;
       tag_msg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
