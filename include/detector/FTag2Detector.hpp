@@ -271,14 +271,23 @@ cv::Mat extractQuadImg(const cv::Mat img, const Quad& quad, unsigned int minWidt
  * Removes columns and/or rows of white pixels from borders of an extracted
  * tag image, caused by rounding accuracy / oversampling in extractQuadImg
  */
-cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff = 12.0);
+cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff = 15.0);
 
 
-inline bool validateTagBorder(cv::Mat tag, double meanPxMaxThresh = 80.0, double stdPxMaxThresh = 30.0,
-    unsigned int numRays = 6, unsigned int borderBlocks = 1) {
+inline void validateTagBorder(cv::Mat tag, double meanPxMaxThresh = 80.0, double stdPxMaxThresh = 40.0,
+    unsigned int numRays = 6, unsigned int borderBlocks = 1) throw (const std::string&) {
   const unsigned int numBlocks = numRays + 2*borderBlocks;
   double hBorder = double(tag.cols)/numBlocks*borderBlocks;
   double vBorder = double(tag.rows)/numBlocks*borderBlocks;
+
+  // For decent-sized tags, prevent sampling on the boundary between border and
+  // rays, by increasing the inner marker mask by 1 pixel width/height
+  //
+  // "decent-sized" is currently hard-coded as: border thickness exceeding
+  // 5 pixels, i.e. +1 pixel should not remove more than 20% of border thickness
+  if (hBorder >= 5.) { hBorder -= 1.; }
+  if (vBorder >= 5.) { vBorder -= 1.; }
+
   cv::Mat borderMask = cv::Mat::ones(tag.size(), CV_8UC1);
   borderMask(cv::Range(std::round(vBorder), std::round(tag.rows - vBorder)),
       cv::Range(std::round(hBorder), std::round(tag.cols - hBorder))).setTo(0);
@@ -286,7 +295,11 @@ inline bool validateTagBorder(cv::Mat tag, double meanPxMaxThresh = 80.0, double
   cv::Scalar stdPx;
   cv::meanStdDev(tag, meanPx, stdPx, borderMask);
 
-  return ((meanPx[0] <= meanPxMaxThresh) && (stdPx[0] <= stdPxMaxThresh));
+  if (!((meanPx[0] <= meanPxMaxThresh) && (stdPx[0] <= stdPxMaxThresh))) {
+    std::ostringstream oss;
+    oss << "tag border not sufficiently dark and/or uniform (px avg=" << meanPx[0] << ", std=" << stdPx[0] << ")";
+    throw oss.str();
+  }
 };
 
 

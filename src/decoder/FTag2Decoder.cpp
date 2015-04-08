@@ -208,9 +208,8 @@ FTag2Marker decodeQuad(const cv::Mat quadImg,
   cv::Mat trimmedTagImg = trimFTag2Quad(quadImg, quadMaxStripAvgDiff);
 
   // Validate marker borders
-  if (!validateTagBorder(trimmedTagImg, tagBorderMeanMaxThresh, tagBorderStdMaxThresh)) {
-    throw std::string("tag border not sufficiently dark and/or uniform");
-  }
+  // NOTE: function will throw std::string error if failed
+  validateTagBorder(trimmedTagImg, tagBorderMeanMaxThresh, tagBorderStdMaxThresh);
 
   // Crop payload portion of marker
   cv::Mat croppedTagImg = cropFTag2Border(trimmedTagImg);

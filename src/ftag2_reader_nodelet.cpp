@@ -73,7 +73,7 @@ public:
     params.quadMaxScans = 10;
     params.tagMaxStripAvgDiff = 15.0;
     params.tagBorderMeanMaxThresh = 80.0;
-    params.tagBorderStdMaxThresh = 30.0;
+    params.tagBorderStdMaxThresh = 40.0;
     params.tagMagFilGainNeg = 0.6;
     params.tagMagFilGainPos = 0.6;
     params.tagMagFilPowNeg = 1.0;
@@ -256,7 +256,7 @@ public:
     quads.erase(std::unique(quads.begin(), quads.end()), quads.end()); // Remove duplicates
     quadP.toc();
 
-    // TODO: Delete after gathering data for training variance model and mags.
+    // TODO: 0 Delete after gathering data for training variance model and mags.
     cv::Mat first_quad_img;
     bool first_tag = true;
     /////////////////////////////////////////////////////////////////////////
@@ -305,7 +305,7 @@ public:
         decodePayload(currTag.payload, params.tempTagDecodeStd);
         
 //        std::cout << "ROTATION: " << currTag.tagImgCCRotDeg << ",\t/90 = " << currTag.tagImgCCRotDeg/90 << endl;
-        // TODO: Delete after gathering data for training variance model and mags.
+        // TODO: 0 Delete after gathering data for training variance model and mags.
         if ( first_tag )
         {
           first_quad_img = quadImg.clone();
@@ -334,6 +334,30 @@ public:
         }
         /////////////////////////////////////////////////////////////////////////
       } catch (const std::string& err) {
+        // TODO: 9 remove debug code once API stabilized
+        /*
+        const std::vector<cv::Point2f>& corners = currQuad.corners; // assumed stored in clockwise order (in image space)
+        double lenA = vc_math::dist(corners[0], corners[1]);
+        double lenB = vc_math::dist(corners[1], corners[2]);
+        double lenC = vc_math::dist(corners[2], corners[3]);
+        double lenD = vc_math::dist(corners[3], corners[0]);
+        double angleAD = std::acos(vc_math::dot(corners[1], corners[0], corners[0], corners[3])/lenA/lenD);
+        double angleBC = std::acos(vc_math::dot(corners[1], corners[2], corners[2], corners[3])/lenB/lenC);
+        ROS_WARN_STREAM(err);
+        ROS_WARN_STREAM("corners: " <<
+            "(" << corners[0].x << ", " << corners[0].y << ") - " <<
+            "(" << corners[1].x << ", " << corners[1].y << ") - " <<
+            "(" << corners[2].x << ", " << corners[2].y << ") - " <<
+            "(" << corners[3].x << ", " << corners[3].y << ")");
+        ROS_WARN_STREAM("lengths: " << lenA << ", " << lenB << ", " << lenC << ", " << lenD);
+        ROS_WARN_STREAM("angles: " << angleAD << ", " << angleBC << std::endl);
+
+        {
+          cv::imshow("debug", quadImg);
+          cv::imwrite("/tmp/quadImg.png", quadImg);
+          waitKey();
+        }*/
+
         continue;
       }
       decoderP.toc();
