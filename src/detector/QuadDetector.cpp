@@ -833,6 +833,8 @@ cv::Mat extractQuadImg(const cv::Mat img, const Quad& quad, unsigned int minWidt
 
   if (shortestEdgeWidth < int(minWidth)) return cv::Mat();
 
+  // Assumed corners stored in counter-clockwise order in image space
+  // (where +x: right, +y: bottom), starting with top-right corner
   cv::Mat quadImg;
   std::vector<cv::Point2f> rectifiedCorners;
   if (oversample) {
@@ -950,23 +952,23 @@ void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
   cv::Mat transVec, rotVec, rotMat;
 
   double quadSizeHalved = quadSizeM / 2;
-  spatialPoints.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0));
-  spatialPoints.push_back(cv::Point3d(-quadSizeHalved,  quadSizeHalved, 0.0));
-  spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));
-  spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
+  // NOTE: recall that the tag's frame adheres to a right-handed coordinate
+  //       system, where +x: right of tag, +y: bottom of tag, +z: into tag
+  spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0)); // tag's top-right corner
+  spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0)); // tag's bottom-right corner
+  spatialPoints.push_back(cv::Point3d(-quadSizeHalved,  quadSizeHalved, 0.0)); // tag's bottom-left corner
+  spatialPoints.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0)); // tag's top-left corner
 
-//  spatialPoints.push_back(cv::Point3d(-quadSizeHalved, -quadSizeHalved, 0.0));
-//  spatialPoints.push_back(cv::Point3d( quadSizeHalved, -quadSizeHalved, 0.0));
-//  spatialPoints.push_back(cv::Point3d( quadSizeHalved,  quadSizeHalved, 0.0));
-//  spatialPoints.push_back(cv::Point3d(-quadSizeHalved,  quadSizeHalved, 0.0));
-
+  // NOTE: OpenCV's solvePnP doc states that rvec & tvec together "brings points
+  //       from the model coordinate system to the camera coordinate system".
+  //       Empirically, these results define a transformation matrix T
+  //       such that point_in_camera_frame = T * point_in_tag_frame. This is
+  //       consistent with FTag2Pose's internal structure, where the tag's
+  //       position and orientation is defined with respect to the camera's
+  //       static/world frame.
   cv::solvePnP(spatialPoints, cornersPx, cameraIntrinsic, cameraDistortion,
       rotVec, transVec);
   cv::Rodrigues(rotVec, rotMat);
-  //cv::Mat flipZ = cv::Mat::eye(3,3,CV_64FC1);
-  //flipZ.at<double>(2,2) = -1.0;
-  //rotMat = flipZ*rotMat;
-  //rotMat = rotMat.t();
   vc_math::rotMat2quat(rotMat, rw, rx, ry, rz);
 
   tx = transVec.at<double>(0);

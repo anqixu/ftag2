@@ -6,7 +6,8 @@ using namespace std;
 
 
 // DEPRECATED
-double FTag2Pose::getAngleFromCamera() {
+double FTag2Pose::computeOutOfTagPlaneAngle() {
+  // TODO: 0 verify correctness since convention changed to tag-in-camera frame transform (it SHOULD be the same, since this angle is commutative)
   cv::Mat rotMat = vc_math::quat2RotMat(orientation_w, orientation_x, orientation_y, orientation_z);
   return acos(rotMat.at<double>(2, 2));
 };
