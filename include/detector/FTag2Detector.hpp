@@ -13,7 +13,7 @@
 
 
 struct Quad {
-  std::vector<cv::Point2f> corners; // assumed stored in clockwise order (in image space)
+  std::vector<cv::Point2f> corners; // assumed stored in counter-clockwise order in image space (where +x: right, +y: bottom)
   double area;
 
   void updateArea() {
@@ -328,6 +328,12 @@ inline cv::Mat extractVertRays(cv::Mat croppedTag, unsigned int numSamples,
  * cameraIntrinsic should be a 3x3 matrix of doubles
  * cameraDistortion should be a 5x1 matrix of doubles
  * tx, ty, tz are in meters
+ * rw, rx, ry, rz uses a quaternion representation
+ *
+ * Translation and rotation together define the transformation matrix T
+ * of the tag in the camera's frame, a.k.a.:
+ *
+ * point_in_camera_frame = T * point_in_tag_frame
  */
 void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
     cv::Mat cameraIntrinsic, cv::Mat cameraDistortion,
@@ -340,6 +346,7 @@ void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
  * cameraIntrinsic should be a 3x3 matrix of doubles
  * cameraDistortion should be a 5x1 matrix of doubles
  */
+// TODO: 1 verify that logic still works, now that the translation/orientation transforms has been fixed/updated
 std::vector<cv::Point2f> backProjectQuad(double cam_pose_in_tag_frame_x, double cam_pose_in_tag_frame_y,
 		double cam_pose_in_tag_frame_z, double cam_rot_in_tag_frame_w, double cam_rot_in_tag_frame_x,
 		double cam_rot_in_tag_frame_y, double cam_rot_in_tag_frame_z, double quadSizeM,
@@ -385,7 +392,7 @@ public:
   void predict(FTag2Marker* tag) {
     double r = sqrt(tag->pose.position_x*tag->pose.position_x + tag->pose.position_y*tag->pose.position_y);
     double z = tag->pose.position_z;
-    double angle = tag->pose.getAngleFromCamera()*vc_math::radian;
+    double angle = tag->pose.computeOutOfTagPlaneAngle()*vc_math::radian;
     paramsMutex.lock();
     for (unsigned int freq = 1; freq <= tag->payload.phaseVariances.size(); freq++) {
       tag->payload.phaseVariances[freq-1]= pow(weight_bias + weight_r*r + weight_z*z +
