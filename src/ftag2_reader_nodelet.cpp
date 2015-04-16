@@ -333,6 +333,11 @@ public:
           tag_msg.pose.orientation.z = currTag.pose.orientation_z;
           tag_msg.markerPixelWidth = currTag.tagWidth;
           tag_msg.tagImgRot = currTag.tagImgCCRotDeg/90;
+          for ( cv::Point2f &p: currTag.tagCorners ) {
+          	tag_msg.tagPixCorners.push_back(p.x);
+          	tag_msg.tagPixCorners.push_back(p.y);
+          }
+          tag_msg.markerWidth = params.markerWidthM;
 
           const double* magsPtr = (double*) currTag.payload.mags.data;
           tag_msg.mags = std::vector<double>(magsPtr, magsPtr + currTag.payload.mags.rows * currTag.payload.mags.cols);
@@ -403,26 +408,36 @@ public:
     ftag2_core::TagDetections tags_msg;
     tags_msg.frameID = ID;
     for (const FTag2Marker& tag: tags) {
-      ftag2_core::TagDetection tag_msg;
+		ftag2_core::TagDetection tag_msg;
 
-        tag_msg.pose.position.x = tag.pose.position_x;
-        tag_msg.pose.position.y = tag.pose.position_y;
-        tag_msg.pose.position.z = tag.pose.position_z;
-        tag_msg.pose.orientation.w = tag.pose.orientation_w;
-        tag_msg.pose.orientation.x = tag.pose.orientation_x;
-        tag_msg.pose.orientation.y = tag.pose.orientation_y;
-        tag_msg.pose.orientation.z = tag.pose.orientation_z;
-        tag_msg.markerPixelWidth = tag.tagWidth;
-        tag_msg.tagImgRot = tag.tagImgCCRotDeg/90;
+		tag_msg.pose.position.x = tag.pose.position_x;
+		tag_msg.pose.position.y = tag.pose.position_y;
+		tag_msg.pose.position.z = tag.pose.position_z;
+		tag_msg.pose.orientation.w = tag.pose.orientation_w;
+		tag_msg.pose.orientation.x = tag.pose.orientation_x;
+		tag_msg.pose.orientation.y = tag.pose.orientation_y;
+		tag_msg.pose.orientation.z = tag.pose.orientation_z;
+		tag_msg.markerPixelWidth = tag.tagWidth;
+		tag_msg.tagImgRot = tag.tagImgCCRotDeg/90;
+		for ( unsigned int i = 0; i<tag.tagCorners.size(); i++ )
+		{
+			tag_msg.tagPixCorners.push_back(tag.tagCorners[i].x);
+			tag_msg.tagPixCorners.push_back(tag.tagCorners[i].y);
+		}
+		/*for ( cv::Point2f &p: tag.tagCorners ) {
+			tag_msg.tagPixCorners.push_back(p.x);
+			tag_msg.tagPixCorners.push_back(p.y);
+		}*/
+		tag_msg.markerWidth = params.markerWidthM;
 
-      const double* magsPtr = (double*) tag.payload.mags.data;
-      tag_msg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
-      const double* phasesPtr = (double*) tag.payload.phases.data;
-      tag_msg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
-      tag_msg.bitChunksStr = tag.payload.bitChunksStr;
-      tag_msg.decodedPayloadStr = tag.payload.decodedPayloadStr;
+		const double* magsPtr = (double*) tag.payload.mags.data;
+		tag_msg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+		const double* phasesPtr = (double*) tag.payload.phases.data;
+		tag_msg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+		tag_msg.bitChunksStr = tag.payload.bitChunksStr;
+		tag_msg.decodedPayloadStr = tag.payload.decodedPayloadStr;
 
-      tags_msg.tags.push_back(tag_msg);
+		tags_msg.tags.push_back(tag_msg);
     }
     tagDetectionsPub.publish(tags_msg);
 #endif
