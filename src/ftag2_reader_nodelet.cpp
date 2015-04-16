@@ -32,8 +32,6 @@ class FTag2ReaderNodelet : public nodelet::Nodelet {
 protected:
   bool alive;
 
-  int frameID;
-
   int tagType;
 
   ReconfigureServer* dynCfgServer;
@@ -52,6 +50,8 @@ protected:
   cv::Mat cameraIntrinsic, cameraDistortion;
 
   PhaseVariancePredictor phaseVariancePredictor;
+
+  ros::Timer idleSpinTimer;
 
   // DEBUG VARIABLES
   Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
@@ -98,7 +98,6 @@ public:
 
 
   virtual void onInit() {
-	frameID = 0;
     // Obtain node handles
     //ros::NodeHandle& nh = getNodeHandle();
     ros::NodeHandle& local_nh = getPrivateNodeHandle();
@@ -181,6 +180,18 @@ public:
     // Finish initialization
     alive = true;
     NODELET_INFO("FTag2 reader nodelet initialized");
+    idleSpinTimer = local_nh.createTimer(ros::Duration(0.5), &FTag2ReaderNodelet::handleIdleSpinOnce, this);
+    idleSpinTimer.start();
+  };
+
+
+  void handleIdleSpinOnce(const ros::TimerEvent& event) {
+#ifdef CV_SHOW_IMAGES
+    char c = waitKey(1);
+    if (c == 'x' || c == 'X') {
+      ros::shutdown();
+    }
+#endif
   };
 
 
@@ -390,8 +401,7 @@ public:
     }
 
     ftag2_core::TagDetections tags_msg;
-    tags_msg.frameID = frameID;
-    frameID++;
+    tags_msg.frameID = ID;
     for (const FTag2Marker& tag: tags) {
       ftag2_core::TagDetection tag_msg;
 

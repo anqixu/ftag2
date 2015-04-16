@@ -42,7 +42,7 @@ char computeXORChecksum(long long bitChunk, unsigned int numBits) {
 };
 
 
-bool filterMagnitudePoly(cv::Mat mags, double gainNeg, double gainPos, double powNeg, double powPos) {
+void filterMagnitudePoly(cv::Mat mags, double gainNeg, double gainPos, double powNeg, double powPos) {
   double* currMagRow;
   double mag1Hz;
   double normMag;
@@ -57,16 +57,22 @@ bool filterMagnitudePoly(cv::Mat mags, double gainNeg, double gainPos, double po
   for (int i = 0; i < mags.rows; i++) {
     currMagRow = (double*) mags.ptr<double>(i);
     mag1Hz = *currMagRow;
-    if (mag1Hz == 0) return false;
+    if (mag1Hz == 0) {
+      throw std::string("failed polynomial magnitude filter (1Hz mag == 0)");
+    }
     currMagRow++;
 
     for (int j = 1; j < mags.cols; j++, currMagRow++) {
       normMag = *currMagRow/mag1Hz;
-      if (normMag < lowerThresh[j] || normMag > upperThresh[j]) return false;
+      if (normMag < lowerThresh[j] || normMag > upperThresh[j]) {
+        std::ostringstream oss;
+        oss << "failed to pass through polynomial magnitude filter (" << j+1 <<
+            "Hz: " << normMag << " out of bounds [" << lowerThresh[j] << ", " <<
+            upperThresh[j] << ")";
+        throw oss.str();
+      }
     }
   }
-
-  return true;
 };
 
 
@@ -133,6 +139,8 @@ unsigned long long extractSigBits(const cv::Mat& phases, bool flipped, unsigned 
 };
 
 
+#ifdef __DEPRECATED_CODE__
+// TODO: 9 remove deprecated code
 bool extractPhasesAndSig(const cv::Mat& img, FTag2Marker& tag, unsigned int numSamplesPerRow, unsigned int sigPskSize) {
   assert(numSamplesPerRow > 0);
   assert(img.channels() == 1);
@@ -191,6 +199,107 @@ bool extractPhasesAndSig(const cv::Mat& img, FTag2Marker& tag, unsigned int numS
 
   return true;
 };
+#endif
+
+
+void extractPhasesAndSigWithMagFilter(const cv::Mat& img, FTag2Marker& tag,
+    unsigned int numSamplesPerRow, unsigned int sigPskSize,
+    double magFilGainNeg, double magFilGainPos, double magFilPowNeg, double magFilPowPos) {
+  assert(numSamplesPerRow > 0);
+  assert(img.channels() == 1);
+  const unsigned int MAX_NUM_FREQS = tag.payload.NUM_FREQS();
+
+  img.copyTo(tag.tagImg);
+
+  // Extract rays
+  cv::Mat horzRays = extractHorzRays(tag.tagImg, numSamplesPerRow);
+  cv::Mat vertRays = extractVertRays(tag.tagImg, numSamplesPerRow);
+  if (horzRays.cols < int(MAX_NUM_FREQS*2+1) ||
+      vertRays.cols < int(MAX_NUM_FREQS*2+1)) {
+    throw std::string("Insufficient number of frequencies in tag spectra");
+  }
+
+  // Compute magnitude and phase spectra for both horizontal and vertical rays
+  cv::Mat flippedRays, fft;
+  cv::Mat horzMagSpec, vertMagSpec, horzPhaseSpec, vertPhaseSpec;
+  cv::vector<cv::Mat> fftChannels(2);
+
+  cv::dft(horzRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, horzRays.rows);
+  cv::split(fft, fftChannels);
+  cv::magnitude(fftChannels[0], fftChannels[1], horzMagSpec);
+  cv::phase(fftChannels[0], fftChannels[1], horzPhaseSpec, true);
+
+  cv::flip(vertRays, flippedRays, 1);
+  cv::dft(flippedRays, fft, cv::DFT_ROWS + cv::DFT_COMPLEX_OUTPUT, flippedRays.rows);
+  cv::split(fft, fftChannels);
+  cv::magnitude(fftChannels[0], fftChannels[1], vertMagSpec);
+  cv::phase(fftChannels[0], fftChannels[1], vertPhaseSpec, true);
+
+  // Extract and validate phase+magnitude signatures, and determine orientation
+  const unsigned long long sigKey = tag.payload.SIG_KEY();
+  const cv::Range freqSpecRange(1, MAX_NUM_FREQS+1);
+  std::string magFilErr;
+  tag.tagImgCCRotDeg = -1; // Set once found orientation with proper magnitude signature
+  if (extractSigBits(horzPhaseSpec, false, sigPskSize) == sigKey) {
+    try {
+      magFilErr = "";
+      tag.payload.mags = horzMagSpec(cv::Range::all(), freqSpecRange).clone();
+      filterMagnitudePoly(tag.payload.mags, magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos);
+      tag.payload.phases = horzPhaseSpec(cv::Range::all(), freqSpecRange).clone();
+      tag.tagImgCCRotDeg = 0;
+    } catch (const std::string& err) {
+      magFilErr = err;
+      tag.tagImgCCRotDeg = -2;
+    }
+  }
+
+  if (tag.tagImgCCRotDeg < 0 && extractSigBits(vertPhaseSpec, false, sigPskSize) == sigKey) {
+    try {
+      magFilErr = "";
+      tag.payload.mags = vertMagSpec(cv::Range::all(), freqSpecRange).clone();
+      filterMagnitudePoly(tag.payload.mags, magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos);
+      tag.payload.phases = vertPhaseSpec(cv::Range::all(), freqSpecRange).clone();
+      tag.tagImgCCRotDeg = 270;
+    } catch (const std::string& err) {
+      magFilErr = err;
+      tag.tagImgCCRotDeg = -2;
+    }
+  }
+
+  if (tag.tagImgCCRotDeg < 0 && extractSigBits(horzPhaseSpec, true, sigPskSize) == sigKey) {
+    try {
+      magFilErr = "";
+      cv::flip(horzMagSpec(cv::Range::all(), freqSpecRange), tag.payload.mags, 0);
+      filterMagnitudePoly(tag.payload.mags, magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos);
+      flipPhases(horzPhaseSpec(cv::Range::all(), freqSpecRange), tag.payload.phases);
+      tag.tagImgCCRotDeg = 180;
+    } catch (const std::string& err) {
+      magFilErr = err;
+      tag.tagImgCCRotDeg = -2;
+    }
+  }
+
+  if (tag.tagImgCCRotDeg < 0 && extractSigBits(vertPhaseSpec, true, 3) == sigKey) {
+    try {
+      magFilErr = "";
+      cv::flip(vertMagSpec(cv::Range::all(), freqSpecRange), tag.payload.mags, 0);
+      filterMagnitudePoly(tag.payload.mags, magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos);
+      flipPhases(vertPhaseSpec(cv::Range::all(), freqSpecRange), tag.payload.phases);
+      tag.tagImgCCRotDeg = 90;
+    } catch (const std::string& err) {
+      magFilErr = err;
+      tag.tagImgCCRotDeg = -2;
+    }
+  }
+
+  if (tag.tagImgCCRotDeg < 0) {
+    if (magFilErr.size() > 0) {
+      throw magFilErr;
+    } else {
+      throw "Could not find rotation matching phase signature";
+    }
+  }
+};
 
 
 FTag2Marker decodeQuad(const cv::Mat quadImg,
@@ -223,17 +332,10 @@ FTag2Marker decodeQuad(const cv::Mat quadImg,
     throw std::string("INTERNAL ERROR: could not identify tag's bits per freq due to unexpected type");
   }
   unsigned int sigPSKSize = bitsPerFreq[0];
-  if (!extractPhasesAndSig(croppedTagImg, tagBuffer, numSamplesPerRow, sigPSKSize)) { // NOTE: last argument (3) is the PSK size for the signature frequency
-    throw std::string("failed to validate phase signature");
-  } else {
-    // Update image of tag based on detected orientation
-    BaseCV::rotate90(trimmedTagImg, tagBuffer.tagImg, tagBuffer.tagImgCCRotDeg/90);
-  }
-
-  // Run magnitude filter
-  if (!filterMagnitudePoly(tagBuffer.payload.mags, magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos)) {
-    throw std::string("failed to pass through polynomial magnitude filter");
-  }
+  // NOTE: function will throw std::string error if failed
+  extractPhasesAndSigWithMagFilter(croppedTagImg, tagBuffer,
+      numSamplesPerRow, sigPSKSize,
+      magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos);
 
   // Compute pose of tag
   //tagBuffer.tagCorners.clear(); // redundant
