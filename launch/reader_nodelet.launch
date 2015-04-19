@@ -1,4 +1,4 @@
-unch>
+<launch>
   <arg name="nodelet_name" value="ftag2" />
 
   <!-- Uncomment only one of the following -->
@@ -10,7 +10,7 @@ unch>
   
   <node pkg="nodelet" type="nodelet" name="$(arg nodelet_name)"
         args="load ftag2/ftag2_reader_nodelet nodelet_manager">
-    <!-- tag_type must have numerical value, with #S#F###B format (exception: 653=6S5F3B old variant) -->
+    <!-- tag_type must have numerical value, with #S#F###B format -->
     <!-- param name="tag_type" type="int" value="6533322" / -->
     <param name="tag_type" type="int" value="6222" /> 
         
@@ -19,6 +19,8 @@ unch>
   
     <!--param name="transport_type" value="compressed" /-->
     <param name="markerWidthM" value="0.07" />
+    
+    <param name="quadMaxScans" value="30" />
     
     <param name="profiler_delay_sec" value="0.0" /> <!-- 0: disable -->
     

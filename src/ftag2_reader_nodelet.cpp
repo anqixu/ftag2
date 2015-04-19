@@ -70,7 +70,7 @@ public:
       profilerDelaySec(0) {
     params.quadFastDetector = false;
     params.quadRefineCorners = true;
-    params.quadMaxScans = 10;
+    params.quadMaxScans = 30;
     params.tagMaxStripAvgDiff = 15.0;
     params.tagBorderMeanMaxThresh = 80.0;
     params.tagBorderStdMaxThresh = 40.0;
@@ -220,7 +220,15 @@ public:
     updateDyncfg();
 
     cv_bridge::CvImageConstPtr img = cv_bridge::toCvShare(msg);
-    processImage(img->image, msg->header.seq);
+    try {
+      processImage(img->image, msg->header.seq);
+    } catch (const std::string& err) {
+      ROS_ERROR_STREAM("Nodelet shutting down: " << err);
+      ros::shutdown();
+    } catch (char const* err) {
+      ROS_ERROR_STREAM("Nodelet shutting down: (caught char*!) " << err);
+      ros::shutdown();
+    }
   };
 
 
@@ -237,7 +245,15 @@ public:
       for (int i = 0; i < 9; i++, cameraIntrinsicPtr++) *cameraIntrinsicPtr = cam_info->K[i];
     }
     cv_bridge::CvImageConstPtr img = cv_bridge::toCvShare(msg);
-    processImage(img->image, msg->header.seq);
+    try {
+      processImage(img->image, msg->header.seq);
+    } catch (const std::string& err) {
+      ROS_ERROR_STREAM("Nodelet shutting down: " << err);
+      ros::shutdown();
+    } catch (char const* err) {
+      ROS_ERROR_STREAM("Nodelet shutting down: (caught char*!) " << err);
+      ros::shutdown();
+    }
   };
 
 
