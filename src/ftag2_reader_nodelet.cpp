@@ -347,13 +347,13 @@ public:
           tag_msg.pose.orientation.x = currTag.pose.orientation_x;
           tag_msg.pose.orientation.y = currTag.pose.orientation_y;
           tag_msg.pose.orientation.z = currTag.pose.orientation_z;
-          tag_msg.markerPixelWidth = currTag.tagWidth;
-          tag_msg.tagImgRot = currTag.tagImgCCRotDeg/90;
-          for ( cv::Point2f &p: currTag.tagCorners ) {
-          	tag_msg.tagPixCorners.push_back(p.x);
-          	tag_msg.tagPixCorners.push_back(p.y);
+          tag_msg.markerWidthPx = currTag.tagWidth;
+          tag_msg.markerRot90 = currTag.tagImgCCRotDeg/90;
+          for (const cv::Point2f& p: currTag.tagCorners) {
+          	tag_msg.markerCornersPx.push_back(p.x);
+          	tag_msg.markerCornersPx.push_back(p.y);
           }
-          tag_msg.markerWidth = params.markerWidthM;
+          tag_msg.markerWidthM = params.markerWidthM;
 
           const double* magsPtr = (double*) currTag.payload.mags.data;
           tag_msg.mags = std::vector<double>(magsPtr, magsPtr + currTag.payload.mags.rows * currTag.payload.mags.cols);
@@ -433,18 +433,13 @@ public:
 		tag_msg.pose.orientation.x = tag.pose.orientation_x;
 		tag_msg.pose.orientation.y = tag.pose.orientation_y;
 		tag_msg.pose.orientation.z = tag.pose.orientation_z;
-		tag_msg.markerPixelWidth = tag.tagWidth;
-		tag_msg.tagImgRot = tag.tagImgCCRotDeg/90;
-		for ( unsigned int i = 0; i<tag.tagCorners.size(); i++ )
-		{
-			tag_msg.tagPixCorners.push_back(tag.tagCorners[i].x);
-			tag_msg.tagPixCorners.push_back(tag.tagCorners[i].y);
+		tag_msg.markerWidthPx = tag.tagWidth;
+		tag_msg.markerRot90 = tag.tagImgCCRotDeg/90;
+		for (const cv::Point2f& p: tag.tagCorners) {
+			tag_msg.markerCornersPx.push_back(p.x);
+			tag_msg.markerCornersPx.push_back(p.y);
 		}
-		/*for ( cv::Point2f &p: tag.tagCorners ) {
-			tag_msg.tagPixCorners.push_back(p.x);
-			tag_msg.tagPixCorners.push_back(p.y);
-		}*/
-		tag_msg.markerWidth = params.markerWidthM;
+		tag_msg.markerWidthM = params.markerWidthM;
 
 		const double* magsPtr = (double*) tag.payload.mags.data;
 		tag_msg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);

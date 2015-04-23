@@ -967,7 +967,7 @@ void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
   //       position and orientation is defined with respect to the camera's
   //       static/world frame.
   cv::solvePnP(spatialPoints, cornersPx, cameraIntrinsic, cameraDistortion,
-      rotVec, transVec);
+      rotVec, transVec, false, CV_ITERATIVE);
   cv::Rodrigues(rotVec, rotMat);
   vc_math::rotMat2quat(rotMat, rw, rx, ry, rz);
 

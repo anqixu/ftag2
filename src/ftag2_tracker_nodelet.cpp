@@ -390,7 +390,7 @@ public:
         tagMsg.pose.orientation.x = tag.pose.orientation_x;
         tagMsg.pose.orientation.y = tag.pose.orientation_y;
         tagMsg.pose.orientation.z = tag.pose.orientation_z;
-        tagMsg.markerPixelWidth = tag.tagWidth;
+        tagMsg.markerWidthPx = tag.tagWidth;
         const double* magsPtr = (double*) tag.payload.mags.data;
         tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
         const double* phasesPtr = (double*) tag.payload.phases.data;
@@ -542,7 +542,7 @@ public:
       tagMsg.pose.orientation.x = tag.pose.orientation_x;
       tagMsg.pose.orientation.y = tag.pose.orientation_y;
       tagMsg.pose.orientation.z = tag.pose.orientation_z;
-      tagMsg.markerPixelWidth = tag.tagWidth;
+      tagMsg.markerWidthPx = tag.tagWidth;
       const double* magsPtr = (double*) tag.payload.mags.data;
       tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
       const double* phasesPtr = (double*) tag.payload.phases.data;
