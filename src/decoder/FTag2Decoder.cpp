@@ -173,6 +173,16 @@ void extractPhasesAndSigWithMagFilter(const cv::Mat& img, FTag2Marker& tag,
   cv::phase(fftChannels[0], fftChannels[1], vertPhaseSpec, true);
 
   // Check for phase signature and apply magnitude filter to all 4 quad orientations
+  //
+  // 1. identify all 90-rotated orientations containing the phase signature
+  // 2. for each candidate orientation, compute the normalized standard
+  //    deviation in magnitudes across S slices for each given freq, and average
+  //    these normalized standard deviations across frequencies; i.e.
+  //    avg_freq( std_slice(mag)/avg_slice(mag) )
+  // 3. accept the orientation with the smallest frequency-averaged across-slice
+  //    normalized standard deviations in magnitude, i.e. the orientation
+  //    whose magnitude matrix is most consistent across slices, while
+  //    accounting for frequency-dependent drop-offs
   const unsigned long long sigKey = tag.payload.SIG_KEY();
   const cv::Range freqSpecRange(1, MAX_NUM_FREQS+1);
   const double INF = std::numeric_limits<double>::infinity();
@@ -202,10 +212,16 @@ void extractPhasesAndSigWithMagFilter(const cv::Mat& img, FTag2Marker& tag,
     if (foundSig[rot90]) {
       try {
         filterMagnitudePoly(tempMag, magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos);
-        cv::meanStdDev(tempMag(cv::Range::all(), cv::Range(0, 1)), tempMean, tempStdev);
-        if (tempMean[0] > 0) {
-          sliceMagNormStd[rot90] = tempStdev[0]/tempMean[0];
+
+        sliceMagNormStd[rot90] = 0;
+        for (unsigned int freq = 1; freq <= MAX_NUM_FREQS; freq++) {
+          cv::meanStdDev(tempMag(cv::Range::all(), cv::Range(freq-1, freq)), tempMean, tempStdev);
+          if (tempMean[0] > 0) {
+            sliceMagNormStd[rot90] += tempStdev[0]/tempMean[0];
+          }
         }
+        sliceMagNormStd[rot90] /= MAX_NUM_FREQS;
+
       } catch (const std::string& err) {
         sigCheckErr[rot90] = err;
       }
