@@ -297,6 +297,8 @@ public:
     std::vector<FTag2Marker> tags;
     FTag2Marker currTag(tagType);
     for (const Quad& currQuad: quads) {
+      // TODO: 1 reject quads whose corners are outside of image (conservative)
+
       // Reject quads that overlap with already-detected tags (which have larger area than current quad)
       bool overlap = false;
       for (const FTag2Marker& prevTag: tags) {

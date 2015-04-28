@@ -968,6 +968,8 @@ void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
   //       static/world frame.
   cv::solvePnP(spatialPoints, cornersPx, cameraIntrinsic, cameraDistortion,
       rotVec, transVec, false, CV_ITERATIVE);
+  // CV_P3P and especially CV_EPNP confirmed to produce worse pose estimate
+  // than CV_ITERATIVE, when not using a pose prior
   cv::Rodrigues(rotVec, rotMat);
   vc_math::rotMat2quat(rotMat, rw, rx, ry, rz);
 
