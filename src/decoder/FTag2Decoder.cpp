@@ -295,9 +295,6 @@ FTag2Marker decodeQuad(const cv::Mat quadImg,
   // NOTE: function will throw std::string error if failed
   validateTagBorder(trimmedTagImg, tagBorderMeanMaxThresh, tagBorderStdMaxThresh);
 
-  // Crop payload portion of marker
-  cv::Mat croppedTagImg = cropFTag2Border(trimmedTagImg);
-
   // Initialize tag data structure
   FTag2Marker tagBuffer(tagType, trimmedTagImg.rows);
 
@@ -308,7 +305,7 @@ FTag2Marker decodeQuad(const cv::Mat quadImg,
   }
   unsigned int sigPSKSize = bitsPerFreq[0];
   // NOTE: function will throw std::string error if failed
-  extractPhasesAndSigWithMagFilter(croppedTagImg, tagBuffer,
+  extractPhasesAndSigWithMagFilter(trimmedTagImg, tagBuffer,
       numSamplesPerRow, sigPSKSize,
       magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos);
 
