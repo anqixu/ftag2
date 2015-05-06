@@ -925,18 +925,20 @@ cv::Mat extractHorzRays(cv::Mat tag, unsigned int numSamples,
     double oversamplePct) {
   // Extract rectangular sub-image containing only horizontal sinusoidal signals
   // (using bilinear interpolation to get sub-pixel accuracy)
-  double yMin = double(borderBlocks)/(numRays+2*borderBlocks)*tag.rows;
-  double yMax = double(borderBlocks+numRays)/(numRays+2*borderBlocks)*tag.rows;
-  double xMin = double(borderBlocks+oversamplePct)/(numRays+2*oversamplePct+2*borderBlocks)*tag.cols;
-  double xMax = double(borderBlocks+oversamplePct+numRays)/(numRays+2*oversamplePct+2*borderBlocks)*tag.cols;
-  cv::Size2f sineRectSize(xMax-xMin, yMax-yMin);
-  cv::Point2f sineRectCenter((xMin+xMax)/2, (yMin+yMax)/2);
-  cv::Mat sineRect; // TODO: 000 need to initialize?
+  cv::Size2f sineRectSize(double(tag.cols)/(numRays+2*borderBlocks)*numRays/(1.0+2*oversamplePct),
+      double(tag.rows)/(numRays+2*borderBlocks)*numRays);
+  cv::Point2f sineRectCenter(double(tag.cols-1)/2, double(tag.rows-1)/2);
+  cv::Mat sineRect;
   cv::getRectSubPix(tag, sineRectSize, sineRectCenter, sineRect, -1); // -1: extract same pixel depth as source image
+  cv::Mat sineRectT = sineRect(cv::Range::all(), cv::Range(0, sineRect.cols-1));
+  // NOTE: FFT expects sinusoidal signals at period-normalized values
+  //       from 0/T to (T-1)/T; since sineRect samples signals at
+  //       period-normalized values from 0/T to T/T, sineRectT thus need to
+  //       remove the right-most pixel column from sineRect
 
   // Sample pixels row(s) from sub-image and average if numSamples > 1
-  double rowHeight = double(sineRect.rows)/numRays;
-  cv::Mat rays = cv::Mat::zeros(numRays, sineRect.cols, CV_64FC1);
+  double rowHeight = double(sineRectT.rows)/numRays;
+  cv::Mat rays = cv::Mat::zeros(numRays, sineRectT.cols, CV_64FC1);
   cv::Mat tagRayF;
   unsigned int i, j;
   int quadRow;
@@ -944,7 +946,7 @@ cv::Mat extractHorzRays(cv::Mat tag, unsigned int numSamples,
     cv::Mat raysRow = rays.row(i);
     for (j = 0; j < numSamples; j++) {
       quadRow = rowHeight * (i + double(j + 1)/(numSamples + 1));
-      cv::Mat tagRay = sineRect.row(quadRow);
+      cv::Mat tagRay = sineRectT.row(quadRow);
       tagRay.convertTo(tagRayF, CV_64FC1);
       raysRow += tagRayF;
     }
