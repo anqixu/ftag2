@@ -316,7 +316,7 @@ inline cv::Mat cropFTag2Border(cv::Mat tag, unsigned int numRays = 6, unsigned i
 */
 
 
-#define SINE_OVERSAMPLE_PCT (0.1)
+#define SINE_OVERSAMPLE_PCT (0.05)
 cv::Mat extractHorzRays(cv::Mat tag, unsigned int numSamples,
     unsigned int numRays = 6, unsigned int borderBlocks = 1,
     double oversamplePct = SINE_OVERSAMPLE_PCT);

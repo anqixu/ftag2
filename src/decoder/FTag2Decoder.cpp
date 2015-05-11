@@ -488,6 +488,18 @@ void decodePayload(FTag2Payload& tag, double nStdThresh) {
 
 #endif
 
+  } else if (tag.type == FTag2Payload::FTAG2_6S5F33222B) {
+    tag.hasValidXORs = true;
+    tag.decodedPayloadStr = tag.bitChunksStr;
+    tag.numDecodedSections = tag.numDecodedPhases;
+
+
+  } else if (tag.type == FTag2Payload::FTAG2_6S5F22111B) {
+    tag.hasValidXORs = true;
+    tag.decodedPayloadStr = tag.bitChunksStr;
+    tag.numDecodedSections = tag.numDecodedPhases;
+
+
   } else if (tag.type == FTag2Payload::FTAG2_6S2F21B) {
     tag.hasValidXORs = true;
     tag.decodedPayloadStr = tag.bitChunksStr;

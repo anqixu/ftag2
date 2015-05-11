@@ -64,7 +64,6 @@ public:
   FTag2ReaderNodelet() : nodelet::Nodelet(),
       alive(false),
       tagType(FTag2Payload::FTAG2_6S5F3B),
-//      tagType(FTag2Payload::FTAG2_6S5F33322B),
       dynCfgServer(NULL),
       dynCfgSyncReq(false),
       latestProfTime(ros::Time::now()),
