@@ -256,23 +256,27 @@ void extractPhasesAndSigWithMagFilter(const cv::Mat& img, FTag2Marker& tag,
     tag.payload.phases = vertPhaseSpec(cv::Range::all(), freqSpecRange).clone();
   } else {
     // Verbose error
-    /*
+    ///*
     std::ostringstream oss;
     oss << "phase+mag sig filter failed:" << std::endl <<
+        "horzRays = " << cv::format(horzRays, "matlab") << ";" << std::endl <<
+        "vertRays = " << cv::format(vertRays, "matlab") << ";" << std::endl <<
+        "horzPhases = " << cv::format(horzPhaseSpec(cv::Range::all(), freqSpecRange), "matlab") << ";" << std::endl <<
+        "vertPhases = " << cv::format(vertPhaseSpec(cv::Range::all(), freqSpecRange), "matlab") << ";" << std::endl <<
         "  0-rot: " << sigCheckErr[0] << std::endl <<
         " 90-rot: " << sigCheckErr[1] << std::endl <<
         "180-rot: " << sigCheckErr[2] << std::endl <<
         "270-rot: " << sigCheckErr[3] << std::endl;
     throw oss.str();
-    */
+    //*/
 
     // Sparse error
-    ///*
+    /*
     for (int rot90 = 0; rot90 < 4; rot90++) {
       if (foundSig[rot90]) throw sigCheckErr[rot90];
     }
     throw sigCheckErr[0];
-    //*/
+    */
   }
 };
 
