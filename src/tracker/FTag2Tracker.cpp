@@ -10,8 +10,9 @@
 #include "decoder/FTag2Decoder.hpp"
 
 //#ifndef SILENT_TRACKER
-#undef SILENT_TRACKER
+//	#define SILENT_TRACKER
 //#endif
+#undef SILENT_TRACKER
 
 using namespace std;
 
@@ -31,10 +32,9 @@ inline double markerDistance( FTag2Pose m1, FTag2Pose m2 ) {
 }
 
 void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
-  int tagType = -1;
-  if (detectedTags.size() > 0) tagType = detectedTags[0].payload.type;
+	int tagType = -1;
+	if (detectedTags.size() > 0) tagType = detectedTags[0].payload.type;
 
-// bitChunksStr = 01234_01234_01234_01234_01234_01234 format
 	std::sort(filters.begin(), filters.end(), compareMarkerFilters);
 
 	vector <MarkerFilter>::iterator it1 = filters.begin();
@@ -51,6 +51,14 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 		while ( it2 != detectedTags.end() )
 		{
 			FTag2Marker tag = *it2;
+//			std::cout << "Filter pose: " << tag.pose.position_x << ", "
+//					<< tag.pose.position_y << ", "
+//					<< tag.pose.position_z << ", "
+//					<< tag.pose.orientation_w << ", "
+//					<< tag.pose.orientation_x << ", "
+//					<< tag.pose.orientation_y << ", "
+//					<< tag.pose.orientation_z << ", "
+//					<< std::endl;
 			if (tag.payload.withinPhaseRange(hypothesis.payload))
 			{
 				double d = markerDistance(tag.pose,hypothesis.pose);
@@ -74,6 +82,7 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 			if ( it1->get_frames_without_detection() > MAX_FRAMES_NO_DETECTION )
 			{
 				ready_to_be_killed.push_back(*it1);
+				kill_count++;
 			}
 			else
 			{
@@ -88,25 +97,6 @@ void FTag2Tracker::correspondence(std::vector<FTag2Marker> detectedTags){
 
 void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion )
 {
-//	cout << "BEFORE correspondence: Num. Filters: " << filters.size() << endl;
-
-    int i=0;
-	for ( FTag2Marker f: detectedTags )
-	{
-		std::cout << "Detected tag " << i << ": Variances: ";
-		for ( double d: f.payload.phaseVariances )
-		{
-			cout << sqrt(d) << ", ";
-		}
-        
-		cout << endl << "Phases: ";
-         for ( int j=0; j<6; j++) {
-            cout << f.payload.phases.at<double>(j,0) << ", ";
-        }
-        cout << endl;
-        i++;
-	}
-
     correspondence( detectedTags );
 
 #ifndef SILENT_TRACKER
@@ -116,68 +106,42 @@ void FTag2Tracker::step(std::vector<FTag2Marker> detectedTags, double quadSizeM,
 	cout << to_be_spawned.size() << " filters spawned" << endl;
 	cout << not_matched.size() << " filters not matched" << endl;
 	cout << ready_to_be_killed.size() << " to be killed" << endl;
+	cout << "Total kill count: " << kill_count << endl;
 #endif
 
 	/* UPDATE FILTERS: FILTERS WITH MATCHING DETECTED TAG */
 	while ( !filters_with_match.empty() && !detection_matches.empty() )
 	{
-//		cout << "UPDATING MATCHED FILTERS" << endl;
 		filters_with_match.back().step( detection_matches.back(), quadSizeM, cameraIntrinsic, cameraDistortion );
 		filters.push_back( filters_with_match.back() );
 		filters_with_match.pop_back();
 		detection_matches.pop_back();
 	}
-
 	/* SPAWN NEW FILTERS: DETECTED TAGS WITH NO CORRESPONDING FILTER */
 	while ( !to_be_spawned.empty() )
 	{
-//		cout << "SPAWNING FILTER" << endl;
-		MarkerFilter MF(to_be_spawned.back());
-		MF.step(to_be_spawned.back(), quadSizeM, cameraIntrinsic, cameraDistortion );
+		MarkerFilter MF(to_be_spawned.back(), quadSizeM, cameraIntrinsic, cameraDistortion );
+//		MF.step(to_be_spawned.back(), quadSizeM, cameraIntrinsic, cameraDistortion );
 		to_be_spawned.pop_back();
 		filters.push_back(MF);
 	}
-
 	/* UPDATE FILTERS: FILTERS WITH NO MATCHING DETECTED TAGS */
 	while ( !not_matched.empty() )
 	{
-//		cout << "UPDATING NOT MATCHED FILTER" << endl;
 		not_matched.back().step( quadSizeM, cameraIntrinsic, cameraDistortion );
 		filters.push_back(not_matched.back());
 		not_matched.pop_back();
 	}
-
 	/* KILL FILTERS: FILTERS WITH NO MATCHING TAGS FOR MANY CONSECUTIVE FRAMES */
 	while ( !ready_to_be_killed.empty() )
 	{
-//		cout << "KILLING FILTER" << endl;
 		/* TODO: Properly kill the filters */
 		ready_to_be_killed.clear();
 	}
-#ifndef SILENT_TRACKER
-	std::cout << "After current iteration, " << filters.size() << " filters exist." << endl;
-#endif
-    i = 0;
-    for ( MarkerFilter filt: filters )
-    {
-        FTag2Marker f = filt.hypothesis;
-        std::cout << "Filter " << i << ": Variances: ";
-        for ( double d: f.payload.phaseVariances )
-        {
-            cout << sqrt(d) << ", ";
-        }
-        cout << endl << "Phases: ";
-        for ( int j=0; j<6; j++) {
-            cout << f.payload.phases.at<double>(j,0) << ", ";
-        }
-        cout << endl;
-        i++;
-    } 
 }
 
 void FTag2Tracker::updateParameters( )
 {
-//	std::cout << "UPDATING PARAMETERS IN FTAG2TRACKER" << std::endl;
 //	for ( MarkerFilter f: filters )
 //		f.updateParameters(numberOfParticles_, position_std_, orientation_std_, position_noise_std_, orientation_noise_std_, velocity_noise_std_, acceleration_noise_std_);
 }

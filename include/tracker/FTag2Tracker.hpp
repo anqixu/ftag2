@@ -23,10 +23,10 @@ private:
 	std::vector<FTag2Marker> detection_matches;
 	std::vector<FTag2Marker> to_be_spawned;
 	constexpr static int MAX_FRAMES_NO_DETECTION = 10;
-
+	int kill_count;
 public:
 	std::vector<MarkerFilter> filters;
-	FTag2Tracker() {};
+	FTag2Tracker() { kill_count = 0; };
 	virtual ~FTag2Tracker() {};
 	void step(std::vector<FTag2Marker> detectedTags, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion );
 	void correspondence(std::vector<FTag2Marker> detectedTags);

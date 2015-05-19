@@ -21,10 +21,10 @@ bool FTag2Payload::withinPhaseRange(const FTag2Payload& other) {
   if (type != other.type ||
       phases.rows != other.phases.rows ||
       phases.cols != other.phases.cols) {
-    cout << "ERROR! withinPhaseRange tag type mismatch!" << endl <<
-        "- type: " << type << " | " << other.type << endl <<
-        "- phases.rows: " << phases.rows << " | " << other.phases.rows << endl <<
-        "- phases.cols: " << phases.cols << " | " << other.phases.cols << endl << endl;
+//    cout << "ERROR! withinPhaseRange tag type mismatch!" << endl <<
+//        "- type: " << type << " | " << other.type << endl <<
+//        "- phases.rows: " << phases.rows << " | " << other.phases.rows << endl <<
+//        "- phases.cols: " << phases.cols << " | " << other.phases.cols << endl << endl;
 
     throw std::string("tag type mismatch (from withinPhaseRange)");
     return false;
@@ -36,6 +36,7 @@ bool FTag2Payload::withinPhaseRange(const FTag2Payload& other) {
 
   double avgPhaseDiff = 0.0;
   for (unsigned int i = 0; i < numPhases; i++, thisPhases++, otherPhases++) {
+	if ( *otherPhases < 0 ) (*otherPhases) += 360;
     avgPhaseDiff += vc_math::angularDist(*thisPhases, *otherPhases, 360.0);
   }
   avgPhaseDiff /= numPhases;
