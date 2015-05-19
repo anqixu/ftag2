@@ -365,49 +365,4 @@ void OpenCVCanny( cv::InputArray _src, cv::OutputArray _dst,
                 int aperture_size, cv::Mat& dx, cv::Mat& dy, bool L2gradient = false );
 
 
-/**
- * This class predicts the variance of encoded phases (in degrees) inside a
- * FTag2 marker, using a linear regression model incorporating a constant bias,
- * the marker's distance and angle from the camera, and the frequency of each
- * encoded phase.
- */
-class PhaseVariancePredictor {
-protected:
-  std::mutex paramsMutex;
-
-  double weight_r; // norm of XY components of position
-  double weight_z; // projective distance from camera, in camera's ray vector
-  double weight_angle; // angle between tag's normal vector and camera's ray vector (in degrees)
-  double weight_freq; // encoding frequency of phase
-  double weight_bias; // constant bias
-
-
-public:
-  PhaseVariancePredictor() : weight_r(-0.433233403141656), weight_z(1.178509836433552), weight_angle(0.225729455615220),
-      weight_freq(3.364693352246631), weight_bias(-4.412137643426274) {};
-
-  void updateParams(double w_r, double w_z, double w_a, double w_f, double w_b) {
-    paramsMutex.lock();
-//    weight_r = w_r;
-//    weight_z = w_z;
-//    weight_angle = w_a;
-//    weight_freq = w_f;
-//    weight_bias = w_b;
-    paramsMutex.unlock();
-  };
-
-  void predict(FTag2Marker* tag) {
-    double r = sqrt(tag->pose.position_x*tag->pose.position_x + tag->pose.position_y*tag->pose.position_y);
-    double z = tag->pose.position_z;
-    double angle = tag->pose.computeOutOfTagPlaneAngle()*vc_math::radian;
-    paramsMutex.lock();
-    for (unsigned int freq = 1; freq <= tag->payload.phaseVariances.size(); freq++) {
-      tag->payload.phaseVariances[freq-1]= pow(weight_bias + weight_r*r + weight_z*z +
-          weight_angle*angle + weight_freq*freq,2);
-    }
-    paramsMutex.unlock();
-  };
-};
-
-
 #endif /* FTAG2DETECTOR_HPP_ */

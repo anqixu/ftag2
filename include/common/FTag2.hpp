@@ -65,6 +65,7 @@ struct FTag2Payload {
 
   cv::Mat mags;
   cv::Mat phases;
+  cv::Mat phasesBiasAdj;
   std::vector<double> phaseVariances;
 
   bool hasSignature;
@@ -200,7 +201,7 @@ struct FTag2Payload {
 
 struct FTag2Marker {
   std::vector<cv::Point2f> tagCorners; /** vectorized as x1, y1, x2, y2, ...; in CCW order (w.r.t. tag's coordinate frame, where +x: right, +y: bottom); starting with top-right corner **/
-  double tagWidth; /** in meters **/
+  double tagWidth; /** in pixels **/
 
   FTag2Pose pose;
   FTag2Payload payload;

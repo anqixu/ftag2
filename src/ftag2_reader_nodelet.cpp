@@ -333,6 +333,7 @@ public:
             params.tagMagFilPowNeg,
             params.tagMagFilPowPos,
             phaseVariancePredictor);
+        // TODO: 0 apply phase corrections (bias model, stdev model)
         decodePayload(currTag.payload, params.tempTagDecodeStd);
         
 //        std::cout << "ROTATION: " << currTag.tagImgCCRotDeg << ",\t/90 = " << currTag.tagImgCCRotDeg/90 << endl;
