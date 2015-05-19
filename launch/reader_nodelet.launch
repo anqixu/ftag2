@@ -2,7 +2,7 @@
   <arg name="nodelet_name" value="ftag2" />
 
   <!-- Uncomment only one of the following -->
-  <remap from="/$(arg nodelet_name)/image_in" to="/camera/image_raw" />
+  <remap from="/$(arg nodelet_name)/image_in" to="/camera2/image_raw" />
   <!-- remap from="/$(arg nodelet_name)/camera_in" to="/camera/image_raw" /-->
 
   <!-- node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen" launch-prefix="gdb -ex run - -args" / -->

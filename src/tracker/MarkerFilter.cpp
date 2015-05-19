@@ -8,67 +8,57 @@
 #include "tracker/MarkerFilter.hpp"
 
 int MarkerFilter::num_Markers = 0;
-using namespace Kalman;
 
-MarkerFilter::MarkerFilter( FTag2Marker detection ) :
+MarkerFilter::MarkerFilter( FTag2Marker detection,  double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion ):
     detectedTag(detection.payload.type),
     IF(detection.payload.type),
     hypothesis(detection.payload.type) {
 	got_detection_in_current_frame = true;
 	num_Markers++;
 	marker_id = num_Markers;
-//	std::vector<FTag2Pose> observations;
-//	observations.push_back(detection.pose);
-	KF = KalmanTrack(detection.pose);
+
+	KF = Kalman(detection.pose);
+	hypothesis.pose = KF.getEstimatedPose();
+	hypothesis.back_proj_corners = backProjectQuad( hypothesis.pose.position_x,
+				hypothesis.pose.position_y, hypothesis.pose.position_z,
+				hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,
+				hypothesis.pose.orientation_y, hypothesis.pose.orientation_z,
+				quadSizeM, cameraIntrinsic, cameraDistortion );
 
 	IF = PayloadFilter(detection.payload.type);
+	IF.step(detection.payload);
 	frames_without_detection = 0;
+	active = false;
 };
 
 void MarkerFilter::step( FTag2Marker detection, double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion ) {
 	got_detection_in_current_frame = true;
-//	PF.step(detection.pose);
 	hypothesis.tagCorners = detection.tagCorners;
-	hypothesis.pose = detection.pose;
-//	hypothesis.pose = PF.getEstimatedPose();
-
-	KF.step_( detection.pose );
+	KF.step( detection.pose );
 	hypothesis.pose = KF.getEstimatedPose();
-
-//	std::cout << "KF Pose: "
-//			<< hypothesis.pose.position_x << ", "
-//			<< hypothesis.pose.position_y << ", "
-//			<< hypothesis.pose.position_z << ", "
-//			<< hypothesis.pose.orientation_w << ", "
-//			<< hypothesis.pose.orientation_x << ", "
-//			<< hypothesis.pose.orientation_y << ", "
-//			<< hypothesis.pose.orientation_z << ", " << std::endl;
-//	hypothesis.back_proj_corners = backProjectQuad( hypothesis.pose.position_x,
-//			hypothesis.pose.position_y, hypothesis.pose.position_z,
-//			hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,
-//			hypothesis.pose.orientation_y, hypothesis.pose.orientation_z,
-//			quadSizeM, cameraIntrinsic, cameraDistortion );
-
-//	PF.publishTrackedPose(marker_id);
+	hypothesis.back_proj_corners = backProjectQuad( hypothesis.pose.position_x,
+			hypothesis.pose.position_y, hypothesis.pose.position_z,
+			hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,
+			hypothesis.pose.orientation_y, hypothesis.pose.orientation_z,
+			quadSizeM, cameraIntrinsic, cameraDistortion );
 
 	IF.step(detection.payload);
 	IF.getFilteredPayload();
 	hypothesis.payload = IF.getFilteredPayload();
 
 	frames_without_detection = 0;
+	active = true;
 };
 
 void MarkerFilter::step( double quadSizeM, cv::Mat cameraIntrinsic, cv::Mat cameraDistortion  ) {
 	got_detection_in_current_frame = false;
-//	std::cout << "MarkerFilter: stepping without detection" << std::endl;
-//	PF.step();
-	KF.step_( );
+	KF.step();
 	hypothesis.pose = KF.getEstimatedPose();
-//	hypothesis.back_proj_corners = backProjectQuad( hypothesis.pose.position_x,
-//				hypothesis.pose.position_y, hypothesis.pose.position_z,
-//				hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,
-//				hypothesis.pose.orientation_y, hypothesis.pose.orientation_z,
-//				quadSizeM, cameraIntrinsic, cameraDistortion );
+	hypothesis.back_proj_corners = backProjectQuad( hypothesis.pose.position_x,
+				hypothesis.pose.position_y, hypothesis.pose.position_z,
+				hypothesis.pose.orientation_w, hypothesis.pose.orientation_x,
+				hypothesis.pose.orientation_y, hypothesis.pose.orientation_z,
+				quadSizeM, cameraIntrinsic, cameraDistortion );
 
 	IF.step();
 	hypothesis.payload = IF.getFilteredPayload();

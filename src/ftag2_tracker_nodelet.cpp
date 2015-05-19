@@ -12,43 +12,34 @@
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 #include <nodelet/nodelet.h>
-#include "ftag2/FTag2TrackerConfig.h"
-
-#include "std_msgs/Float64MultiArray.h"
-
+#include "ftag2/FTag2ReaderConfig.h"
 #include "ftag2_core/TagDetections.h"
+#include "ftag2_core/TagDetection.h"
+
 #include "ftag2_core/ARMarkerFT.h"
 #include "ftag2_core/ARMarkersFT.h"
-
-#include <tf/transform_broadcaster.h>
-
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
+#include <tf/transform_broadcaster.h>
+
 using namespace std;
 using namespace cv;
 using namespace vc_math;
 
-typedef dynamic_reconfigure::Server<ftag2::FTag2TrackerConfig> ReconfigureServer;
+typedef dynamic_reconfigure::Server<ftag2::FTag2ReaderConfig> ReconfigureServer;
 
-
-//#undef CV_SHOW_IMAGES
 #define CV_SHOW_IMAGES
+#define ROS_PUBLISHING_DETECTIONS
 #undef DISPLAY_DECODED_TAG_PAYLOADS
 
-
-#define DECODE_PAYLOAD_N_STD_THRESH (0.01)
-#define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES (8)
-#define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS (2)
-
-
+#define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES (0)
+#define DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS (0)
 
 namespace ftag2 {
 
 
 class FTag2TrackerNodelet : public nodelet::Nodelet {
 protected:
-  FTag2Tracker FT;
-
   bool alive;
 
   int tagType;
@@ -59,45 +50,46 @@ protected:
 
   image_transport::Subscriber imageSub;
   image_transport::CameraSubscriber cameraSub;
-  ros::Publisher rawTagDetectionsPub;
-  ros::Publisher decodedTagDetectionsPub;
-  ros::Publisher arMarkerPub_;
-  ros::Publisher rvizMarkerPub_;
-  visualization_msgs::Marker rvizMarker_;
-
+  ros::Publisher tagDetectionsPub;
+  ros::Publisher firstTagDetectionPub;
   image_transport::Publisher processedImagePub;
   image_transport::Publisher firstTagImagePub;
 
-//  ros::Publisher vis_pub;
-  int frameID;
+  ros::Publisher rvizMarkersPub_;
+  ros::Publisher arMarkerPub_;
 
-  ftag2::FTag2TrackerConfig params;
+  ftag2::FTag2ReaderConfig params;
 
   cv::Mat cameraIntrinsic, cameraDistortion;
 
   PhaseVariancePredictor phaseVariancePredictor;
 
+  ros::Timer idleSpinTimer;
+
   // DEBUG VARIABLES
-  Profiler lineSegP, quadP, quadExtractorP, decodeQuadP, trackerP, decodePayloadP, durationP, rateP;
+  Profiler lineSegP, quadP, quadExtractorP, decoderP, durationP, rateP;
   ros::Time latestProfTime;
   double profilerDelaySec;
+
+  FTag2Tracker FT;
+
+
 
 public:
   FTag2TrackerNodelet() : nodelet::Nodelet(),
       alive(false),
       tagType(FTag2Payload::FTAG2_6S5F3B),
+//      tagType(FTag2Payload::FTAG2_6S5F33322B),
       dynCfgServer(NULL),
       dynCfgSyncReq(false),
-      frameID(0),
       latestProfTime(ros::Time::now()),
       profilerDelaySec(0) {
-    // Set default parameter values
     params.quadFastDetector = false;
     params.quadRefineCorners = true;
-    params.quadMaxScans = 10;
+    params.quadMaxScans = 30;
     params.tagMaxStripAvgDiff = 15.0;
     params.tagBorderMeanMaxThresh = 80.0;
-    params.tagBorderStdMaxThresh = 30.0;
+    params.tagBorderStdMaxThresh = 40.0;
     params.tagMagFilGainNeg = 0.6;
     params.tagMagFilGainPos = 0.6;
     params.tagMagFilPowNeg = 1.0;
@@ -109,8 +101,7 @@ public:
     params.phaseVarWeightBias = 10*10;
     params.numSamplesPerRow = 1;
     params.markerWidthM = 0.055;
-    params.within_phase_range_threshold = 70.0;
-    FTag2Payload::updateParameters(params.within_phase_range_threshold);
+    params.tempTagDecodeStd = 3;
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
@@ -123,8 +114,6 @@ public:
 
 
   virtual void onInit() {
-    frameID = 0;
-
     // Obtain node handles
     //ros::NodeHandle& nh = getNodeHandle();
     ros::NodeHandle& local_nh = getPrivateNodeHandle();
@@ -178,18 +167,16 @@ public:
     GET_PARAM(phaseVarWeightBias);
     GET_PARAM(numSamplesPerRow);
     GET_PARAM(markerWidthM);
-    GET_PARAM(within_phase_range_threshold);
-#undef GET_PARAM
+    GET_PARAM(tempTagDecodeStd);
+    #undef GET_PARAM
     dynCfgSyncReq = true;
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
-//    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
-    FTag2Payload::updateParameters(params.within_phase_range_threshold);
+
 #ifdef CV_SHOW_IMAGES
     // Configure windows
     //namedWindow("quads", CV_GUI_EXPANDED);
-    namedWindow("hypotheses", CV_GUI_EXPANDED);
     namedWindow("tags", CV_GUI_EXPANDED);
 #endif
 
@@ -199,31 +186,40 @@ public:
 
     // Setup ROS communication links
     image_transport::ImageTransport it(local_nh);
-    rawTagDetectionsPub = local_nh.advertise<ftag2_core::TagDetections>("detected_tags", 1);
-    decodedTagDetectionsPub = local_nh.advertise<ftag2_core::TagDetections>("decoded_tags", 1);
-    arMarkerPub_ = local_nh.advertise < ftag2_core::ARMarkersFT > ("ft_pose_markers", 1);
-    rvizMarkerPub_ = local_nh.advertise < visualization_msgs::Marker > ("ftag2_vis_Marker", 1);
+    tagDetectionsPub = local_nh.advertise<ftag2_core::TagDetections>("detected_tags", 1);
+    firstTagDetectionPub = local_nh.advertise<ftag2_core::TagDetection>("first_tag", 1);
     firstTagImagePub = it.advertise("first_tag_image", 1);
     processedImagePub = it.advertise("overlaid_image", 1);
     imageSub = it.subscribe(imageTopic, 1, &FTag2TrackerNodelet::imageCallback, this, transportType);
     cameraSub = it.subscribeCamera(cameraTopic, 1, &FTag2TrackerNodelet::cameraCallback, this, transportType);
 
-//    vis_pub = local_nh.advertise<visualization_msgs::MarkerArray>( "ftag2_array", 1);
+    rvizMarkersPub_ = local_nh.advertise < visualization_msgs::MarkerArray > ("ftag2_vis_Marker", 1);
+    arMarkerPub_ = local_nh.advertise < ftag2_core::ARMarkersFT > ("ft_pose_markers", 1);
 
     // Finish initialization
     alive = true;
     NODELET_INFO("FTag2 tracker nodelet initialized");
+    idleSpinTimer = local_nh.createTimer(ros::Duration(0.5), &FTag2TrackerNodelet::handleIdleSpinOnce, this);
+    idleSpinTimer.start();
   };
 
 
-  void configCallback(ftag2::FTag2TrackerConfig& config, uint32_t level) {
+  void handleIdleSpinOnce(const ros::TimerEvent& event) {
+#ifdef CV_SHOW_IMAGES
+    char c = waitKey(1);
+    if (c == 'x' || c == 'X') {
+      ros::shutdown();
+    }
+#endif
+  };
+
+
+  void configCallback(ftag2::FTag2ReaderConfig& config, uint32_t level) {
     if (!alive) return;
     params = config;
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
-    //FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
-    FTag2Payload::updateParameters(params.within_phase_range_threshold);
   };
 
 
@@ -243,9 +239,15 @@ public:
     updateDyncfg();
 
     cv_bridge::CvImageConstPtr img = cv_bridge::toCvShare(msg);
-    processImage(img->image, msg->header.seq);
-
-    frameID++;
+    try {
+      processImage(img->image, msg->header.seq);
+    } catch (const std::string& err) {
+      ROS_ERROR_STREAM("Nodelet shutting down: " << err);
+      ros::shutdown();
+    } catch (char const* err) {
+      ROS_ERROR_STREAM("Nodelet shutting down: (caught char*!) " << err);
+      ros::shutdown();
+    }
   };
 
 
@@ -262,7 +264,15 @@ public:
       for (int i = 0; i < 9; i++, cameraIntrinsicPtr++) *cameraIntrinsicPtr = cam_info->K[i];
     }
     cv_bridge::CvImageConstPtr img = cv_bridge::toCvShare(msg);
-    processImage(img->image, msg->header.seq);
+    try {
+      processImage(img->image, msg->header.seq);
+    } catch (const std::string& err) {
+      ROS_ERROR_STREAM("Nodelet shutting down: " << err);
+      ros::shutdown();
+    } catch (char const* err) {
+      ROS_ERROR_STREAM("Nodelet shutting down: (caught char*!) " << err);
+      ros::shutdown();
+    }
   };
 
 
@@ -280,7 +290,7 @@ public:
     quadP.tic();
     std::list<Quad> quads;
     if (params.quadFastDetector) {
-      quads = detectQuadsViaContour(grayImg);
+      quads = detectQuadsViaContour(grayImg); // TODO: 9 consider using downsized image to speed up search of quads
     } else {
       std::vector<cv::Vec4i> segments = detectLineSegments(grayImg);
       quads = scanQuadsSpatialHash(segments, grayImg.cols, grayImg.rows);
@@ -291,6 +301,11 @@ public:
     quads.sort(Quad::greaterArea);
     quads.erase(std::unique(quads.begin(), quads.end()), quads.end()); // Remove duplicates
     quadP.toc();
+
+    // TODO: 0 Delete after gathering data for training variance model and mags.
+    cv::Mat first_quad_img;
+    bool first_tag = true;
+    /////////////////////////////////////////////////////////////////////////
 
     // 3. Decode FTag2 markers
     int quadCount = 0;
@@ -310,7 +325,7 @@ public:
 
       // Check whether we have scanned enough quads
       quadCount++;
-      if (quadCount > params.quadMaxScans) break;
+      if (quadCount > params.quadMaxScans) break; // TODO: 1 measure how much impact does this limiting have (i.e. if we simply tried to decode all quads); suspect little additional computing + no false positive (when using magn filter)
 
       // Extract rectified quad image from frame
       quadExtractorP.tic();
@@ -319,7 +334,7 @@ public:
       if (quadImg.empty()) { continue; }
 
       // Decode tag
-      decodeQuadP.tic();
+      decoderP.tic();
       try {
         currTag = decodeQuad(quadImg, currQuad,
             tagType,
@@ -333,299 +348,195 @@ public:
             params.tagMagFilPowNeg,
             params.tagMagFilPowPos,
             phaseVariancePredictor);
+        decodePayload(currTag.payload, params.tempTagDecodeStd);
+        
+        if ( first_tag )
+        {
+          first_quad_img = quadImg.clone();
+          first_tag = false;
+
+          ftag2_core::TagDetection tag_msg;
+
+          tag_msg.pose.position.x = currTag.pose.position_x;
+          tag_msg.pose.position.y = currTag.pose.position_y;
+          tag_msg.pose.position.z = currTag.pose.position_z;
+          tag_msg.pose.orientation.w = currTag.pose.orientation_w;
+          tag_msg.pose.orientation.x = currTag.pose.orientation_x;
+          tag_msg.pose.orientation.y = currTag.pose.orientation_y;
+          tag_msg.pose.orientation.z = currTag.pose.orientation_z;
+          tag_msg.markerWidthPx = currTag.tagWidth;
+          tag_msg.markerRot90 = currTag.tagImgCCRotDeg/90;
+          for (const cv::Point2f& p: currTag.tagCorners) {
+          	tag_msg.markerCornersPx.push_back(p.x);
+          	tag_msg.markerCornersPx.push_back(p.y);
+          }
+          tag_msg.markerWidthM = params.markerWidthM;
+
+          const double* magsPtr = (double*) currTag.payload.mags.data;
+          tag_msg.mags = std::vector<double>(magsPtr, magsPtr + currTag.payload.mags.rows * currTag.payload.mags.cols);
+          const double* phasesPtr = (double*) currTag.payload.phases.data;
+          tag_msg.phases = std::vector<double>(phasesPtr, phasesPtr + currTag.payload.phases.rows * currTag.payload.phases.cols);
+          tag_msg.bitChunksStr = currTag.payload.bitChunksStr;
+          tag_msg.decodedPayloadStr = currTag.payload.decodedPayloadStr;
+
+          firstTagDetectionPub.publish(tag_msg);
+        }
+        /////////////////////////////////////////////////////////////////////////
       } catch (const std::string& err) {
+        // TODO: 9 remove debug code once API stabilized
+        /*
+        const std::vector<cv::Point2f>& corners = currQuad.corners; // assumed stored in clockwise order (in image space)
+        double lenA = vc_math::dist(corners[0], corners[1]);
+        double lenB = vc_math::dist(corners[1], corners[2]);
+        double lenC = vc_math::dist(corners[2], corners[3]);
+        double lenD = vc_math::dist(corners[3], corners[0]);
+        double angleAD = std::acos(vc_math::dot(corners[1], corners[0], corners[0], corners[3])/lenA/lenD);
+        double angleBC = std::acos(vc_math::dot(corners[1], corners[2], corners[2], corners[3])/lenB/lenC);
+        ROS_WARN_STREAM(err);
+        ROS_WARN_STREAM("corners: " <<
+            "(" << corners[0].x << ", " << corners[0].y << ") - " <<
+            "(" << corners[1].x << ", " << corners[1].y << ") - " <<
+            "(" << corners[2].x << ", " << corners[2].y << ") - " <<
+            "(" << corners[3].x << ", " << corners[3].y << ")");
+        ROS_WARN_STREAM("lengths: " << lenA << ", " << lenB << ", " << lenC << ", " << lenD);
+        ROS_WARN_STREAM("angles: " << angleAD << ", " << angleBC << std::endl);
+
+        {
+          cv::imshow("debug", quadImg);
+          cv::imwrite("/tmp/quadImg.png", quadImg);
+          waitKey();
+        }*/
+
         continue;
       }
-      decodeQuadP.toc();
+      decoderP.toc();
 
       // Store tag in list
       tags.push_back(currTag);
     } // Scan through all detected quads
+    FT.step( tags , params.markerWidthM, cameraIntrinsic, cameraDistortion );
 
-
-    // Post-process largest detected tag
-    if (tags.size() >= 1) {
-      const FTag2Marker& firstTag = tags[0];
-
-      // Publish cropped tag image
-      cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
-          sensor_msgs::image_encodings::MONO8, firstTag.tagImg);
-      cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
-      firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
-    }
-
-    // Publish image overlaid with detected markers
-    cv::Mat processedImg = sourceImg.clone();
-    for (const Quad& quad: quads) {
-      drawQuad(processedImg, quad.corners);
-    }
-    for (const FTag2Marker& tag: tags) {
-      drawQuadWithCorner(processedImg, tag.tagCorners);
-      drawMarkerLabel(processedImg, tag.tagCorners, tag.payload.bitChunksStr);
-    }
-    cv_bridge::CvImage cvProcessedImg(std_msgs::Header(),
-        sensor_msgs::image_encodings::RGB8, processedImg);
-    cvProcessedImg.header.frame_id = boost::lexical_cast<std::string>(ID);
-    processedImagePub.publish(cvProcessedImg.toImageMsg());
-#ifdef CV_SHOW_IMAGES
-    {
-      cv::Mat overlaidImg;
-      cv::cvtColor(processedImg, overlaidImg, CV_RGB2BGR);
-      cv::imshow("tags", overlaidImg);
-    }
-#endif
-
-    // Publish tag detections
-    if (tags.size() > 0) {
-      ftag2_core::TagDetections tagsMsg;
-      tagsMsg.frameID = ID;
-
-      //      double k=10.0;
-      for (const FTag2Marker& tag: tags) {
-        ftag2_core::TagDetection tagMsg;
-        tagMsg.pose.position.x = tag.pose.position_x;
-        tagMsg.pose.position.y = tag.pose.position_y;
-        tagMsg.pose.position.z = tag.pose.position_z;
-        tagMsg.pose.orientation.w = tag.pose.orientation_w;
-        tagMsg.pose.orientation.x = tag.pose.orientation_x;
-        tagMsg.pose.orientation.y = tag.pose.orientation_y;
-        tagMsg.pose.orientation.z = tag.pose.orientation_z;
-        tagMsg.markerWidthPx = tag.tagWidth;
-        const double* magsPtr = (double*) tag.payload.mags.data;
-        tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
-        const double* phasesPtr = (double*) tag.payload.phases.data;
-        tagMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
-        tagMsg.bitChunksStr = tag.payload.bitChunksStr;
-        tagMsg.decodedPayloadStr = tag.payload.decodedPayloadStr;
-        tagsMsg.tags.push_back(tagMsg);
-      }
-      rawTagDetectionsPub.publish(tagsMsg);
-
-//      {
-//      tf::Quaternion rMat(tags[0].pose.orientation_x,tags[0].pose.orientation_y,tags[0].pose.orientation_z,tags[0].pose.orientation_w);
-//      static tf::TransformBroadcaster br;
-//      tf::Transform transform;
-//     transform.setOrigin( tf::Vector3( tags[0].pose.position_x, tags[0].pose.position_y, tags[0].pose.position_z ) );
-//      transform.setRotation( rMat );
-//      br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), "camera", "last_obs" ) );
-//      }
-    }
-
-    // Udpate marker filter (with or without new tags)
-    trackerP.tic();
-//    FT.updateParameters(params.numberOfParticles, params.position_std, params.orientation_std, params.position_noise_std, params.orientation_noise_std, params.velocity_noise_std, params.acceleration_noise_std);
-    FTag2Payload::updateParameters(params.within_phase_range_threshold);
-    FT.step( tags, params.markerWidthM, cameraIntrinsic, cameraDistortion );
-    trackerP.toc();
-
-
-#ifdef CV_SHOW_IMAGES
-//    {
-//    cv::Mat overlaidImg;
-//        cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-//        for (const auto filt: FT.filters) {
-//          auto tag_ = filt.hypothesis;
-//          if ( !tag_.back_proj_corners.empty() )
-//            drawQuadWithCorner(overlaidImg, tag_.back_proj_corners );
-//        }
-//        cv::imshow("Back proj", overlaidImg);
-//    }
-#endif
-
-    // Decode tracked payloads
-    decodePayloadP.tic();
-    bool first = true;
-    for (MarkerFilter& tracked_tag: FT.filters) {
-      decodePayload(tracked_tag.hypothesis.payload, DECODE_PAYLOAD_N_STD_THRESH);
-      if (first) {
-        first = false;
-//        NODELET_INFO_STREAM("bitChunks: " << cv::format(tracked_tag.hypothesis.payload.bitChunks, "matlab"));
-      }
-    }
-    decodePayloadP.toc();
-
-    ftag2_core::ARMarkersFT arPoseMarkers_;
-    for ( const MarkerFilter &filter: FT.filters )
-    {
-      if ( !filter.got_detection_in_current_frame ) {
-//        cout << "No detection in current frame" << endl;
-        continue;
-      }
-
-      std::string tf_frame = "192_168_0_23";
-
-      cout << "Payload: ";
-      cout << filter.hypothesis.payload.bitChunksStr << endl;
-      std::ostringstream ostr;
-      bool valid_id = true;
-//      cout << "Payload (6x): ";
-      for( unsigned int i=0; i<35; i+=6 ) {
-//        cout << filter.hypothesis.payload.bitChunksStr[i];
-        if ( filter.hypothesis.payload.bitChunksStr[i]>='0' && filter.hypothesis.payload.bitChunksStr[i] <= '9' ) {
-          ostr << filter.hypothesis.payload.bitChunksStr[i];
-        }
-        else {
-          ostr.clear();
-          valid_id = false;
-          break;
-        }
-      }
-      unsigned int marker_id = 0;
-      if (valid_id == true){
-        marker_id = std::stoi(ostr.str());
-        }
-      else {
-            cout << "Not a valid ID" << endl;
-            continue;
-        }
-      cout << " Marker_id: " << marker_id << endl; // << "\tOstr = " << ostr.str() << endl;
-    std::ostringstream frameName;
-    frameName << "filt_" << marker_id;
-    tf::Quaternion rMat(filter.hypothesis.pose.orientation_x,filter.hypothesis.pose.orientation_y,filter.hypothesis.pose.orientation_z,filter.hypothesis.pose.orientation_w);
-
-    static tf::TransformBroadcaster br;
-    tf::Transform transform;
-    transform.setOrigin( tf::Vector3( filter.hypothesis.pose.position_x, filter.hypothesis.pose.position_y, filter.hypothesis.pose.position_z ) );
-    transform.setRotation( rMat );
-    br.sendTransform( tf::StampedTransform( transform, ros::Time::now(), tf_frame, frameName.str() ) );
-
-    tf::poseTFToMsg(tf::StampedTransform( transform, ros::Time::now(), tf_frame, frameName.str() ), rvizMarker_.pose);
-    rvizMarker_.header.frame_id = tf_frame;
-    rvizMarker_.header.stamp = ros::Time::now();
-    rvizMarker_.id = marker_id;
-
-    rvizMarker_.scale.x = params.markerWidthM;
-    rvizMarker_.scale.y = params.markerWidthM;
-    rvizMarker_.scale.z = params.markerWidthM/2.0;
-    rvizMarker_.ns = "basic_shapes";
-    rvizMarker_.type = visualization_msgs::Marker::CUBE;
-    rvizMarker_.action = visualization_msgs::Marker::ADD;
-
-        rvizMarker_.color.r = 0.0f;
-        rvizMarker_.color.g = 0.0f;
-        rvizMarker_.color.b = 1.0f;
-        rvizMarker_.color.a = 1.0;
-        rvizMarker_.lifetime = ros::Duration (1.0);
-
-    rvizMarkerPub_.publish(rvizMarker_);
-
-    ftag2_core::ARMarkerFT ar_pose_marker_;
-    ar_pose_marker_.header.frame_id = tf_frame;
-    ar_pose_marker_.header.stamp    = ros::Time::now();
-
-    ar_pose_marker_.id              = marker_id;
-
-    ar_pose_marker_.pose.pose.position.x = filter.hypothesis.pose.position_x;
-    ar_pose_marker_.pose.pose.position.y = filter.hypothesis.pose.position_y;
-    ar_pose_marker_.pose.pose.position.z = filter.hypothesis.pose.position_z;
-
-    ar_pose_marker_.pose.pose.orientation.x = filter.hypothesis.pose.orientation_x;
-    ar_pose_marker_.pose.pose.orientation.y = filter.hypothesis.pose.orientation_y;
-    ar_pose_marker_.pose.pose.orientation.z = filter.hypothesis.pose.orientation_z;
-    ar_pose_marker_.pose.pose.orientation.w = filter.hypothesis.pose.orientation_w;
-
-    arPoseMarkers_.markers.push_back(ar_pose_marker_);
-
-    }
-    arMarkerPub_.publish(arPoseMarkers_);
-
-
-    ftag2_core::TagDetections tagsMsg;
-    tagsMsg.frameID = ID;
-    for (const MarkerFilter& filter: FT.filters ) {
-      ftag2_core::TagDetection tagMsg;
-      FTag2Marker tag = filter.hypothesis;
-      tagMsg.pose.position.x = tag.pose.position_x;
-      tagMsg.pose.position.y = tag.pose.position_y;
-      tagMsg.pose.position.z = tag.pose.position_z;
-      tagMsg.pose.orientation.w = tag.pose.orientation_w;
-      tagMsg.pose.orientation.x = tag.pose.orientation_x;
-      tagMsg.pose.orientation.y = tag.pose.orientation_y;
-      tagMsg.pose.orientation.z = tag.pose.orientation_z;
-      tagMsg.markerWidthPx = tag.tagWidth;
-      const double* magsPtr = (double*) tag.payload.mags.data;
-      tagMsg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
-      const double* phasesPtr = (double*) tag.payload.phases.data;
-      tagMsg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
-//      tagMsg.tag.payload.bitChunksStr;
-      tagMsg.IDString = tag.payload.bitChunksStr;
-      tagsMsg.tags.push_back(tagMsg);
-    }
-    decodedTagDetectionsPub.publish(tagsMsg);
-
-
-    // Visualize tag hypotheses
 #ifdef CV_SHOW_IMAGES
     {
       cv::Mat overlaidImg;
       cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
-
-      // Do not draw quads
-
-      // Draw detected tag observations: red
-      for (const FTag2Marker& tagObs: tags) {
-        drawQuadWithCorner(overlaidImg, tagObs.tagCorners);
+      for (const Quad& quad: quads) {
+        drawQuad(overlaidImg, quad.corners);
       }
-
-      // Draw matched tag hypotheses: blue border, cyan-on-blue text
-#ifdef DISPLAY_DECODED_TAG_PAYLOADS
-      for (const MarkerFilter& trackedTag: FT.filters) {
-        const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
-        if (trackedPayload.numDecodedSections >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS) {
-          drawQuadWithCorner(overlaidImg, trackedTag.hypothesis.corners,
-              CV_RGB(255, 0, 0), CV_RGB(0, 255, 255),
-              CV_RGB(0, 255, 255), CV_RGB(255, 0, 0));
-        }
+      for (const FTag2Marker& tag: tags) {
+        drawQuadWithCorner(overlaidImg, tag.tagCorners);
+        drawMarkerLabel(overlaidImg, tag.tagCorners, tag.payload.bitChunksStr);
       }
-      for (const MarkerFilter& trackedTag: FT.filters) {
-        const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
-        if (trackedPayload.numDecodedSections >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS) {
-          drawMarkerLabel(overlaidImg, trackedTag.hypothesis.corners,
-              trackedPayload.decodedPayloadStr,
-              cv::FONT_HERSHEY_SIMPLEX, 1, 0.4,
-              CV_RGB(0, 255, 255), CV_RGB(0, 0, 255));
-        }
-      }
-#else
-      for (const MarkerFilter& trackedTag: FT.filters) {
-        const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
-        if (trackedPayload.numDecodedPhases >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES) {
-          drawQuadWithCorner(overlaidImg, trackedTag.hypothesis.tagCorners,
-              CV_RGB(255, 0, 0), CV_RGB(0, 255, 255),
-              CV_RGB(0, 255, 255), CV_RGB(255, 0, 0));
-        }
-      }
-      for (const MarkerFilter& trackedTag: FT.filters) {
-        const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
-        if (trackedPayload.numDecodedPhases >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES) {
-          drawMarkerLabel(overlaidImg, trackedTag.hypothesis.tagCorners,
-              trackedPayload.bitChunksStr,
-              cv::FONT_HERSHEY_SIMPLEX, 1, 0.4,
-              CV_RGB(0, 255, 255), CV_RGB(0, 0, 255));
-        }
-      }
-#endif
-
-      cv::imshow("hypotheses", overlaidImg);
+      cv::imshow("tags", overlaidImg);
     }
 #endif
+
+#ifdef ROS_PUBLISHING_DETECTIONS
+    if ( first_tag == false )
+    {
+    cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
+        sensor_msgs::image_encodings::MONO8, first_quad_img);
+    cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
+    firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
+    }
+
+    ftag2_core::TagDetections tags_msg;
+    tags_msg.frameID = ID;
+    for (const FTag2Marker& tag: tags) {
+		ftag2_core::TagDetection tag_msg;
+
+		tag_msg.pose.position.x = tag.pose.position_x;
+		tag_msg.pose.position.y = tag.pose.position_y;
+		tag_msg.pose.position.z = tag.pose.position_z;
+		tag_msg.pose.orientation.w = tag.pose.orientation_w;
+		tag_msg.pose.orientation.x = tag.pose.orientation_x;
+		tag_msg.pose.orientation.y = tag.pose.orientation_y;
+		tag_msg.pose.orientation.z = tag.pose.orientation_z;
+		tag_msg.markerWidthPx = tag.tagWidth;
+		tag_msg.markerRot90 = tag.tagImgCCRotDeg/90;
+		for (const cv::Point2f& p: tag.tagCorners) {
+			tag_msg.markerCornersPx.push_back(p.x);
+			tag_msg.markerCornersPx.push_back(p.y);
+		}
+		tag_msg.markerWidthM = params.markerWidthM;
+
+		const double* magsPtr = (double*) tag.payload.mags.data;
+		tag_msg.mags = std::vector<double>(magsPtr, magsPtr + tag.payload.mags.rows * tag.payload.mags.cols);
+		const double* phasesPtr = (double*) tag.payload.phases.data;
+		tag_msg.phases = std::vector<double>(phasesPtr, phasesPtr + tag.payload.phases.rows * tag.payload.phases.cols);
+		tag_msg.bitChunksStr = tag.payload.bitChunksStr;
+		tag_msg.decodedPayloadStr = tag.payload.decodedPayloadStr;
+
+		tags_msg.tags.push_back(tag_msg);
+    }
+    tagDetectionsPub.publish(tags_msg);
+#endif
+
+    cv::Mat overlaidImg;
+    cv::cvtColor(sourceImg, overlaidImg, CV_RGB2BGR);
+
+    // Draw matched tag hypotheses: blue border, cyan-on-blue text
+#ifdef DISPLAY_DECODED_TAG_PAYLOADS
+    for (const MarkerFilter& trackedTag: FT.filters) {
+//      if (!trackedTag.active) continue;
+      const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
+      if (trackedPayload.numDecodedSections >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS) {
+        drawQuadWithCorner(overlaidImg, trackedTag.hypothesis.back_proj_corners,
+            CV_RGB(255, 0, 0), CV_RGB(0, 255, 255),
+            CV_RGB(0, 255, 255), CV_RGB(255, 0, 0));
+      }
+    }
+    for (const MarkerFilter& trackedTag: FT.filters) {
+//      if (!trackedTag.active) continue;
+      const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
+      if (trackedPayload.numDecodedSections >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS) {
+        drawMarkerLabel(overlaidImg, trackedTag.hypothesis.back_proj_corners,
+            trackedPayload.decodedPayloadStr,
+            cv::FONT_HERSHEY_SIMPLEX, 1, 0.4,
+            CV_RGB(0, 255, 255), CV_RGB(0, 0, 255));
+      }
+    }
+#else
+    for (const MarkerFilter& trackedTag: FT.filters) {
+//      if (!trackedTag.active) continue;
+      const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
+      if (trackedPayload.numDecodedPhases >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES) {
+        drawQuadWithCorner(overlaidImg, trackedTag.hypothesis.back_proj_corners,
+            CV_RGB(255, 0, 0), CV_RGB(0, 255, 255),
+            CV_RGB(0, 255, 255), CV_RGB(255, 0, 0));
+      }
+    }
+    for (const MarkerFilter& trackedTag: FT.filters) {
+//      if (!trackedTag.active) continue;
+      const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
+      if (trackedPayload.numDecodedPhases >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES) {
+        drawMarkerLabel(overlaidImg, trackedTag.hypothesis.back_proj_corners,
+            trackedPayload.bitChunksStr,
+            cv::FONT_HERSHEY_SIMPLEX, 1, 0.4,
+            CV_RGB(0, 255, 255), CV_RGB(0, 0, 255));
+      }
+    }
+#endif
+
+// Draw detected tag observations: red
+//    for (const FTag2Marker& tagObs: tags) {
+//      drawQuadWithCorner(overlaidImg, tagObs.tagCorners);
+//    }
+
+    cv::imshow("hypotheses", overlaidImg);
 
     // -. Update profiler
     durationP.toc();
     if (profilerDelaySec > 0) {
-      ros::Time currTime = ros::Time::now();
-      ros::Duration td = currTime - latestProfTime;
-      if (td.toSec() > profilerDelaySec) {
-        ROS_WARN_STREAM("===== PROFILERS =====");
-        ROS_WARN_STREAM("detectQuads: " << quadP.getStatsString());
-        ROS_WARN_STREAM("extractTags: " << quadExtractorP.getStatsString());
-        ROS_WARN_STREAM("decodeQuad: " << decodeQuadP.getStatsString());
-        ROS_WARN_STREAM("tracker: " << trackerP.getStatsString());
-        ROS_WARN_STREAM("decodePayload: " << decodePayloadP.getStatsString());
-        ROS_WARN_STREAM("Pipeline Duration:: " << durationP.getStatsString());
-        ROS_WARN_STREAM("Pipeline Rate: " << rateP.getStatsString());
-        latestProfTime = currTime;
-      }
+    	ros::Time currTime = ros::Time::now();
+    	ros::Duration td = currTime - latestProfTime;
+    	if (td.toSec() > profilerDelaySec) {
+    		ROS_WARN_STREAM("===== PROFILERS =====");
+    		ROS_WARN_STREAM("detectQuads: " << quadP.getStatsString());
+    		ROS_WARN_STREAM("Pipeline Duration:: " << durationP.getStatsString());
+    		ROS_WARN_STREAM("Pipeline Rate: " << rateP.getStatsString());
+    		latestProfTime = currTime;
+    	}
     }
 
     // -. Allow OpenCV HighGUI events to process

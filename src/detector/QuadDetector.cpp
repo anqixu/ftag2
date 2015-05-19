@@ -1005,6 +1005,19 @@ std::vector<cv::Point2f> backProjectQuad(double cam_pose_in_tag_frame_x, double 
 //
 //	std::cout << "cam_rot_in_tag_frame': " << std::endl << cv::format(cam_rot_in_tag_frame, "matlab") << std::endl;
 
+
+//	cv::Mat transVec = cv::Mat(3, 1, CV_64FC1);
+//	transVec.at<double>(0) = cam_pose_in_tag_frame.x;
+//	transVec.at<double>(1) = cam_pose_in_tag_frame.y;
+//	transVec.at<double>(2) = cam_pose_in_tag_frame.z;
+//
+//	cv::Mat tag_rot_in_cam_frame;
+//	cv::transpose(cam_rot_in_tag_frame, tag_rot_in_cam_frame);
+//	transVec = -tag_rot_in_cam_frame * transVec;
+//
+//	cv::Mat rotVec = cv::Mat(1, 3, CV_64FC1);
+//	cv::Rodrigues(tag_rot_in_cam_frame, rotVec);
+
 	cv::Mat rotVec = cv::Mat(1, 3, CV_64FC1);
 	cv::Rodrigues(cam_rot_in_tag_frame, rotVec);
 
