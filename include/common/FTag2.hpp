@@ -60,7 +60,7 @@ struct FTag2Payload {
   // - FTag2Payload::NUM_SLICES()
   //
   // - FTag2Decoder's decodePayload(...)
-  enum {FTAG2_6S5F3B = 653, FTAG2_6S5F33322B = 6533322, FTAG2_6S2F21B = 6221, FTAG2_6S2F22B = 6222, FTAG2_6S3F211B = 63211};
+  enum {FTAG2_6S5F3B = 653, FTAG2_6S5F33322B = 6533322, FTAG2_6S5F33222B = 6533222, FTAG2_6S5F22111B = 6522111, FTAG2_6S2F21B = 6221, FTAG2_6S2F22B = 6222, FTAG2_6S3F211B = 63211};
   int type;
 
   cv::Mat mags;
@@ -92,6 +92,12 @@ struct FTag2Payload {
     case FTAG2_6S5F33322B:
       result = std::vector<unsigned int>({3, 3, 3, 2, 2});
       break;
+    case FTAG2_6S5F33222B:
+      result = std::vector<unsigned int>({3, 3, 2, 2, 2});
+      break;
+    case FTAG2_6S5F22111B:
+      result = std::vector<unsigned int>({2, 2, 1, 1, 1});
+      break;
     case FTAG2_6S2F21B:
       result = std::vector<unsigned int>({2, 1});
       break;
@@ -111,6 +117,8 @@ struct FTag2Payload {
     switch (type) {
     case FTAG2_6S5F3B:
     case FTAG2_6S5F33322B:
+    case FTAG2_6S5F33222B:
+    case FTAG2_6S5F22111B:
       result = 5;
       break;
     case FTAG2_6S2F21B:
@@ -130,6 +138,8 @@ struct FTag2Payload {
     switch (type) {
     case FTAG2_6S5F3B:
     case FTAG2_6S5F33322B:
+    case FTAG2_6S5F33222B:
+    case FTAG2_6S5F22111B:
     case FTAG2_6S2F21B:
     case FTAG2_6S2F22B:
     case FTAG2_6S3F211B:

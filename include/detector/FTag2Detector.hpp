@@ -124,7 +124,7 @@ std::list<Quad> scanQuadsExhaustive(const std::vector<cv::Vec4i>& segments,
     double maxCornerGapEndptDistRatio = 0.25,
     double maxEdgeGapDistRatio = 0.5,
     double maxEdgeGapAlignAngle = 15.0*vc_math::degree,
-    double minQuadWidth = 10.0);
+    double minQuadWidth = 20.0);
 
 
 /**
@@ -149,7 +149,7 @@ std::list<Quad> scanQuadsSpatialHash(const std::vector<cv::Vec4i>& segments,
     double maxCornerGapEndptDistRatio = 0.25,
     double maxEdgeGapDistRatio = 0.5,
     double maxEdgeGapAlignAngle = 15.0*vc_math::degree,
-    double minQuadWidth = 10.0);
+    double minQuadWidth = 20.0);
 
 
 /**
@@ -179,8 +179,8 @@ std::list<Quad> scanQuadsSpatialHash(const std::vector<cv::Vec4i>& segments,
 std::list<Quad> detectQuadsViaContour(cv::Mat grayImg,
   unsigned int adaptiveThreshBlockSize = 9,
   double adaptiveThreshMeanWeight = 9.0,
-  unsigned int quadMinWidth = 10,
-  unsigned int quadMinPerimeter = 40,
+  unsigned int quadMinWidth = 20,
+  unsigned int quadMinPerimeter = 80,
   double approxPolyEpsSizeRatio = 0.05);
 
 
@@ -303,6 +303,8 @@ inline void validateTagBorder(cv::Mat tag, double meanPxMaxThresh = 80.0, double
 };
 
 
+// Deprecated function
+/*
 inline cv::Mat cropFTag2Border(cv::Mat tag, unsigned int numRays = 6, unsigned int borderBlocks = 1) {
   const unsigned int numBlocks = numRays + 2*borderBlocks;
   double hBorder = double(tag.cols)/numBlocks*borderBlocks;
@@ -311,15 +313,20 @@ inline cv::Mat cropFTag2Border(cv::Mat tag, unsigned int numRays = 6, unsigned i
       cv::Range(std::round(hBorder), std::round(tag.cols - hBorder)));
   return croppedTag;
 };
+*/
 
 
-cv::Mat extractHorzRays(cv::Mat croppedTag, unsigned int numSamples,
-    unsigned int numRays = 6, bool markRays = false);
+#define SINE_OVERSAMPLE_PCT (0.05)
+cv::Mat extractHorzRays(cv::Mat tag, unsigned int numSamples,
+    unsigned int numRays = 6, unsigned int borderBlocks = 1,
+    double oversamplePct = SINE_OVERSAMPLE_PCT);
 
 
-inline cv::Mat extractVertRays(cv::Mat croppedTag, unsigned int numSamples,
-    unsigned int numRays = 6, bool markRays = false) {
-  return extractHorzRays(croppedTag.t(), numSamples, numRays, markRays);
+inline cv::Mat extractVertRays(cv::Mat tag, unsigned int numSamples,
+    unsigned int numRays = 6, unsigned int borderBlocks = 1,
+    double oversamplePct = SINE_OVERSAMPLE_PCT) {
+  return extractHorzRays(tag.t(), numSamples, numRays,
+      borderBlocks, oversamplePct);
 };
 
 

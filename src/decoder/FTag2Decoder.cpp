@@ -173,6 +173,16 @@ void extractPhasesAndSigWithMagFilter(const cv::Mat& img, FTag2Marker& tag,
   cv::phase(fftChannels[0], fftChannels[1], vertPhaseSpec, true);
 
   // Check for phase signature and apply magnitude filter to all 4 quad orientations
+  //
+  // 1. identify all 90-rotated orientations containing the phase signature
+  // 2. for each candidate orientation, compute the normalized standard
+  //    deviation in magnitudes across S slices for each given freq, and average
+  //    these normalized standard deviations across frequencies; i.e.
+  //    avg_freq( std_slice(mag)/avg_slice(mag) )
+  // 3. accept the orientation with the smallest frequency-averaged across-slice
+  //    normalized standard deviations in magnitude, i.e. the orientation
+  //    whose magnitude matrix is most consistent across slices, while
+  //    accounting for frequency-dependent drop-offs
   const unsigned long long sigKey = tag.payload.SIG_KEY();
   const cv::Range freqSpecRange(1, MAX_NUM_FREQS+1);
   const double INF = std::numeric_limits<double>::infinity();
@@ -202,10 +212,16 @@ void extractPhasesAndSigWithMagFilter(const cv::Mat& img, FTag2Marker& tag,
     if (foundSig[rot90]) {
       try {
         filterMagnitudePoly(tempMag, magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos);
-        cv::meanStdDev(tempMag(cv::Range::all(), cv::Range(0, 1)), tempMean, tempStdev);
-        if (tempMean[0] > 0) {
-          sliceMagNormStd[rot90] = tempStdev[0]/tempMean[0];
+
+        sliceMagNormStd[rot90] = 0;
+        for (unsigned int freq = 1; freq <= MAX_NUM_FREQS; freq++) {
+          cv::meanStdDev(tempMag(cv::Range::all(), cv::Range(freq-1, freq)), tempMean, tempStdev);
+          if (tempMean[0] > 0) {
+            sliceMagNormStd[rot90] += tempStdev[0]/tempMean[0];
+          }
         }
+        sliceMagNormStd[rot90] /= MAX_NUM_FREQS;
+
       } catch (const std::string& err) {
         sigCheckErr[rot90] = err;
       }
@@ -240,23 +256,27 @@ void extractPhasesAndSigWithMagFilter(const cv::Mat& img, FTag2Marker& tag,
     tag.payload.phases = vertPhaseSpec(cv::Range::all(), freqSpecRange).clone();
   } else {
     // Verbose error
-    /*
+    ///*
     std::ostringstream oss;
     oss << "phase+mag sig filter failed:" << std::endl <<
+        "horzRays = " << cv::format(horzRays, "matlab") << ";" << std::endl <<
+        "vertRays = " << cv::format(vertRays, "matlab") << ";" << std::endl <<
+        "horzPhases = " << cv::format(horzPhaseSpec(cv::Range::all(), freqSpecRange), "matlab") << ";" << std::endl <<
+        "vertPhases = " << cv::format(vertPhaseSpec(cv::Range::all(), freqSpecRange), "matlab") << ";" << std::endl <<
         "  0-rot: " << sigCheckErr[0] << std::endl <<
         " 90-rot: " << sigCheckErr[1] << std::endl <<
         "180-rot: " << sigCheckErr[2] << std::endl <<
         "270-rot: " << sigCheckErr[3] << std::endl;
     throw oss.str();
-    */
+    //*/
 
     // Sparse error
-    ///*
+    /*
     for (int rot90 = 0; rot90 < 4; rot90++) {
       if (foundSig[rot90]) throw sigCheckErr[rot90];
     }
     throw sigCheckErr[0];
-    //*/
+    */
   }
 };
 
@@ -279,9 +299,6 @@ FTag2Marker decodeQuad(const cv::Mat quadImg,
   // NOTE: function will throw std::string error if failed
   validateTagBorder(trimmedTagImg, tagBorderMeanMaxThresh, tagBorderStdMaxThresh);
 
-  // Crop payload portion of marker
-  cv::Mat croppedTagImg = cropFTag2Border(trimmedTagImg);
-
   // Initialize tag data structure
   FTag2Marker tagBuffer(tagType, trimmedTagImg.rows);
 
@@ -292,7 +309,7 @@ FTag2Marker decodeQuad(const cv::Mat quadImg,
   }
   unsigned int sigPSKSize = bitsPerFreq[0];
   // NOTE: function will throw std::string error if failed
-  extractPhasesAndSigWithMagFilter(croppedTagImg, tagBuffer,
+  extractPhasesAndSigWithMagFilter(trimmedTagImg, tagBuffer,
       numSamplesPerRow, sigPSKSize,
       magFilGainNeg, magFilGainPos, magFilPowNeg, magFilPowPos);
 
@@ -474,6 +491,18 @@ void decodePayload(FTag2Payload& tag, double nStdThresh) {
 
 
 #endif
+
+  } else if (tag.type == FTag2Payload::FTAG2_6S5F33222B) {
+    tag.hasValidXORs = true;
+    tag.decodedPayloadStr = tag.bitChunksStr;
+    tag.numDecodedSections = tag.numDecodedPhases;
+
+
+  } else if (tag.type == FTag2Payload::FTAG2_6S5F22111B) {
+    tag.hasValidXORs = true;
+    tag.decodedPayloadStr = tag.bitChunksStr;
+    tag.numDecodedSections = tag.numDecodedPhases;
+
 
   } else if (tag.type == FTag2Payload::FTAG2_6S2F21B) {
     tag.hasValidXORs = true;

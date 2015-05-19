@@ -920,10 +920,25 @@ cv::Mat trimFTag2Quad(cv::Mat tag, double maxStripAvgDiff) {
 };
 
 
-cv::Mat extractHorzRays(cv::Mat croppedTag, unsigned int numSamples,
-    unsigned int numRays, bool markRays) {
-  double rowHeight = double(croppedTag.rows)/numRays;
-  cv::Mat rays = cv::Mat::zeros(numRays, croppedTag.cols, CV_64FC1);
+cv::Mat extractHorzRays(cv::Mat tag, unsigned int numSamples,
+    unsigned int numRays, unsigned int borderBlocks,
+    double oversamplePct) {
+  // Extract rectangular sub-image containing only horizontal sinusoidal signals
+  // (using bilinear interpolation to get sub-pixel accuracy)
+  cv::Size2f sineRectSize(double(tag.cols)/(numRays+2*borderBlocks)*numRays/(1.0+2*oversamplePct),
+      double(tag.rows)/(numRays+2*borderBlocks)*numRays);
+  cv::Point2f sineRectCenter(double(tag.cols-1)/2, double(tag.rows-1)/2);
+  cv::Mat sineRect;
+  cv::getRectSubPix(tag, sineRectSize, sineRectCenter, sineRect, -1); // -1: extract same pixel depth as source image
+  cv::Mat sineRectT = sineRect(cv::Range::all(), cv::Range(0, sineRect.cols-1));
+  // NOTE: FFT expects sinusoidal signals at period-normalized values
+  //       from 0/T to (T-1)/T; since sineRect samples signals at
+  //       period-normalized values from 0/T to T/T, sineRectT thus need to
+  //       remove the right-most pixel column from sineRect
+
+  // Sample pixels row(s) from sub-image and average if numSamples > 1
+  double rowHeight = double(sineRectT.rows)/numRays;
+  cv::Mat rays = cv::Mat::zeros(numRays, sineRectT.cols, CV_64FC1);
   cv::Mat tagRayF;
   unsigned int i, j;
   int quadRow;
@@ -931,10 +946,9 @@ cv::Mat extractHorzRays(cv::Mat croppedTag, unsigned int numSamples,
     cv::Mat raysRow = rays.row(i);
     for (j = 0; j < numSamples; j++) {
       quadRow = rowHeight * (i + double(j + 1)/(numSamples + 1));
-      cv::Mat tagRay = croppedTag.row(quadRow);
+      cv::Mat tagRay = sineRectT.row(quadRow);
       tagRay.convertTo(tagRayF, CV_64FC1);
       raysRow += tagRayF;
-      if (markRays) { tagRay.setTo(255); }
     }
   }
   if (numSamples > 1) {
@@ -968,6 +982,8 @@ void solvePose(const std::vector<cv::Point2f> cornersPx, double quadSizeM,
   //       static/world frame.
   cv::solvePnP(spatialPoints, cornersPx, cameraIntrinsic, cameraDistortion,
       rotVec, transVec, false, CV_ITERATIVE);
+  // CV_P3P and especially CV_EPNP confirmed to produce worse pose estimate
+  // than CV_ITERATIVE, when not using a pose prior
   cv::Rodrigues(rotVec, rotMat);
   vc_math::rotMat2quat(rotMat, rw, rx, ry, rz);
 
