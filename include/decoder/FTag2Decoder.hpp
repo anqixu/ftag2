@@ -56,6 +56,11 @@ public:
 
       tag->payload.phases.copyTo(tag->payload.phasesBiasAdj);
 
+      /*
+       MATLAB Model Form:
+       % coeffs = biasFitSimpleAll.CoefficientNames;
+       % for i = 1:length(coeffs), fprintf('features[%2d] = %s;\n', i-1, strrep(coeffs{i}, ':', '*')); end;
+       */
       features[ 0] = 1;
       features[ 1] = ftag2_tag_img_rot_1;
       features[ 2] = ftag2_tag_img_rot_2;
