@@ -398,13 +398,7 @@ void decodePayload(FTag2Payload& tag, double nStdThresh) {
   tag.numDecodedPhases = numDecodedPhases;
 
   // 3. Convert bit chunks to type-specific payload strings
-  if (tag.type == FTag2Payload::FTAG2_6S5F3B) {
-    tag.hasValidXORs = true;
-    tag.decodedPayloadStr = tag.bitChunksStr;
-    tag.numDecodedSections = tag.numDecodedPhases;
-
-
-  } else if (tag.type == FTag2Payload::FTAG2_6S5F33322B) { // Special type: has defined XORs
+  if (tag.type == FTag2Payload::FTAG2_6S5F33322B) { // Special type: has defined XORs
 #ifdef DEPRECATED_CODE
     // 3.1 Validate XORs in FTag2MarkerV2 payload structure
     cv::Mat decodedSections = cv::Mat::ones(NUM_RAYS, 2, CV_8SC1) * -1; // -1: missing; -2: xor failed
@@ -492,13 +486,19 @@ void decodePayload(FTag2Payload& tag, double nStdThresh) {
 
 #endif
 
-  } else if (tag.type == FTag2Payload::FTAG2_6S5F33222B) {
+  } else if (tag.type == FTag2Payload::FTAG2_6S5F22111B) {
     tag.hasValidXORs = true;
     tag.decodedPayloadStr = tag.bitChunksStr;
     tag.numDecodedSections = tag.numDecodedPhases;
 
 
-  } else if (tag.type == FTag2Payload::FTAG2_6S5F22111B) {
+  } else if (tag.type == FTag2Payload::FTAG2_6S4F2111B) {
+    tag.hasValidXORs = true;
+    tag.decodedPayloadStr = tag.bitChunksStr;
+    tag.numDecodedSections = tag.numDecodedPhases;
+
+
+  } else if (tag.type == FTag2Payload::FTAG2_6S3F211B) {
     tag.hasValidXORs = true;
     tag.decodedPayloadStr = tag.bitChunksStr;
     tag.numDecodedSections = tag.numDecodedPhases;
@@ -511,12 +511,6 @@ void decodePayload(FTag2Payload& tag, double nStdThresh) {
 
 
   } else if (tag.type == FTag2Payload::FTAG2_6S2F22B) {
-    tag.hasValidXORs = true;
-    tag.decodedPayloadStr = tag.bitChunksStr;
-    tag.numDecodedSections = tag.numDecodedPhases;
-
-
-  } else if (tag.type == FTag2Payload::FTAG2_6S3F211B) {
     tag.hasValidXORs = true;
     tag.decodedPayloadStr = tag.bitChunksStr;
     tag.numDecodedSections = tag.numDecodedPhases;

@@ -63,7 +63,7 @@ protected:
 public:
   FTag2ReaderNodelet() : nodelet::Nodelet(),
       alive(false),
-      tagType(FTag2Payload::FTAG2_6S5F3B),
+      tagType(FTag2Payload::FTAG2_6S2F22B),
       dynCfgServer(NULL),
       dynCfgSyncReq(false),
       latestProfTime(ros::Time::now()),
@@ -333,6 +333,7 @@ public:
             params.tagMagFilPowNeg,
             params.tagMagFilPowPos,
             phaseVariancePredictor);
+        // TODO: 0 apply phase corrections (bias model, stdev model)
         decodePayload(currTag.payload, params.tempTagDecodeStd);
         
 //        std::cout << "ROTATION: " << currTag.tagImgCCRotDeg << ",\t/90 = " << currTag.tagImgCCRotDeg/90 << endl;

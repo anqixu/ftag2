@@ -78,8 +78,7 @@ protected:
 public:
   FTag2TrackerNodelet() : nodelet::Nodelet(),
       alive(false),
-      tagType(FTag2Payload::FTAG2_6S5F3B),
-//      tagType(FTag2Payload::FTAG2_6S5F33322B),
+      tagType(FTag2Payload::FTAG2_6S2F22B),
       dynCfgServer(NULL),
       dynCfgSyncReq(false),
       latestProfTime(ros::Time::now()),
