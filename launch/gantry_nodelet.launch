@@ -1,0 +1,31 @@
+<launch>
+  <arg name="nodelet_name" value="ftag2" />
+
+  <!-- Uncomment only one of the following -->
+  <remap from="/$(arg nodelet_name)/image_in" to="/camera2/image_raw" />
+  <!-- remap from="/$(arg nodelet_name)/camera_in" to="/camera/image_raw" /-->
+
+  <!-- node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen" launch-prefix="gdb -ex run - -args" / -->
+  <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen"/>
+  
+  <node pkg="nodelet" type="nodelet" name="$(arg nodelet_name)"
+        args="load ftag2/ftag2_reader_nodelet nodelet_manager">
+    <!-- tag_type must have numerical value, with #S#F###B format -->
+    <!-- param name="tag_type" type="int" value="6533322" / -->
+    <param name="tag_type" type="int" value="6222" /> 
+        
+    <param name="camera_intrinsic" value="610.5064145546552, 0.0, 321.7782261425325, 0.0, 609.9872996754198, 234.51369390724136, 0.0, 0.0, 1.0" />
+    <param name="camera_distortion" value="0.12600439192381022, -0.2087299807304159, 0.0017791373517968146, 0.002607094551963359, 0.0" />
+  
+    <!--param name="transport_type" value="compressed" /-->
+    <param name="markerWidthM" value="0.07" />
+    
+    <param name="quadMaxScans" value="30" />
+    
+    <param name="profiler_delay_sec" value="0.0" /> <!-- 0: disable -->
+    
+    <param name="tagBorderMeanMaxThresh" value="120.0" />
+    
+    <param name="tempTagDecodeStd" value="0.0" /> <!-- WARNING: this completely disables variance-based phase error checker -->
+  </node>
+</launch>

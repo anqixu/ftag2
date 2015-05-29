@@ -235,7 +235,31 @@ inline void drawQuadWithCorner(cv::Mat img, const std::vector<cv::Point2f>& corn
 };
 
 
-inline void drawMarkerLabel(cv::Mat img, const std::vector<cv::Point2f>& corners, std::string str,
+//inline void drawMarkerLabel(cv::Mat img, const std::vector<cv::Point2f>& corners, std::string str,
+//    int fontFace = cv::FONT_HERSHEY_SIMPLEX, int fontThickness = 1, double fontScale = 0.4,
+//    CvScalar textBoxColor = CV_RGB(0, 0, 255), CvScalar textColor = CV_RGB(0, 255, 255)) {
+//  // Compute text size and position
+//  double mx = 0, my = 0;
+//  for (const cv::Point2f& pt: corners) {
+//    mx += pt.x;
+//    my += pt.y;
+//  }
+//  mx /= corners.size();
+//  my /= corners.size();
+//
+//  int baseline = 0;
+//  cv::Size textSize = cv::getTextSize(str, fontFace, fontScale, fontThickness, &baseline);
+//  cv::Point textCenter(mx - textSize.width/2, my);
+//
+//  // Draw filled text box and then text
+//  cv::rectangle(img, textCenter + cv::Point(0, baseline),
+//      textCenter + cv::Point(textSize.width, -textSize.height),
+//      textBoxColor, CV_FILLED);
+//  cv::putText(img, str, textCenter, fontFace, fontScale,
+//      textColor, fontThickness, 8);
+//};
+
+inline void drawMarkerLabel(cv::Mat img, const std::vector<cv::Point2f>& corners, std::string str, double alpha = 0.8,
     int fontFace = cv::FONT_HERSHEY_SIMPLEX, int fontThickness = 1, double fontScale = 0.4,
     CvScalar textBoxColor = CV_RGB(0, 0, 255), CvScalar textColor = CV_RGB(0, 255, 255)) {
   // Compute text size and position
@@ -251,13 +275,28 @@ inline void drawMarkerLabel(cv::Mat img, const std::vector<cv::Point2f>& corners
   cv::Size textSize = cv::getTextSize(str, fontFace, fontScale, fontThickness, &baseline);
   cv::Point textCenter(mx - textSize.width/2, my);
 
-  // Draw filled text box and then text
-  cv::rectangle(img, textCenter + cv::Point(0, baseline),
-      textCenter + cv::Point(textSize.width, -textSize.height),
-      textBoxColor, CV_FILLED);
-  cv::putText(img, str, textCenter, fontFace, fontScale,
-      textColor, fontThickness, 8);
+  if (alpha >= 1.0) {
+    // Draw filled text box and then text
+    cv::rectangle(img, textCenter + cv::Point(0, baseline),
+        textCenter + cv::Point(textSize.width, -textSize.height),
+        textBoxColor, CV_FILLED);
+    cv::putText(img, str, textCenter, fontFace, fontScale,
+        textColor, fontThickness, 8);
+  } else {
+    alpha = std::min(std::max(alpha, 0.0), 1.0);
+
+    cv::Mat overlay;
+    img.copyTo(overlay);
+    // Draw filled text box and then text
+    cv::rectangle(overlay, textCenter + cv::Point(0, baseline),
+        textCenter + cv::Point(textSize.width, -textSize.height),
+        textBoxColor, CV_FILLED);
+    cv::putText(overlay, str, textCenter, fontFace, fontScale,
+        textColor, fontThickness, 8);
+    cv::addWeighted(overlay, alpha, img, (1.0-alpha), 0.0, img);
+  }
 };
+
 
 
 /**

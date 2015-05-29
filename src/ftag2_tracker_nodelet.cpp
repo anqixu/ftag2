@@ -425,7 +425,7 @@ public:
       }
       for (const FTag2Marker& tag: tags) {
         drawQuadWithCorner(overlaidImg, tag.tagCorners);
-        drawMarkerLabel(overlaidImg, tag.tagCorners, tag.payload.bitChunksStr);
+        drawMarkerLabel(overlaidImg, tag.tagCorners, tag.payload.bitChunksStr, 0.8);
       }
       cv::imshow("tags", overlaidImg);
     }
@@ -434,10 +434,10 @@ public:
 #ifdef ROS_PUBLISHING_DETECTIONS
     if ( first_tag == false )
     {
-    cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
-        sensor_msgs::image_encodings::MONO8, first_quad_img);
-    cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
-    firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
+		cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
+			sensor_msgs::image_encodings::MONO8, first_quad_img);
+		cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
+		firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
     }
 
     ftag2_core::TagDetections tags_msg;
@@ -491,7 +491,7 @@ public:
       const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
       if (trackedPayload.numDecodedSections >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_SECTIONS) {
         drawMarkerLabel(overlaidImg, trackedTag.hypothesis.back_proj_corners,
-            trackedPayload.decodedPayloadStr,
+            trackedPayload.decodedPayloadStr, 0.8,
             cv::FONT_HERSHEY_SIMPLEX, 1, 0.4,
             CV_RGB(0, 255, 255), CV_RGB(0, 0, 255));
       }
@@ -511,12 +511,16 @@ public:
       const FTag2Payload& trackedPayload = trackedTag.hypothesis.payload;
       if (trackedPayload.numDecodedPhases >= DISPLAY_HYPOTHESIS_MIN_NUM_DECODED_PHASES) {
         drawMarkerLabel(overlaidImg, trackedTag.hypothesis.back_proj_corners,
-            trackedPayload.bitChunksStr,
+            trackedPayload.bitChunksStr, 0.8,
             cv::FONT_HERSHEY_SIMPLEX, 1, 0.4,
             CV_RGB(0, 255, 255), CV_RGB(0, 0, 255));
       }
     }
 #endif
+    cv_bridge::CvImage cvProcImg(std_msgs::Header(), sensor_msgs::image_encodings::BGR8, overlaidImg);
+    cvProcImg.header.frame_id = boost::lexical_cast<std::string>(ID);
+    processedImagePub.publish(cvProcImg.toImageMsg());
+
 
 // Draw detected tag observations: red
 //    for (const FTag2Marker& tagObs: tags) {

@@ -416,16 +416,20 @@ public:
         drawMarkerLabel(overlaidImg, tag.tagCorners, tag.payload.bitChunksStr);
       }
       cv::imshow("tags", overlaidImg);
+
+      cv_bridge::CvImage cvProcImg(std_msgs::Header(), sensor_msgs::image_encodings::BGR8, overlaidImg);
+      cvProcImg.header.frame_id = boost::lexical_cast<std::string>(ID);
+      processedImagePub.publish(cvProcImg.toImageMsg());
     }
 #endif
 
 #ifdef ROS_PUBLISHING_DETECTIONS
     if ( first_tag == false )
     {
-    cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
-        sensor_msgs::image_encodings::MONO8, first_quad_img);
-    cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
-    firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
+		cv_bridge::CvImage cvCroppedTagImgRot(std_msgs::Header(),
+			sensor_msgs::image_encodings::MONO8, first_quad_img);
+		cvCroppedTagImgRot.header.frame_id = boost::lexical_cast<std::string>(ID);
+		firstTagImagePub.publish(cvCroppedTagImgRot.toImageMsg());
     }
 
     ftag2_core::TagDetections tags_msg;
