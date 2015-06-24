@@ -4,6 +4,7 @@
 
 #include <boost/version.hpp>
 #include <boost/math/constants/constants.hpp>
+#include <boost/algorithm/string.hpp>
 #include <opencv2/opencv.hpp>
 #include <utility>
 #include <vector>
@@ -624,7 +625,7 @@ inline void rotMat2quat(const cv::Mat rotMat,
 
 inline cv::Mat quat2RotMat(double w, double x, double y, double z) {
   double distSqrd = x*x+y*y+z*z+w*w;
-  if (distSqrd == 0.0) { return cv::Mat::zeros(3, 3, CV_64FC1); }
+  if (distSqrd < 1e-15) { return cv::Mat::zeros(3, 3, CV_64FC1); }
   double s = 2.0/distSqrd;
   double xs = x * s,   ys = y * s,   zs = z * s;
   double wx = w * xs,  wy = w * ys,  wz = w * zs;
@@ -645,6 +646,39 @@ inline cv::Mat quat2RotMat(double w, double x, double y, double z) {
 };
 
 
+/**
+ * Converts a quaternion to Euler angles
+ * Assume right-hand coordinate frame, and static-x-y-z (sxyz) rotation ordering
+ */
+inline std::array<double, 3> quat2euler(double w, double x, double y, double z) {
+  double distSqrd = x*x+y*y+z*z+w*w;
+  if (distSqrd < 1e-15) { std::array<double, 3>{ {0, 0, 0} }; }
+  w /= distSqrd;
+  x /= distSqrd;
+  y /= distSqrd;
+  z /= distSqrd;
+
+  return std::array<double, 3>{ {
+    atan2(2*(x*w + z*y), (w*w - x*x - y*y + z*z)),
+    asin(2*(y*w - x*z)),
+    atan2(2*(x*y + z*w), (w*w + x*x - y*y - z*z))} };
+};
+inline std::array<double, 3> quat2euler(std::array<double, 4> wxyz) {
+  return quat2euler(wxyz[0], wxyz[1], wxyz[2], wxyz[3]);
+};
+
+
+/**
+ * Computes (normalized) inverse of a given quaternion
+ */
+inline std::array<double, 4> quatInv(double w, double x, double y, double z) {
+  double distSqrd = x*x+y*y+z*z+w*w;
+  if (distSqrd < 1e-15) { std::array<double, 4>{ {0, 0, 0, 0} }; }
+  return std::array<double, 4>{ {w/distSqrd,
+    -x/distSqrd, -y/distSqrd, -z/distSqrd} };
+};
+
+
 inline cv::Mat str2mat(const std::string& s, int rows,
     int type = CV_64F, int channels = 1) {
   std::string input = s;
@@ -660,6 +694,17 @@ inline cv::Mat str2mat(const std::string& s, int rows,
     mat.push_back(currNum);
   }
   return mat.reshape(channels, rows);
+};
+
+
+inline std::vector<double> str2doublesVec(const std::string& doublesStr) {
+  std::list<std::string> tokens;
+  boost::split(tokens, doublesStr, boost::is_any_of(", "), boost::token_compress_on);
+  std::vector<double> doublesVec;
+  for (const std::string& t: tokens) {
+    doublesVec.push_back(boost::lexical_cast<double>(t));
+  }
+  return doublesVec;
 };
 
 

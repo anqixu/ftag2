@@ -8,47 +8,64 @@
 
 
 /**
- * This class predicts the error bias of the decoded payload phases (in degrees)
- * inside a FTag2 marker via a data-driven linear regression model.
+ * This class predicts the bias and deviation of the error associated to the
+ * decoded payload phases (in degrees) inside a FTag2 marker.
+ * Biases and deviations are separately modeled using linear regression.
  *
  * Specific model forms are currently in flux; see ftag2test/matlab synthetic
  * analyses and regression scripts for more info.
  *
- * The bias-adjusted phases are stored in tag->payload.phasesBiasAdj
+ * The bias-adjusted phases are stored in tag->payload.phasesBiasAdj.
+ * The predicted phase stdev are stored in tag->payload.phaseVariances.
  */
-class PhaseBiasPredictor {
+class PhaseErrorPredictor {
 protected:
   std::mutex weightsMutex;
-  std::vector<double> weights;
+  std::vector<double> biasWeights;
+  std::vector<double> stdevWeights;
 
 public:
-  enum MODEL_TYPE {BIAS_MODEL_POSE=0, BIAS_MODEL_QUAD, BIAS_MODEL_SIMPLE, NUM_MODELS};
-  constexpr static unsigned int NUM_WEIGHTS[NUM_MODELS] = {24, 8, 8}; // TODO: 000 update David's quad model after adjusting features to have linear dependencies
-  constexpr static MODEL_TYPE model = BIAS_MODEL_POSE;
+  enum BIAS_MODEL_TYPE {BIAS_MODEL_POSE=0, BIAS_MODEL_QUAD, BIAS_MODEL_SIMPLE, NUM_BIAS_MODELS};
+  enum STDEV_MODEL_TYPE {STDEV_MODEL_POSE=0, STDEV_MODEL_QUAD, STDEV_MODEL_SIMPLE, NUM_STDEV_MODELS};
+  constexpr static unsigned int NUM_BIAS_WEIGHTS[NUM_BIAS_MODELS] = {20, 8, 8}; // TODO: 0 update David's quad model after adjusting features to have linear dependencies
+  constexpr static unsigned int NUM_STDEV_WEIGHTS[NUM_STDEV_MODELS] = {5, 8, 8}; // TODO: 0 update David's quad model
+  constexpr static BIAS_MODEL_TYPE bias_model = BIAS_MODEL_POSE;
+  constexpr static STDEV_MODEL_TYPE stdev_model = STDEV_MODEL_POSE;
 
-  PhaseBiasPredictor() : weights(NUM_WEIGHTS[model], 0.0) {
+  PhaseErrorPredictor() :
+      biasWeights(NUM_BIAS_WEIGHTS[bias_model], 0.0),
+      stdevWeights(NUM_STDEV_WEIGHTS[stdev_model], 0.0) {
   };
 
-  void updateParams(const std::vector<double>& newWeights) {
-    if (newWeights.size() != NUM_WEIGHTS[model]) {
+  void updateBiasParams(const std::vector<double>& newBiasWeights) {
+    if (newBiasWeights.size() != NUM_BIAS_WEIGHTS[bias_model]) {
       throw std::string("Failed to update bias model weights due to size mismatch");
     }
     weightsMutex.lock();
-    weights = newWeights;
+    biasWeights = newBiasWeights;
+    weightsMutex.unlock();
+  };
+
+  void updateStdevParams(const std::vector<double>& newStdevWeights) {
+    if (newStdevWeights.size() != NUM_STDEV_WEIGHTS[stdev_model]) {
+      throw std::string("Failed to update deviation model weights due to size mismatch");
+    }
+    weightsMutex.lock();
+    stdevWeights = newStdevWeights;
     weightsMutex.unlock();
   };
 
   void predict(FTag2Marker* tag, double markerWidthM) {
     const double NUM_FREQS = tag->payload.NUM_FREQS();
     const double NUM_SLICES = tag->payload.NUM_SLICES();
-    std::vector<double> features(NUM_WEIGHTS[model], 0.0);
-    double phaseBias;
+    std::vector<double> biasFeatures(NUM_BIAS_WEIGHTS[bias_model], 0.0);
+    std::vector<double> stdevFeatures(NUM_STDEV_WEIGHTS[stdev_model], 0.0);
 
     weightsMutex.lock();
 
-    switch (model) {
+    switch (bias_model) {
     case BIAS_MODEL_SIMPLE:
-    case BIAS_MODEL_QUAD: // TODO: 000 update David's quad model after adjusting features to have linear dependencies
+    case BIAS_MODEL_QUAD: // TODO: 0 update David's quad model after adjusting features to have linear dependencies
       {
       bool ftag2_tag_img_rot_1 = (tag->tagImgCCRotDeg == 1);
       bool ftag2_tag_img_rot_2 = (tag->tagImgCCRotDeg == 2);
@@ -59,21 +76,21 @@ public:
       /*
        MATLAB Model Form:
        % coeffs = biasFitSimpleAll.CoefficientNames;
-       % for i = 1:length(coeffs), fprintf('features[%2d] = %s;\n', i-1, strrep(coeffs{i}, ':', '*')); end;
+       % for i = 1:length(coeffs), fprintf('biasFeatures[%2d] = %s;\n', i-1, strrep(coeffs{i}, ':', '*')); end;
        */
-      features[ 0] = 1;
-      features[ 1] = ftag2_tag_img_rot_1;
-      features[ 2] = ftag2_tag_img_rot_2;
-      features[ 3] = ftag2_tag_img_rot_3;
+      biasFeatures[ 0] = 1;
+      biasFeatures[ 1] = ftag2_tag_img_rot_1;
+      biasFeatures[ 2] = ftag2_tag_img_rot_2;
+      biasFeatures[ 3] = ftag2_tag_img_rot_3;
 
       for (unsigned int tag_freq = 1; tag_freq <= NUM_FREQS; tag_freq++) {
-        features[ 4] = tag_freq;
-        features[ 5] = ftag2_tag_img_rot_1*tag_freq;
-        features[ 6] = ftag2_tag_img_rot_2*tag_freq;
-        features[ 7] = ftag2_tag_img_rot_3*tag_freq;
-        phaseBias = 0;
-        for (unsigned int wi = 0; wi < NUM_WEIGHTS[model]; wi++) {
-          phaseBias += weights[wi]*features[wi];
+        biasFeatures[ 4] = tag_freq;
+        biasFeatures[ 5] = ftag2_tag_img_rot_1*tag_freq;
+        biasFeatures[ 6] = ftag2_tag_img_rot_2*tag_freq;
+        biasFeatures[ 7] = ftag2_tag_img_rot_3*tag_freq;
+        double phaseBias = 0;
+        for (unsigned int wi = 0; wi < NUM_BIAS_WEIGHTS[bias_model]; wi++) {
+          phaseBias += biasWeights[wi]*biasFeatures[wi];
         }
         for (unsigned int tag_slice = 1; tag_slice <= NUM_SLICES; tag_slice++) {
           tag->payload.phasesBiasAdj.at<double>(tag_slice-1, tag_freq-1) -= phaseBias;
@@ -88,48 +105,50 @@ public:
       bool ftag2_tag_img_rot_1 = (tag->tagImgCCRotDeg == 1);
       bool ftag2_tag_img_rot_2 = (tag->tagImgCCRotDeg == 2);
       bool ftag2_tag_img_rot_3 = (tag->tagImgCCRotDeg == 3);
-      double ftag2_txy_norm = sqrt(tag->pose.position_x*tag->pose.position_x +
-          tag->pose.position_y*tag->pose.position_y)/markerWidthM;
+      //double ftag2_txy_norm = sqrt(tag->pose.position_x*tag->pose.position_x +
+      //    tag->pose.position_y*tag->pose.position_y)/markerWidthM;
       double ftag2_tz_norm = tag->pose.position_z/markerWidthM;
-      double ftag2_pitch_height_scale = 0; // TODO: 000 compute pitch and yaw using bullet (or ideally something local without dependency), then apply cos
-      double ftag2_yaw_width_scale = 0;    //  ... e.g. convert from quaternion back to rotMat, then take inverse, then find code to extra rx, ry, rz angles from rotMat
+
+      std::array<double, 4> quat_cam_in_tag_frame = vc_math::quatInv(
+          tag->pose.orientation_w, tag->pose.orientation_x,
+          tag->pose.orientation_y, tag->pose.orientation_z);
+      std::array<double, 3> rxyz_cam_in_tag_frame =
+          vc_math::quat2euler(quat_cam_in_tag_frame);
+      double ftag2_pitch_height_scale = cos(rxyz_cam_in_tag_frame[0]);
+      double ftag2_yaw_width_scale = cos(rxyz_cam_in_tag_frame[1]);
 
       tag->payload.phases.copyTo(tag->payload.phasesBiasAdj);
 
       /*
        MATLAB Model Form:
        % coeffs = biasFitPoseAll.CoefficientNames;
-       % for i = 1:length(coeffs), fprintf('features[%2d] = %s;\n', i-1, strrep(coeffs{i}, ':', '*')); end;
+       % for i = 1:length(coeffs), fprintf('biasFeatures[%2d] = %s;\n', i-1, strrep(coeffs{i}, ':', '*')); end;
        */
-      features[ 0] = 1;
-      features[ 1] = ftag2_tag_img_rot_1;
-      features[ 2] = ftag2_tag_img_rot_2;
-      features[ 3] = ftag2_tag_img_rot_3;
-      features[ 4] = ftag2_txy_norm;
-      features[ 5] = ftag2_tz_norm;
-      features[ 6] = ftag2_pitch_height_scale;
-      features[ 7] = ftag2_yaw_width_scale;
-      features[ 9] = ftag2_tag_img_rot_1*ftag2_txy_norm;
-      features[10] = ftag2_tag_img_rot_2*ftag2_txy_norm;
-      features[11] = ftag2_tag_img_rot_3*ftag2_txy_norm;
-      features[12] = ftag2_tag_img_rot_1*ftag2_tz_norm;
-      features[13] = ftag2_tag_img_rot_2*ftag2_tz_norm;
-      features[14] = ftag2_tag_img_rot_3*ftag2_tz_norm;
-      features[15] = ftag2_tag_img_rot_1*ftag2_pitch_height_scale;
-      features[16] = ftag2_tag_img_rot_2*ftag2_pitch_height_scale;
-      features[17] = ftag2_tag_img_rot_3*ftag2_pitch_height_scale;
-      features[18] = ftag2_tag_img_rot_1*ftag2_yaw_width_scale;
-      features[19] = ftag2_tag_img_rot_2*ftag2_yaw_width_scale;
-      features[20] = ftag2_tag_img_rot_3*ftag2_yaw_width_scale;
+      biasFeatures[ 0] = 1;
+      biasFeatures[ 1] = ftag2_tag_img_rot_1;
+      biasFeatures[ 2] = ftag2_tag_img_rot_2;
+      biasFeatures[ 3] = ftag2_tag_img_rot_3;
+      biasFeatures[ 4] = ftag2_tz_norm;
+      biasFeatures[ 5] = ftag2_pitch_height_scale;
+      biasFeatures[ 6] = ftag2_yaw_width_scale;
+      biasFeatures[ 8] = ftag2_tag_img_rot_1*ftag2_tz_norm;
+      biasFeatures[ 9] = ftag2_tag_img_rot_2*ftag2_tz_norm;
+      biasFeatures[10] = ftag2_tag_img_rot_3*ftag2_tz_norm;
+      biasFeatures[11] = ftag2_tag_img_rot_1*ftag2_pitch_height_scale;
+      biasFeatures[12] = ftag2_tag_img_rot_2*ftag2_pitch_height_scale;
+      biasFeatures[13] = ftag2_tag_img_rot_3*ftag2_pitch_height_scale;
+      biasFeatures[14] = ftag2_tag_img_rot_1*ftag2_yaw_width_scale;
+      biasFeatures[15] = ftag2_tag_img_rot_2*ftag2_yaw_width_scale;
+      biasFeatures[16] = ftag2_tag_img_rot_3*ftag2_yaw_width_scale;
 
       for (unsigned int tag_freq = 1; tag_freq <= NUM_FREQS; tag_freq++) {
-        features[ 8] = tag_freq;
-        features[21] = ftag2_tag_img_rot_1*tag_freq;
-        features[22] = ftag2_tag_img_rot_2*tag_freq;
-        features[23] = ftag2_tag_img_rot_3*tag_freq;
-        phaseBias = 0;
-        for (unsigned int wi = 0; wi < NUM_WEIGHTS[model]; wi++) {
-          phaseBias += weights[wi]*features[wi];
+        biasFeatures[ 7] = tag_freq;
+        biasFeatures[17] = ftag2_tag_img_rot_1*tag_freq;
+        biasFeatures[18] = ftag2_tag_img_rot_2*tag_freq;
+        biasFeatures[19] = ftag2_tag_img_rot_3*tag_freq;
+        double phaseBias = 0;
+        for (unsigned int wi = 0; wi < NUM_BIAS_WEIGHTS[bias_model]; wi++) {
+          phaseBias += biasWeights[wi]*biasFeatures[wi];
         }
         for (unsigned int tag_slice = 1; tag_slice <= NUM_SLICES; tag_slice++) {
           tag->payload.phasesBiasAdj.at<double>(tag_slice-1, tag_freq-1) -= phaseBias;
@@ -138,6 +157,75 @@ public:
       }
       break;
     }
+
+
+    switch (stdev_model) {
+    case STDEV_MODEL_SIMPLE:
+    case STDEV_MODEL_QUAD: // TODO: 0 update David's quad model
+      {
+      bool ftag2_tag_img_rot_1 = (tag->tagImgCCRotDeg == 1);
+      bool ftag2_tag_img_rot_2 = (tag->tagImgCCRotDeg == 2);
+      bool ftag2_tag_img_rot_3 = (tag->tagImgCCRotDeg == 3);
+
+      /*
+       MATLAB Model Form:
+       % coeffs = stdevFitSimpleAll.CoefficientNames;
+       % for i = 1:length(coeffs), fprintf('stdevFeatures[%2d] = %s;\n', i-1, strrep(coeffs{i}, ':', '*')); end;
+       */
+      stdevFeatures[ 0] = 1;
+      stdevFeatures[ 1] = ftag2_tag_img_rot_1;
+      stdevFeatures[ 2] = ftag2_tag_img_rot_2;
+      stdevFeatures[ 3] = ftag2_tag_img_rot_3;
+
+      for (unsigned int tag_freq = 1; tag_freq <= NUM_FREQS; tag_freq++) {
+        stdevFeatures[ 4] = tag_freq;
+        stdevFeatures[ 5] = ftag2_tag_img_rot_1*tag_freq;
+        stdevFeatures[ 6] = ftag2_tag_img_rot_2*tag_freq;
+        stdevFeatures[ 7] = ftag2_tag_img_rot_3*tag_freq;
+        double phaseStdev = 0;
+        for (unsigned int wi = 0; wi < NUM_STDEV_WEIGHTS[stdev_model]; wi++) {
+          phaseStdev += stdevWeights[wi]*stdevFeatures[wi];
+        }
+        tag->payload.phaseVariances[tag_freq-1] = phaseStdev*phaseStdev;
+      }
+      }
+      break;
+
+    case STDEV_MODEL_POSE:
+    default:
+      {
+      double ftag2_tz_norm = tag->pose.position_z/markerWidthM;
+
+      std::array<double, 4> quat_cam_in_tag_frame = vc_math::quatInv(
+          tag->pose.orientation_w, tag->pose.orientation_x,
+          tag->pose.orientation_y, tag->pose.orientation_z);
+      std::array<double, 3> rxyz_cam_in_tag_frame =
+          vc_math::quat2euler(quat_cam_in_tag_frame);
+      double ftag2_pitch_height_scale = cos(rxyz_cam_in_tag_frame[0]);
+      double ftag2_yaw_width_scale = cos(rxyz_cam_in_tag_frame[1]);
+
+      /*
+       MATLAB Model Form:
+       % coeffs = stdevFitPoseAll.CoefficientNames;
+       % for i = 1:length(coeffs), fprintf('stdevFeatures[%2d] = %s;\n', i-1, strrep(coeffs{i}, ':', '*')); end;
+       */
+      stdevFeatures[ 0] = 1;
+      stdevFeatures[ 1] = ftag2_tz_norm;
+      stdevFeatures[ 2] = ftag2_pitch_height_scale;
+      stdevFeatures[ 3] = ftag2_yaw_width_scale;
+
+      for (unsigned int tag_freq = 1; tag_freq <= NUM_FREQS; tag_freq++) {
+        stdevFeatures[ 4] = tag_freq;
+        double phaseStdev = 0;
+        for (unsigned int wi = 0; wi < NUM_STDEV_WEIGHTS[stdev_model]; wi++) {
+          phaseStdev += stdevWeights[wi]*stdevFeatures[wi];
+        }
+        tag->payload.phaseVariances[tag_freq-1] = phaseStdev*phaseStdev;
+      }
+      }
+      break;
+    }
+
 
     weightsMutex.unlock();
   };

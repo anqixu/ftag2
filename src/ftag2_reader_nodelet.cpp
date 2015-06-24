@@ -4,17 +4,15 @@
 #include "common/Profiler.hpp"
 #include "common/VectorAndCircularMath.hpp"
 
-#include "tracker/FTag2Tracker.hpp"
-
 #include <ros/ros.h>
 #include <dynamic_reconfigure/server.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 #include <nodelet/nodelet.h>
-#include "ftag2/FTag2ReaderConfig.h"
-#include "ftag2_core/TagDetections.h"
-#include "ftag2_core/TagDetection.h"
+#include <ftag2/FTag2ReaderConfig.h>
+#include <ftag2_core/TagDetections.h>
+#include <ftag2_core/TagDetection.h>
 
 using namespace std;
 using namespace cv;
@@ -49,6 +47,7 @@ protected:
 
   cv::Mat cameraIntrinsic, cameraDistortion;
 
+  PhaseErrorPredictor phaseErrorPredictor;
   PhaseVariancePredictor phaseVariancePredictor;
 
   ros::Timer idleSpinTimer;
@@ -157,6 +156,34 @@ public:
     phaseVariancePredictor.updateParams(params.phaseVarWeightR,
         params.phaseVarWeightZ, params.phaseVarWeightAngle,
         params.phaseVarWeightFreq, params.phaseVarWeightBias);
+
+    // Parse weights for bias model
+    std::string biasWeightsStr = "";
+    local_nh.param("phase_bias_weights", biasWeightsStr, biasWeightsStr);
+    if (biasWeightsStr.size() > 0) {
+      std::vector<double> biasWeights = vc_math::str2doublesVec(biasWeightsStr);
+      if (biasWeights.size() == PhaseErrorPredictor::NUM_BIAS_WEIGHTS[PhaseErrorPredictor::bias_model]) {
+        phaseErrorPredictor.updateBiasParams(biasWeights);
+      } else {
+        NODELET_WARN("Parsed weights for bias model has incorrect # of entries (expecting %u, got %lu)",
+            PhaseErrorPredictor::NUM_BIAS_WEIGHTS[PhaseErrorPredictor::bias_model],
+            biasWeights.size());
+      }
+    }
+
+    // Parse weights for stdev model
+    std::string stdevWeightsStr = "";
+    local_nh.param("phase_stdev_weights", stdevWeightsStr, stdevWeightsStr);
+    if (stdevWeightsStr.size() > 0) {
+      std::vector<double> stdevWeights = vc_math::str2doublesVec(stdevWeightsStr);
+      if (stdevWeights.size() == PhaseErrorPredictor::NUM_STDEV_WEIGHTS[PhaseErrorPredictor::stdev_model]) {
+        phaseErrorPredictor.updateStdevParams(stdevWeights);
+      } else {
+        NODELET_WARN("Parsed weights for stdev model has incorrect # of entries (expecting %u, got %lu)",
+            PhaseErrorPredictor::NUM_STDEV_WEIGHTS[PhaseErrorPredictor::stdev_model],
+            stdevWeights.size());
+      }
+    }
 
 #ifdef CV_SHOW_IMAGES
     // Configure windows
@@ -333,10 +360,9 @@ public:
             params.tagMagFilPowNeg,
             params.tagMagFilPowPos,
             phaseVariancePredictor);
-        // TODO: 0 apply phase corrections (bias model, stdev model)
+        phaseErrorPredictor.predict(&currTag, params.markerWidthM);
         decodePayload(currTag.payload, params.tempTagDecodeStd);
         
-//        std::cout << "ROTATION: " << currTag.tagImgCCRotDeg << ",\t/90 = " << currTag.tagImgCCRotDeg/90 << endl;
         // TODO: 0 Delete after gathering data for training variance model and mags.
         if ( first_tag )
         {
